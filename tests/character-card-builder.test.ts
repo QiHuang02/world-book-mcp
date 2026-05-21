@@ -1,0 +1,78 @@
+import { describe, expect, it } from "vitest";
+import { buildCharacterCardJson } from "../src/core/character-card-builder.js";
+import { buildEjsEntries } from "../src/core/ejs-entries.js";
+import { createEjsTemplate } from "../src/core/ejs-template.js";
+import { buildHtmlBeautifyAssets } from "../src/core/html-beautify-assets.js";
+import { createHtmlBeautifyTemplate } from "../src/core/html-beautify-template.js";
+import { buildMvuAssets } from "../src/core/mvu-assets.js";
+import { createMvuTemplate } from "../src/core/mvu-template.js";
+import type { CharacterCardConfig } from "../src/schemas/character-card.js";
+import type { WorldbookDraftEntry } from "../src/schemas/worldbook-draft.js";
+
+const config: CharacterCardConfig = {
+  card: {
+    name: "角色A",
+    description: "",
+    personality: "",
+    scenario: "",
+    first_mes: "你好。",
+    alternate_greetings: ["晚上好。"],
+    creator_notes: "",
+    system_prompt: "",
+    post_history_instructions: "",
+    tags: ["test"],
+    creator: "tester",
+    character_version: "1.0",
+    talkativeness: "0.5",
+  },
+  worldbook: { source: "project_draft", name: "角色A世界书" },
+};
+
+const draft: WorldbookDraftEntry[] = [
+  {
+    comment: "角色A_基础设定",
+    entryType: "character_basic",
+    keys: [],
+    secondaryKeys: [],
+    content: "<character>\nname: 角色A\n</character>",
+    constant: true,
+    position: "after_char",
+    order: 10,
+    enabled: true,
+    preventRecursion: true,
+    excludeRecursion: true,
+  },
+];
+
+describe("buildCharacterCardJson", () => {
+  it("builds chara_card_v3 json", () => {
+    const card = buildCharacterCardJson({ config, worldbookEntries: draft, createdAt: "2026-01-01T00:00:00.000Z" });
+    expect(card.spec).toBe("chara_card_v3");
+    expect(card.spec_version).toBe("3.0");
+    expect(card.data.name).toBe("角色A");
+    expect(card.data.character_book.entries).toHaveLength(1);
+    expect(card.data.character_book.entries[0].extensions.prevent_recursion).toBe(true);
+  });
+
+  it("merges mvu assets", () => {
+    const { mvu } = createMvuTemplate({ characterNames: ["角色A"] });
+    const card = buildCharacterCardJson({ config, worldbookEntries: draft, mvuAssets: buildMvuAssets(mvu) });
+    expect(card.data.character_book.entries.length).toBeGreaterThan(1);
+    expect(card.data.extensions.regex_scripts?.length).toBeGreaterThan(0);
+    expect(card.data.extensions.tavern_helper).toBeTruthy();
+  });
+
+  it("merges html assets with mvu regex scripts", () => {
+    const { mvu } = createMvuTemplate({ characterNames: ["角色A"] });
+    const { html } = createHtmlBeautifyTemplate({ target: "statusbar", theme: "minimal" });
+    const card = buildCharacterCardJson({ config, worldbookEntries: draft, mvuAssets: buildMvuAssets(mvu), htmlAssets: buildHtmlBeautifyAssets(html) });
+    expect(card.data.extensions.regex_scripts?.some((script) => String((script as any).scriptName).includes("状态栏"))).toBe(true);
+    expect(card.data.extensions.regex_scripts?.some((script) => String((script as any).scriptName).includes("去除变量更新"))).toBe(true);
+  });
+
+  it("merges ejs entries into character book", () => {
+    const { ejs } = createEjsTemplate({ templateType: "phase_profile", characterName: "角色A" });
+    const card = buildCharacterCardJson({ config, worldbookEntries: draft, ejsEntries: buildEjsEntries(ejs).worldbookEntries });
+    expect(card.data.character_book.entries.some((entry) => entry.comment === "角色A_阶段控制器")).toBe(true);
+  });
+});
