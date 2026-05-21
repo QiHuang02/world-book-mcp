@@ -1,5 +1,9 @@
 # 用户决策回路
 
+> 何时阅读：当 AI 检测到用户需求模糊（卡型 / 世界观类型 / 是否启用 MVU/HTML/EJS / 提取焦点等），或 `get_worldbook_capability_matrix` 中某条任务标了 `decision_hint=prefer_clarification` 时，先读这份再调用 `request_user_decision`。
+
+---
+
 MCP 工具的调用是请求—响应模型，工具内部不能"暂停 + 唤起用户"。控制权始终在 AI 手里。`world-book-mcp` 用一组配套的工具实现等价的"AI 编排式询问—回答"机制，让 AI 在不确定时正式向用户发问，用户回答持久化保存，并在导出前作为闸门。
 
 ---

@@ -52,114 +52,7 @@ npm test             # 运行单元测试
 
 ## 推荐总流程
 
-### 从文本生成世界书
-
-```text
-用户提出需求
-→ get_worldbook_workflow
-→ ingest_text_source
-→ create_extraction_outline
-→ 主 AI 阅读文本并提取结构化事实
-→ submit_extraction_result
-→ plan_worldbook_entries
-→ create_worldbook_draft_template
-→ 主 AI 填写 draft.content
-→ draft_worldbook_entries
-→ validate_worldbook_draft
-→ 如需修复：update_worldbook_draft_entries
-→ generate_worldbook_json
-→ query_worldbook
-```
-
-### 从网页摘要生成世界书
-
-```text
-用户提出需求
-→ get_worldbook_workflow
-→ 主 AI 搜索网页
-→ 主 AI 整理网页摘要和 facts
-→ ingest_web_research
-→ create_extraction_outline
-→ 主 AI 从搜索摘要中提取结构化事实
-→ submit_extraction_result
-→ plan_worldbook_entries
-→ create_worldbook_draft_template
-→ 主 AI 填写 draft.content
-→ draft_worldbook_entries
-→ validate_worldbook_draft
-→ generate_worldbook_json
-→ query_worldbook
-```
-
-### 从世界书 draft 生成角色卡
-
-```text
-完成并校验世界书 draft
-→ create_character_card_template
-→ 主 AI 填写 first_mes 与 alternate_greetings
-→ submit_character_card_config
-→ validate_character_card_config
-→ generate_character_card_json
-→ query_character_card
-```
-
-### 生成带 MVU/ZOD 的角色卡
-
-```text
-完成世界书 draft 和角色卡 config
-→ create_mvu_schema_template
-→ 主 AI 调整 schema_script / initvar / update_rules
-→ submit_mvu_config
-→ validate_mvu_config
-→ build_mvu_assets（可选预览）
-→ generate_character_card_json
-→ query_character_card
-```
-
-启用 MVU 时，开场白建议包含 `<StatusPlaceHolderImpl/>`。
-
-### 生成带 HTML 美化的角色卡
-
-```text
-完成世界书 draft 和角色卡 config
-→ create_html_beautify_template
-→ 主 AI 调整 statusbar.html 或 global.regex_scripts
-→ submit_html_beautify_config
-→ validate_html_beautify_config
-→ build_html_beautify_assets（可选预览）
-→ generate_character_card_json
-→ query_character_card
-```
-
-HTML 状态栏通常配合 MVU 使用，并依赖开场白中的 `<StatusPlaceHolderImpl/>` 占位符。
-
-### 生成带 EJS 动态内容的角色卡
-
-```text
-完成世界书 draft、角色卡 config 和 MVU config
-→ create_ejs_template
-→ 主 AI 调整控制器和阶段条目内容
-→ submit_ejs_config
-→ validate_ejs_config
-→ build_ejs_entries（可选预览）
-→ generate_character_card_json
-→ query_character_card
-```
-
-EJS 依赖 MVU，变量路径必须以 `stat_data` 开头。EJS entries 会合并进角色卡内嵌世界书。
-
-### 修改已有世界书
-
-```text
-将目标 JSON 放入 output/exports/
-→ import_worldbook_json
-→ create_worldbook_patch
-→ preview_worldbook_patch
-→ apply_worldbook_patch
-→ query_worldbook
-```
-
-`apply_worldbook_patch` 默认会在目标文件存在时尝试备份到 `output/exports/backups/`，并在覆盖前要求 `overwrite=true`。
+完整 7 类工作流（从文本 / 从网页 / 角色卡 / MVU / HTML / EJS / 修改已有）请见 [`skill/world-book-mcp/references/workflows.md`](skill/world-book-mcp/references/workflows.md)。
 
 ## 关键概念
 
@@ -243,55 +136,6 @@ MCP 不直接理解长文本、不替主 AI 搜索网页、不自动脑补设定
 - `preview_worldbook_patch`：预览 patch diff 和校验结果。
 - `apply_worldbook_patch`：应用 patch，自动校验，可备份并导出新 JSON。
 
-## 常用 tool 示例
-
-### 获取完整流程
-
-```json
-{
-  "task_type": "from_text",
-  "wants_character_card": true
-}
-```
-
-### 查询 tool 用法
-
-```json
-{
-  "tool": "submit_extraction_result"
-}
-```
-
-### 保存文本素材
-
-```json
-{
-  "title": "角色设定",
-  "content": "这里是用户提供的原文或设定。",
-  "source_type": "notes",
-  "tags": ["角色"]
-}
-```
-
-### 生成世界书 JSON
-
-```json
-{
-  "project_id": "project_xxx",
-  "worldbook_name": "示例世界书",
-  "overwrite": false
-}
-```
-
-### 生成角色卡 JSON
-
-```json
-{
-  "project_id": "project_xxx",
-  "overwrite": false
-}
-```
-
 ## 输出目录
 
 - `output/projects/`：保存 MCP 项目状态。
@@ -301,15 +145,25 @@ MCP 不直接理解长文本、不替主 AI 搜索网页、不自动脑补设定
 
 这些运行时文件默认被 `.gitignore` 忽略。
 
-## MCP 客户端配置
+## Claude Code Skill
 
-见：[`docs/mcp-client-config.md`](docs/mcp-client-config.md)
+仓库自带一个标准 Claude Code Skill，位于 [`skill/world-book-mcp/`](skill/world-book-mcp/)。它是一个 `SKILL.md` + `references/` 的目录包，用于指导 AI 在用户提出世界书 / 角色卡相关需求时，正确编排本 MCP 服务器的全部工具。
+
+把整个目录复制到 `~/.claude/skills/` 或项目下的 `.claude/skills/` 即可启用：
+
+```bash
+cp -r skill/world-book-mcp ~/.claude/skills/
+```
+
+入口为 [`skill/world-book-mcp/SKILL.md`](skill/world-book-mcp/SKILL.md)。
 
 ## 进阶文档
 
-- [`docs/example-original-character-card.md`](docs/example-original-character-card.md)：原创单角色卡端到端示例
-- [`docs/example-derivative-extraction.md`](docs/example-derivative-extraction.md)：二创小说提取端到端示例
-- [`docs/decision-loop.md`](docs/decision-loop.md)：用户决策回路设计与使用
+- [`skill/world-book-mcp/references/workflows.md`](skill/world-book-mcp/references/workflows.md)：7 类标准工作流的完整调用顺序
+- [`skill/world-book-mcp/references/config-rules.md`](skill/world-book-mcp/references/config-rules.md)：position / constant / keys / MVU / HTML / EJS 字段规则
+- [`skill/world-book-mcp/references/decision-loop.md`](skill/world-book-mcp/references/decision-loop.md)：用户决策回路设计与使用
+- [`skill/world-book-mcp/references/example-original-character-card.md`](skill/world-book-mcp/references/example-original-character-card.md)：原创单角色卡端到端示例
+- [`skill/world-book-mcp/references/example-derivative-extraction.md`](skill/world-book-mcp/references/example-derivative-extraction.md)：二创小说提取端到端示例
 
 ## 未来能力扩展
 
@@ -330,4 +184,4 @@ MCP 不直接理解长文本、不替主 AI 搜索网页、不自动脑补设定
 
 ## 许可
 
-当前项目许可待定。若与 `worldbook-skill` 一起分发，请同时遵守其原有许可和非商业使用声明。
+MIT
