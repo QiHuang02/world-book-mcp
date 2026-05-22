@@ -1,219 +1,140 @@
 # world-book-mcp
 
-`world-book-mcp` 是一个使用 Node.js + TypeScript 编写的 MCP 服务器，用于辅助 AI 从文本或网页搜索摘要中整理信息，并导出符合 SillyTavern 格式的世界书 JSON、基础 `chara_card_v3` 角色卡 JSON，以及可选 MVU/ZOD、HTML 美化和 EJS 动态内容资产。
+`world-book-mcp` is an MCP server built with Node.js and TypeScript. It helps AI organize information from text or web-search summaries and export SillyTavern-compatible World Book JSON, basic `chara_card_v3` character card JSON, and optional MVU/ZOD, HTML beautification, and EJS dynamic content assets.
 
-本项目的核心定位是：
+## Installation
 
-- MCP 负责结构化、校验、导出、查询和安全 patch。
-- 主 AI 负责理解文本、搜索网页、提取事实、编写条目正文和开场白。
-- 不复用现有 Python 脚本，核心生成逻辑由 TypeScript 实现。
-- 不内置网页搜索，只接收宿主 AI 或用户整理后的网页摘要。
-
-## 当前能力
-
-当前版本支持：
-
-- 接收文本素材。
-- 接收网页搜索摘要。
-- 创建信息提取 outline。
-- 提交结构化提取结果。
-- 自动规划世界书条目。
-- 返回世界书条目模板。
-- 查询单个 tool 的使用指南。
-- 解释 SillyTavern 世界书配置字段。
-- 扫描禁词与常见写作问题。
-- 显式初始化 project，适合空白目录首次使用。
-- 通过简化输入保存、更新、校验世界书草稿：AI 只需提交 `comment`、`keys`、`content` 等核心字段，MCP 自动补全完整结构。
-- 导出独立 SillyTavern 世界书 JSON。
-- 导入已有世界书 JSON 并进行安全 patch。
-- 基础角色卡 JSON 生成，可嵌入项目世界书 draft；导出角色卡时同一角色的基础设定和性格设定会聚合为同一个内嵌世界书条目。
-- MVU/ZOD 配置模板、校验、资产构建，并可自动合并进角色卡 JSON。
-- HTML 美化配置模板、校验、资产构建，并可自动合并进角色卡 JSON。
-- EJS 动态内容配置模板、校验、entries 构建，并可自动合并进角色卡内嵌世界书。
-- 查询导出的世界书 JSON 和角色卡 JSON。
-
-暂不支持：
-- 内置网页搜索。
-
-## 安装
-
-```bash
-npm install
-```
-
-## 开发命令
-
-```bash
-npm run dev          # 开发模式启动 MCP server
-npm run build        # 编译到 dist/
-npm start            # 运行 dist/index.js
-npm run typecheck    # TypeScript 类型检查
-npm test             # 运行单元测试
-```
-
-## 推荐总流程
-
-完整 7 类工作流（从文本 / 从网页 / 角色卡 / MVU / HTML / EJS / 修改已有）请见 [`skill/world-book-mcp/references/workflows.md`](skill/world-book-mcp/references/workflows.md)。
-
-## 关键概念
-
-### 原始材料、结构化事实、draft JSON、最终 JSON
-
-- `init_project`：显式创建当前工作区 MCP project，适合空白目录首次起手；项目元数据写入 `.worldbook/project.json`。
-- `ingest_text_source` / `ingest_web_research`：保存原始文本或网页摘要。
-- `submit_extraction_result`：保存主 AI 从原始材料中提取出的结构化事实。
-- `upsert_worldbook_entry` / `upsert_worldbook_entries`：推荐的主编辑入口。AI 只提交 `comment`、`keys`、`content` 等简化字段，MCP 自动补全完整 draft entry。
-- 底层全量 draft/config 提交逻辑已降级为内部/兼容层，不作为默认公开接口推荐。
-- `generate_worldbook_json` / `generate_character_card_json`：导出最终可导入 SillyTavern 的 JSON 文件。
-
-### MCP 不做什么
-
-MCP 不直接理解长文本、不替主 AI 搜索网页、不自动脑补设定。它负责让主 AI 的输出符合稳定 schema，并在导出前执行校验。
-
-### 简化输入与并发保护
-
-推荐 agent 使用 `upsert_worldbook_entry` / `upsert_worldbook_entries`，只提交少量核心字段：
+### JSON format
 
 ```json
 {
-  "project_id": "project_xxx",
-  "comment": "原初异质",
-  "keys": ["原初异质", "异质", "根源力量"],
-  "content": "原初异质，没有人知道它从何而来……"
+  "type": "stdio",
+  "command": "npx",
+  "args": [
+    "-y",
+    "@qihuang02/world-book-mcp"
+  ]
 }
 ```
 
-MCP 会自动补全完整条目结构、默认位置、递归保护、启用状态等字段，并将 draft 拆分保存到 `.worldbook/draft/*.json`。默认按 `comment` 更新，避免不同条目因共享关键词而误合并；确需按关键词匹配旧条目时可设置 `match_by_keys: true`。Project 带有 `revision`，写入会在同一 MCP 进程内按 project 串行化；高并发 agent 可传 `expected_revision` 做冲突检测。
-
-角色卡同样推荐用简化字段：
+### Claude Code format
 
 ```json
-{
-  "project_id": "project_xxx",
-  "name": "孢子",
-  "first_mes": "……",
-  "alternate_greetings": ["……"],
-  "include_worldbook": true
+"mcpServers": {
+  "world-book-mcp": {
+    "type": "stdio",
+    "command": "cmd",
+    "args": [
+      "/c",
+      "npx",
+      "-y",
+      "@qihuang02/world-book-mcp"
+    ]
+  }
 }
 ```
 
-导出角色卡时，同一角色的 `character_basic` 与 `character_personality` 会自动聚合为同一个内嵌世界书条目。
+### Codex format
 
-## Tools 一览
-
-### 工作流、项目与规范
-
-- `get_worldbook_workflow`：根据任务类型返回推荐 tool 流程。`wants_character_card=true` 时会自动追加角色卡流程。
-- `get_tool_usage_guide`：查询某个 tool 的用途、调用时机、必填字段、示例输入、常见错误和下一步。
-- `init_project`：显式初始化当前工作区项目，返回 `project_id`、`revision` 与 `.worldbook` 路径；已有项目可用 `if_exists` 控制复用或覆盖。
-- `list_projects`：列出本地保存的 MCP 项目。
-- `get_project`：查看项目详情或摘要。
-- `get_entry_template`：返回世界书条目模板。
-- `explain_worldbook_config`：解释 position、constant、order、keys、递归等配置。
-- `lint_worldbook_content`：扫描禁词和常见写作问题。
-
-### 素材输入
-
-- `ingest_text_source`：接收小说片段、设定、用户笔记等文本。
-- `ingest_web_research`：接收 AI 整理后的网页搜索摘要。
-
-### 提取
-
-- `create_extraction_outline`：创建角色、世界观、物品、事件的提取模板。
-- `submit_extraction_result`：提交主 AI 提取好的结构化事实。
-
-### 世界书构建
-
-- `plan_worldbook_entries`：根据提取结果规划条目表。
-- `upsert_worldbook_entry`：用简化输入新增/更新单个条目，MCP 自动补全完整配置。
-- `upsert_worldbook_entries`：用简化输入批量新增/更新多个条目。
-- `update_worldbook_draft_entries`：按 index 或 comment 局部更新草稿条目。
-- `validate_worldbook_draft`：校验草稿配置和内容问题。
-- `generate_worldbook_json`：导出 SillyTavern 世界书 JSON。
-
-### 角色卡
-
-- `upsert_character_profile`：用简化字段创建/更新角色卡人设配置，MCP 自动补齐 `chara_card_v3` 默认字段。
-- `validate_character_card_config`：校验角色卡配置和嵌入世界书。
-- `generate_character_card_json`：导出 `chara_card_v3` 角色卡 JSON；同一角色的 `character_basic` 与 `character_personality` 会合并为同一个内嵌世界书条目。
-- `query_character_card`：查询角色卡概要、开场白或内嵌世界书条目。
-
-### MVU / ZOD
-
-- `create_mvu_schema_template`：创建 MVU/ZOD 变量系统配置模板。
-- `submit_mvu_config`：保存 MVU 配置。
-- `validate_mvu_config`：校验 ZOD schema、initvar、update_rules 与开场白占位符。
-- `build_mvu_assets`：预览将合并进角色卡的世界书条目、正则脚本和 Tavern Helper 脚本。
-
-### HTML 美化
-
-- `create_html_beautify_template`：创建状态栏或全局 HTML 美化配置模板。
-- `submit_html_beautify_config`：保存 HTML 美化配置。
-- `validate_html_beautify_config`：校验 HTML、CSS 作用域、regex 配置和开场白占位符。
-- `build_html_beautify_assets`：预览将合并进角色卡的 regex scripts。
-
-### EJS 动态内容
-
-- `create_ejs_template`：创建阶段人设、调色盘或自定义 EJS 模板。
-- `submit_ejs_config`：保存 EJS 配置。
-- `validate_ejs_config`：校验 MVU 依赖、变量路径、EJS 标签、getwi 引用和条目状态。
-- `build_ejs_entries`：预览将合并进角色卡内嵌世界书的 EJS entries。
-
-### 查询与 Patch
-
-- `query_worldbook`：查询已有世界书 JSON，支持 `brief`、`uid`、`search`、`stats`。
-- `import_worldbook_json`：把当前工作目录内已有世界书 JSON 导入为 MCP project draft。
-- `create_worldbook_patch`：创建修改计划，不直接写文件。
-- `preview_worldbook_patch`：预览 patch diff 和校验结果。
-- `apply_worldbook_patch`：应用 patch，自动校验，可备份并导出新 JSON。
-
-## 工作区与输出目录
-
-- `.worldbook/project.json`：保存当前工作区 MCP 项目元数据。
-- `.worldbook/draft/*.json`：按条目拆分保存世界书 draft，便于 AI/人工逐条编辑和审阅。
-- `.worldbook/backups/`：保存 patch 覆盖前的备份。
-- 默认导出路径：`generate_worldbook_json` / `generate_character_card_json` 未传 `output_path` 时，直接在当前工作目录生成 `<名称>.json`。
-- 自定义读写路径必须位于当前工作目录内，防止越界读取或覆盖任意文件。
-
-这些运行时文件默认被 `.gitignore` 忽略。
-
-## Claude Code Skill
-
-仓库自带一个标准 Claude Code Skill，位于 [`skill/world-book-mcp/`](skill/world-book-mcp/)。它是一个 `SKILL.md` + `references/` 的目录包，用于指导 AI 在用户提出世界书 / 角色卡相关需求时，正确编排本 MCP 服务器的全部工具。
-
-把整个目录复制到 `~/.claude/skills/` 或项目下的 `.claude/skills/` 即可启用：
-
-```bash
-cp -r skill/world-book-mcp ~/.claude/skills/
+```toml
+[mcp_servers.world-book-mcp]
+type = "stdio"
+command = "npx"
+args = ["-y", "@qihuang02/world-book-mcp"]
+# startup_timeout_sec = 60000.0
 ```
 
-入口为 [`skill/world-book-mcp/SKILL.md`](skill/world-book-mcp/SKILL.md)。
+## Current Capabilities
 
-## 进阶文档
+The current version supports:
 
-- [`skill/world-book-mcp/references/workflows.md`](skill/world-book-mcp/references/workflows.md)：7 类标准工作流的完整调用顺序
-- [`skill/world-book-mcp/references/config-rules.md`](skill/world-book-mcp/references/config-rules.md)：position / constant / keys / MVU / HTML / EJS 字段规则
-- [`skill/world-book-mcp/references/decision-loop.md`](skill/world-book-mcp/references/decision-loop.md)：用户决策回路设计与使用
-- [`skill/world-book-mcp/references/example-original-character-card.md`](skill/world-book-mcp/references/example-original-character-card.md)：原创单角色卡端到端示例
-- [`skill/world-book-mcp/references/example-derivative-extraction.md`](skill/world-book-mcp/references/example-derivative-extraction.md)：二创小说提取端到端示例
+- Ingesting text materials.
+- Ingesting web-search summaries.
+- Creating information extraction outlines.
+- Submitting structured extraction results.
+- Automatically planning World Book entries.
+- Returning World Book entry templates.
+- Querying the usage guide for a single tool.
+- Explaining SillyTavern World Book configuration fields.
+- Scanning forbidden terms and common writing issues.
+- Explicitly initializing a project, suitable for first-time use in an empty directory.
+- Saving, updating, and validating World Book drafts through simplified input: AI only needs to submit core fields such as `comment`, `keys`, and `content`; MCP automatically completes the full structure.
+- Exporting standalone SillyTavern World Book JSON.
+- Importing existing World Book JSON and applying safe patches.
+- Generating basic character card JSON that can embed the project World Book draft; when exporting a character card, the basic settings and personality settings of the same character are merged into the same embedded World Book entry.
+- MVU/ZOD configuration templates, validation, and asset building, with automatic merging into character card JSON.
+- HTML beautification configuration templates, validation, and asset building, with automatic merging into character card JSON.
+- EJS dynamic content configuration templates, validation, and entry building, with automatic merging into the embedded World Book of a character card.
+- Querying exported World Book JSON and character card JSON.
 
-## 未来能力扩展
+Not supported yet:
+- Built-in web search.
 
-以下能力暂未实现，仅作为后续路线参考：
+## Tools Overview
 
-- 跨项目模板复用：从一个项目派生世界书 / 角色卡模板，应用到新项目。
-- 世界书条目互引图：分析 keys 与 secondaryKeys，输出条目触发依赖图。
-- 多语言 lint 词库：可插拔禁词表，支持英文 / 日文等。
-- 角色关系图导出：从 character_basic 关系字段生成关系图 JSON。
-- 内嵌世界书冲突检测：在角色卡 + 项目世界书合并时检测重复 keys / order。
-- Decision 模板库：常见歧义模板（卡型 / 世界观 / 风格）可被工具引用。
-- Worldbook diff 工具：对比两个 SillyTavern JSON。
-- ChatLog 抽取：从一段对话历史抽取角色行为依据。
-- 自动条目重排：按 position+order 规则自动调整冲突。
-- 状态栏 HTML AST 校验：基于轻量 HTML 解析做更严格的安全检查。
-- 多 character_card 协作：在同一 project 维护多张角色卡 config 并按需切换导出。
-- Worldbook 资产签名：导出 JSON 时附带版本与签名，便于追踪。
+| Category | Tool | Description |
+| --- | --- | --- |
+| Workflow, Projects, and Specs | `get_worldbook_workflow` | Returns the recommended tool flow for a task type. When `wants_character_card=true`, the character card flow is appended automatically. |
+| Workflow, Projects, and Specs | `get_tool_usage_guide` | Queries a tool's purpose, when to call it, required fields, sample input, common mistakes, and next steps. |
+| Workflow, Projects, and Specs | `init_project` | Explicitly initializes the current workspace project and returns the `project_id`, `revision`, and `.worldbook` path; existing projects can be reused or overwritten with `if_exists`. |
+| Workflow, Projects, and Specs | `list_projects` | Lists locally saved MCP projects. |
+| Workflow, Projects, and Specs | `get_project` | Views project details or a summary. |
+| Workflow, Projects, and Specs | `get_entry_template` | Returns a World Book entry template. |
+| Workflow, Projects, and Specs | `explain_worldbook_config` | Explains configuration fields such as position, constant, order, keys, and recursion. |
+| Workflow, Projects, and Specs | `lint_worldbook_content` | Scans forbidden terms and common writing issues. |
+| Material Input | `ingest_text_source` | Ingests novel excerpts, settings, user notes, and other text. |
+| Material Input | `ingest_web_research` | Ingests web-search summaries organized by AI. |
+| Extraction | `create_extraction_outline` | Creates an extraction template for characters, worldbuilding, items, and events. |
+| Extraction | `submit_extraction_result` | Submits structured facts extracted by the main AI. |
+| World Book Building | `plan_worldbook_entries` | Plans an entry table from extraction results. |
+| World Book Building | `upsert_worldbook_entry` | Adds or updates a single entry through simplified input; MCP automatically completes the full configuration. |
+| World Book Building | `upsert_worldbook_entries` | Adds or updates multiple entries through simplified input. |
+| World Book Building | `update_worldbook_draft_entries` | Partially updates draft entries by index or comment. |
+| World Book Building | `validate_worldbook_draft` | Validates draft configuration and content issues. |
+| World Book Building | `generate_worldbook_json` | Exports SillyTavern World Book JSON. |
+| Character Card | `upsert_character_profile` | Creates or updates character card profile configuration through simplified fields; MCP automatically fills default `chara_card_v3` fields. |
+| Character Card | `validate_character_card_config` | Validates character card configuration and the embedded World Book. |
+| Character Card | `generate_character_card_json` | Exports `chara_card_v3` character card JSON; `character_basic` and `character_personality` for the same character are merged into the same embedded World Book entry. |
+| Character Card | `query_character_card` | Queries the character card summary, greetings, or embedded World Book entries. |
+| MVU / ZOD | `create_mvu_schema_template` | Creates an MVU/ZOD variable system configuration template. |
+| MVU / ZOD | `submit_mvu_config` | Saves MVU configuration. |
+| MVU / ZOD | `validate_mvu_config` | Validates ZOD schema, initvar, update_rules, and greeting placeholders. |
+| MVU / ZOD | `build_mvu_assets` | Previews World Book entries, regex scripts, and Tavern Helper scripts that will be merged into the character card. |
+| HTML Beautification | `create_html_beautify_template` | Creates a status-bar or global HTML beautification configuration template. |
+| HTML Beautification | `submit_html_beautify_config` | Saves HTML beautification configuration. |
+| HTML Beautification | `validate_html_beautify_config` | Validates HTML, CSS scope, regex configuration, and greeting placeholders. |
+| HTML Beautification | `build_html_beautify_assets` | Previews regex scripts that will be merged into the character card. |
+| EJS Dynamic Content | `create_ejs_template` | Creates a staged character profile, palette, or custom EJS template. |
+| EJS Dynamic Content | `submit_ejs_config` | Saves EJS configuration. |
+| EJS Dynamic Content | `validate_ejs_config` | Validates MVU dependencies, variable paths, EJS tags, getwi references, and entry status. |
+| EJS Dynamic Content | `build_ejs_entries` | Previews EJS entries that will be merged into the embedded World Book of a character card. |
+| Query and Patch | `query_worldbook` | Queries existing World Book JSON, supporting `brief`, `uid`, `search`, and `stats`. |
+| Query and Patch | `import_worldbook_json` | Imports an existing World Book JSON in the current working directory as an MCP project draft. |
+| Query and Patch | `create_worldbook_patch` | Creates a modification plan without directly writing files. |
+| Query and Patch | `preview_worldbook_patch` | Previews the patch diff and validation results. |
+| Query and Patch | `apply_worldbook_patch` | Applies a patch, validates it automatically, and can back up and export a new JSON. |
 
-## 许可
+## Skill
+
+This repository includes a standard Claude Code Skill at [`skill/world-book-mcp/`](skill/world-book-mcp/). It is a directory package containing `SKILL.md` and `references/`, used to guide AI in correctly orchestrating all tools of this MCP server when users request World Book or character card related tasks.
+
+## Future Capability Extensions
+
+The following capabilities are not implemented yet and are only references for the future roadmap:
+
+- Cross-project template reuse: derive a World Book or character card template from one project and apply it to a new project.
+- World Book entry cross-reference graph: analyze keys and secondaryKeys to output entry trigger dependency graphs.
+- Multilingual lint dictionaries: pluggable forbidden-term lists with support for English, Japanese, and more.
+- Character relationship graph export: generate relationship graph JSON from `character_basic` relationship fields.
+- Embedded World Book conflict detection: detect duplicate keys or orders when merging character cards and project World Books.
+- Decision template library: common ambiguity templates such as card type, world type, and style can be referenced by tools.
+- Worldbook diff tool: compare two SillyTavern JSON files.
+- ChatLog extraction: extract character behavior evidence from a dialogue history.
+- Automatic entry reordering: automatically resolve conflicts based on position and order rules.
+- Status-bar HTML AST validation: perform stricter safety checks with a lightweight HTML parser.
+- Multi-character-card collaboration: maintain multiple character card configs in one project and switch exports as needed.
+- Worldbook asset signing: attach version and signature data during JSON export for traceability.
+
+## License
 
 MIT
