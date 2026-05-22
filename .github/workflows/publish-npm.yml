@@ -1,34 +1,70 @@
-name: Publish Package
+name: Release
 
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
-  id-token: write  # Required for OIDC
-  contents: read
+  contents: write
+  id-token: write
 
 jobs:
-  publish:
+  publish-npm:
+    name: Publish npm package
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 8.6.2
-
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
-          registry-url: 'https://registry.npmjs.org'
-          cache: "pnpm"
+          registry-url: https://registry.npmjs.org
+          cache: npm
 
-      # Ensure npm 11.5.1 or later is installed
-      - name: Update npm
-        run: npm install -g npm@latest
+      - name: Install dependencies
+        run: npm ci
 
-      - run: pnpm install --no-frozen-lockfile
-      - run: npm run build 
-      - run: npm publish  --access public
+      - name: Build package
+        run: npm run build
+
+      - name: Publish package to npm
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  release-skill:
+    name: Package skill and publish release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Read package version
+        id: version
+        shell: bash
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          TAG_NAME="v${VERSION}"
+          ZIP_NAME="world-book-mcp-skill-v${VERSION}.zip"
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag_name=${TAG_NAME}" >> "$GITHUB_OUTPUT"
+          echo "zip_name=${ZIP_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Package skill as zip
+        shell: bash
+        run: |
+          mkdir -p release-assets
+          cd skill
+          zip -r "../release-assets/${{ steps.version.outputs.zip_name }}" world-book-mcp
+
+      - name: Publish skill zip to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag_name }}
+          name: ${{ steps.version.outputs.tag_name }}
+          target_commitish: ${{ github.sha }}
+          files: release-assets/${{ steps.version.outputs.zip_name }}
