@@ -22,7 +22,7 @@ MCP 工具的调用是请求—响应模型，工具内部不能"暂停 + 唤起
 | 工具 | 作用 |
 |---|---|
 | `request_user_decision` | 写入 pending；返回 prompt_text 供 AI 复述 |
-| `record_user_decision` | 写入 recorded；从 pending 移除；返回 recommended_next_tool |
+| `record_user_decision` | 写入 recorded；从 pending 移除；保留 source_tool 作为来源审计字段 |
 | `list_user_decisions` | 列出 pending / recorded |
 | `clear_user_decision` | 清掉指定 id 的 pending 与 recorded |
 
@@ -61,12 +61,11 @@ MCP 工具的调用是请求—响应模型，工具内部不能"暂停 + 唤起
 ```json
 {
   "needs_user_decision": true,
-  "recommended_next_tool": "request_user_decision",
   "suggested_decisions": [...]
 }
 ```
 
-AI 可以在不确定时显式启用此开关，把决定权交给用户。
+AI 可以在不确定时显式启用此开关，把决定权交给用户；是否调用 `request_user_decision` 由 AI 根据这些决策项自行编排。
 
 ---
 

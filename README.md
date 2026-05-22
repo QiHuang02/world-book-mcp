@@ -66,9 +66,55 @@ The current version supports:
 - HTML beautification configuration templates, validation, and asset building, with automatic merging into character card JSON.
 - EJS dynamic content configuration templates, validation, and entry building, with automatic merging into the embedded World Book of a character card.
 - Querying exported World Book JSON and character card JSON.
+- Importing existing character card JSON and applying patches to profile fields or embedded World Book entries.
 
 Not supported yet:
 - Built-in web search.
+
+## `.worldbook/` Workspace
+
+The primary role of `init_project` is to create or reuse the dedicated MCP workspace in the current project directory, especially ensuring `.worldbook/draft/` exists:
+
+```text
+.
+├─ .worldbook/
+│  ├─ project.json          # project metadata; draft body is split out
+│  └─ draft/
+│     ├─ 新墟城.json
+│     ├─ 角色B_基础设定.json
+│     └─ 角色B_性格.json
+└─ <exported world book or character card>.json
+```
+
+`upsert_worldbook_entry` / `upsert_worldbook_entries` write each draft entry to `.worldbook/draft/<safe-comment>.json`. Split files store MCP draft entries, not final SillyTavern entries:
+
+```json
+{
+  "comment": "新墟城",
+  "entryType": "world_summary",
+  "keys": ["新墟", "废墟都市", "避难城"],
+  "secondaryKeys": [],
+  "content": "...",
+  "constant": true,
+  "position": "before_char",
+  "order": 1,
+  "enabled": true,
+  "preventRecursion": true,
+  "excludeRecursion": true
+}
+```
+
+Validation, review, lint, World Book export, and character card export preferentially merge `.worldbook/draft/*.json`; if no split draft exists, they fall back to legacy `project.draft`. By default, exports are written to `<name>.json` in the current working directory. Relative and absolute output paths must stay inside the current working directory; out-of-bound writes are rejected.
+
+`init_project` also scans one level of `*.json` files in the current working directory. If no SillyTavern World Book or `chara_card_v3` JSON exists, it safely creates a root template JSON. If a Tavern-format JSON already exists, it does not create another template and never overwrites existing JSON files. The returned `root_template` field reports whether a template was created, its path, or the existing files that caused creation to be skipped. `kind=worldbook` creates a standalone World Book template; `kind=character_card` and `kind=mixed` create a `chara_card_v3` template, with `mixed` explicitly meaning a character card plus an empty embedded World Book.
+
+## Patches, Revisions, and Concurrency
+
+Writes for the same `project_id` are serialized inside the MCP process and return an incremented `revision`. Tools that accept `expected_revision` can use it for concurrency control: if a caller writes based on a stale revision, the tool returns a `project revision conflict` error.
+
+`apply_worldbook_patch` / `apply_character_card_patch` write the exported JSON file and update project state together. The implementation writes a temp file, replaces the target file, then updates the project; if the project update fails, it best-effort restores the previous exported file or removes the newly written target. When a patch returns `ok=false` or throws a revision conflict, reload the project before retrying.
+
+Patch `match.uid` first matches the `sourceUid` preserved from an imported World Book, so it targets the original SillyTavern entry uid. For newly created drafts or legacy projects without `sourceUid`, prefer `index` or a unique `comment` to avoid confusing uid with the regenerated contiguous export index.
 
 ## Tools Overview
 
@@ -76,7 +122,7 @@ Not supported yet:
 | --- | --- | --- |
 | Workflow, Projects, and Specs | `get_worldbook_workflow` | Returns the recommended tool flow for a task type. When `wants_character_card=true`, the character card flow is appended automatically. |
 | Workflow, Projects, and Specs | `get_tool_usage_guide` | Queries a tool's purpose, when to call it, required fields, sample input, common mistakes, and next steps. |
-| Workflow, Projects, and Specs | `init_project` | Explicitly initializes the current workspace project and returns the `project_id`, `revision`, and `.worldbook` path; existing projects can be reused or overwritten with `if_exists`. |
+| Workflow, Projects, and Specs | `init_project` | Initializes `.worldbook/project.json` and `.worldbook/draft/`; safely creates a root template JSON when no Tavern-format JSON exists; existing projects can be reused or overwritten with `if_exists`. |
 | Workflow, Projects, and Specs | `list_projects` | Lists locally saved MCP projects. |
 | Workflow, Projects, and Specs | `get_project` | Views project details or a summary. |
 | Workflow, Projects, and Specs | `get_entry_template` | Returns a World Book entry template. |
@@ -92,9 +138,13 @@ Not supported yet:
 | World Book Building | `update_worldbook_draft_entries` | Partially updates draft entries by index or comment. |
 | World Book Building | `validate_worldbook_draft` | Validates draft configuration and content issues. |
 | World Book Building | `generate_worldbook_json` | Exports SillyTavern World Book JSON. |
+| Character Card | `import_character_card_json` | Imports an existing `chara_card_v3` JSON in the current directory and extracts profile plus embedded World Book draft. |
 | Character Card | `upsert_character_profile` | Creates or updates character card profile configuration through simplified fields; MCP automatically fills default `chara_card_v3` fields. |
 | Character Card | `validate_character_card_config` | Validates character card configuration and the embedded World Book. |
 | Character Card | `generate_character_card_json` | Exports `chara_card_v3` character card JSON; `character_basic` and `character_personality` for the same character are merged into the same embedded World Book entry. |
+| Character Card | `create_character_card_patch` | Creates a patch plan for profile, worldbook config, or embedded World Book entries. |
+| Character Card | `preview_character_card_patch` | Previews character card patch diffs and validation. |
+| Character Card | `apply_character_card_patch` | Applies a character card patch, safely exports JSON, and updates the project. |
 | Character Card | `query_character_card` | Queries the character card summary, greetings, or embedded World Book entries. |
 | MVU / ZOD | `create_mvu_schema_template` | Creates an MVU/ZOD variable system configuration template. |
 | MVU / ZOD | `submit_mvu_config` | Saves MVU configuration. |

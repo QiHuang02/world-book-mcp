@@ -36,7 +36,7 @@ export function registerWorkflowTools(server: McpServer): void {
   }, async (input) => {
     const result = classifyWorldbookTaskWithClarification(input);
     if (input.prefer_user_decision) {
-      const merged = { ...result, needs_user_decision: true, recommended_next_tool: "request_user_decision", suggested_decisions: result.suggested_decisions.length > 0 ? result.suggested_decisions : detectClarificationNeeds({ ...input, task_type: result.task_type, stage: "intake" }).suggested_decisions };
+      const merged = { ...result, needs_user_decision: true, suggested_decisions: result.suggested_decisions.length > 0 ? result.suggested_decisions : detectClarificationNeeds({ ...input, task_type: result.task_type, stage: "intake" }).suggested_decisions };
       return toolText(merged);
     }
     return toolText({ ...result, needs_user_decision: result.needs_clarification });
@@ -61,12 +61,12 @@ export function registerWorkflowTools(server: McpServer): void {
   server.tool("explain_worldbook_config", { topic: z.enum(["position", "constant", "order", "recursion", "keys", "scan_depth", "all"]) }, async (input) => toolText(explainConfig(input.topic as ConfigTopic)));
 
   server.tool("classify_worldbook_card_type", { core_character_count: z.number().int().min(0), has_character_card: z.boolean().default(true), is_system_driven: z.boolean().optional(), prefer_user_decision: z.boolean().optional() }, async (input) => {
-    if (input.prefer_user_decision) return toolText({ needs_user_decision: true, recommended_next_tool: "request_user_decision", suggested_decisions: [buildCardTypeDecision()] });
+    if (input.prefer_user_decision) return toolText({ needs_user_decision: true, suggested_decisions: [buildCardTypeDecision()] });
     return toolText({ needs_user_decision: false, ...classifyWorldbookCardType(input) });
   });
 
   server.tool("classify_worldbuilding_type", { title: z.string().optional(), brief: z.string().optional(), tags: z.array(z.string()).optional(), prefer_user_decision: z.boolean().optional() }, async (input) => {
-    if (input.prefer_user_decision) return toolText({ needs_user_decision: true, recommended_next_tool: "request_user_decision", suggested_decisions: [buildWorldbuildingTypeDecision()] });
+    if (input.prefer_user_decision) return toolText({ needs_user_decision: true, suggested_decisions: [buildWorldbuildingTypeDecision()] });
     return toolText({ needs_user_decision: false, ...classifyWorldbuildingType(input) });
   });
 }

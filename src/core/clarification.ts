@@ -18,9 +18,7 @@ export interface ClarificationResult {
   notes: string[];
 }
 
-export interface ClassifyWithClarificationResult extends TaskClassificationResult, ClarificationResult {
-  recommended_next_tool?: string;
-}
+export interface ClassifyWithClarificationResult extends TaskClassificationResult, ClarificationResult {}
 
 const ORIGIN_TYPE_DECISION = (sourceTool?: string): SuggestedDecision => ({
   id: "origin_type",
@@ -68,7 +66,6 @@ export function classifyWorldbookTaskWithClarification(input: TaskClassification
   return {
     ...classification,
     ...clarification,
-    recommended_next_tool: clarification.needs_clarification ? "request_user_decision" : recommendedAfterClassify(classification.task_type),
   };
 }
 
@@ -376,34 +373,6 @@ function notesFor(taskType: WorldbookTaskClass, input: ClarificationStageInput, 
   if (taskType === "ejs_dynamic" && !input.wants_mvu) notes.push("EJS 必须先启用 MVU");
   if (taskType === "html_beautify") notes.push("HTML 美化资产最终需要通过角色卡或独立 regex 脚本承载");
   return notes;
-}
-
-function recommendedAfterClassify(taskType: WorldbookTaskClass): string {
-  switch (taskType) {
-    case "derivative_extraction":
-      return "create_derivative_extraction_template";
-    case "worldbuilding_only":
-    case "original_character_card":
-      return "create_worldbuilding_outline";
-    case "item_ability_equipment":
-      return "validate_item_entry";
-    case "style_extraction":
-      return "create_style_extraction_template";
-    case "chapter_extraction":
-      return "create_chapter_extraction_template";
-    case "modify_existing":
-      return "import_worldbook_json";
-    case "query_existing":
-      return "query_worldbook";
-    case "mvu_zod":
-      return "create_mvu_schema_template";
-    case "ejs_dynamic":
-      return "create_ejs_template";
-    case "html_beautify":
-      return "create_html_beautify_template";
-    case "content_lint":
-      return "create_writing_optimization_report";
-  }
 }
 
 function needsOriginClarification(taskType: WorldbookTaskClass, request: string): boolean {

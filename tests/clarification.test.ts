@@ -10,7 +10,7 @@ describe("clarification", () => {
     expect(ids).toContain("origin_type");
     expect(ids).toContain("card_type");
     expect(ids).toContain("worldbuilding_type");
-    expect(result.recommended_next_tool).toBe("request_user_decision");
+    expect(result).not.toHaveProperty("recommended_next_tool");
   });
 
   it("derivative extraction asks for source kind and focus", () => {

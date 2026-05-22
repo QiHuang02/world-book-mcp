@@ -33,6 +33,7 @@ export const WorldbookDraftEntrySchema = z.object({
   secondaryKeys: z.array(z.string()).default([]),
   content: z.string().default(""),
   characterName: z.string().optional(),
+  sourceUid: z.number().int().min(0).optional(),
   constant: z.boolean(),
   position: PositionNameSchema,
   order: z.number(),

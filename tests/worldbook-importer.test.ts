@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { worldbookToDraft } from "../src/core/worldbook-importer.js";
-import type { SillyTavernWorldbook } from "../src/schemas/sillytavern-worldbook.js";
+import { SillyTavernWorldbookSchema, type SillyTavernWorldbook } from "../src/schemas/sillytavern-worldbook.js";
 
 const book: SillyTavernWorldbook = {
   name: "导入测试",
@@ -59,6 +59,22 @@ describe("worldbookToDraft", () => {
     expect(draft[0].position).toBe("after_char");
     expect(draft[0].enabled).toBe(false);
     expect(draft[0].entryType).toBe("character_basic");
+    expect(draft[0].sourceUid).toBe(0);
     expect(draft[0].preventRecursion).toBe(true);
+  });
+
+  it("accepts minimal worldbook entries with schema defaults", () => {
+    const minimal = SillyTavernWorldbookSchema.parse({
+      name: "最小世界书",
+      entries: {
+        "7": { uid: 7, comment: "最小条目", content: "<entry>内容</entry>" },
+      },
+    });
+
+    const draft = worldbookToDraft(minimal);
+    expect(draft[0].sourceUid).toBe(7);
+    expect(draft[0].keys).toEqual([]);
+    expect(draft[0].constant).toBe(true);
+    expect(draft[0].position).toBe("after_char");
   });
 });

@@ -87,6 +87,11 @@ function resolveIndex(entries: WorldbookDraftEntry[], match: PatchMatch): number
     return match.index;
   }
   if (match.uid !== undefined) {
+    const sourceUidIndex = entries.findIndex((entry) => entry.sourceUid === match.uid);
+    if (sourceUidIndex >= 0) return sourceUidIndex;
+    const hasSourceUid = entries.some((entry) => entry.sourceUid !== undefined);
+    if (hasSourceUid) throw new Error(`未找到 sourceUid=${match.uid} 的条目`);
+    // 兼容旧项目：历史版本将 uid 当作 draft 数组下标处理。新项目应优先使用 sourceUid 或显式 index/comment。
     if (!entries[match.uid]) throw new Error(`未找到 uid=${match.uid} 的条目`);
     return match.uid;
   }

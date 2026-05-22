@@ -31,7 +31,6 @@
   "task_type": "original_character_card",
   "needs_clarification": true,
   "needs_user_decision": true,
-  "recommended_next_tool": "request_user_decision",
   "suggested_decisions": [
     { "id": "origin_type", ... },
     { "id": "card_type", ... },

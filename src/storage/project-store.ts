@@ -23,6 +23,7 @@ export async function createProject(name: string, projectId?: string): Promise<P
     sources: [],
     research: [],
     patches: [],
+    characterCardPatches: [],
     pendingDecisions: [],
     recordedDecisions: [],
     revision: 0,
@@ -43,6 +44,7 @@ export async function loadProject(projectId: string): Promise<Project> {
 
 const projectQueues = new Map<string, Promise<unknown>>();
 
+// 保留给完整 Project 替换场景；常规修改请优先使用 updateProject，以获得更明确的 revision 冲突检测语义。
 export async function saveProject(project: Project): Promise<Project> {
   return enqueueProjectWrite(project.id, async () => {
     const latest = await loadProjectIfExists(project.id);
@@ -142,9 +144,12 @@ export function summarizeProject(project: Project, includeContent = false): unkn
     plan_count: project.plan?.length ?? 0,
     draft_count: project.draft?.length ?? 0,
     importedWorldbookPath: project.importedWorldbookPath,
+    importedCharacterCardPath: project.importedCharacterCardPath,
     revision: project.revision,
     patch_count: project.patches?.length ?? 0,
     patches: includeContent ? project.patches : project.patches?.map((patch) => ({ id: patch.id, operation_count: patch.operations.length, createdAt: patch.createdAt })),
+    character_card_patch_count: project.characterCardPatches?.length ?? 0,
+    characterCardPatches: includeContent ? project.characterCardPatches : project.characterCardPatches?.map((patch) => ({ id: patch.id, operation_count: patch.operations.length, createdAt: patch.createdAt })),
     has_character_card_config: Boolean(project.characterCardConfig),
     character_card_name: project.characterCardConfig?.card.name,
     has_mvu_config: Boolean(project.mvuConfig),

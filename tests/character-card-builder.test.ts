@@ -92,4 +92,44 @@ describe("buildCharacterCardJson", () => {
     const card = buildCharacterCardJson({ config, worldbookEntries: draft, ejsEntries: buildEjsEntries(ejs).worldbookEntries });
     expect(card.data.character_book.entries.some((entry) => entry.comment === "角色A_阶段控制器")).toBe(true);
   });
+
+  it("uses characterName before content name when grouping character entries", () => {
+    const entries: WorldbookDraftEntry[] = [
+      { ...draft[0], comment: "误导_基础设定", characterName: "真实角色", content: "name: 错误角色\n基础: A", keys: ["真实角色"] },
+      { ...draft[1], comment: "误导_性格设定", characterName: "真实角色", content: "性格: B", keys: ["真实性格"] },
+    ];
+    const card = buildCharacterCardJson({ config, worldbookEntries: entries });
+    expect(card.data.character_book.entries).toHaveLength(1);
+    expect(card.data.character_book.entries[0].comment).toBe("真实角色");
+    expect(card.data.character_book.entries[0].content).toContain("【基础设定】");
+    expect(card.data.character_book.entries[0].content).toContain("【性格设定】");
+  });
+
+  it("does not mix multiple characters even when keys overlap", () => {
+    const entries: WorldbookDraftEntry[] = [
+      { ...draft[0], comment: "角色甲_基础设定", characterName: "角色甲", keys: ["共用"], content: "基础: 甲" },
+      { ...draft[1], comment: "角色乙_性格设定", characterName: "角色乙", keys: ["共用"], content: "性格: 乙" },
+    ];
+    const card = buildCharacterCardJson({ config, worldbookEntries: entries });
+    const comments = card.data.character_book.entries.map((entry) => entry.comment);
+    expect(comments).toEqual(["角色甲", "角色乙"]);
+  });
+
+  it("infers character groups from comment suffix when content name is missing", () => {
+    const entries: WorldbookDraftEntry[] = [
+      { ...draft[0], comment: "角色丙_基础设定", content: "基础: 丙", keys: ["丙"] },
+      { ...draft[1], comment: "角色丙_性格", content: "性格: 丙", keys: ["丙性格"] },
+    ];
+    const card = buildCharacterCardJson({ config, worldbookEntries: entries });
+    expect(card.data.character_book.entries).toHaveLength(1);
+    expect(card.data.character_book.entries[0].comment).toBe("角色丙");
+  });
+
+  it("preserves XML blocks while labeling non-XML character content", () => {
+    const card = buildCharacterCardJson({ config, worldbookEntries: draft });
+    const content = card.data.character_book.entries[0].content;
+    expect(content.trim().startsWith("<character>")).toBe(true);
+    expect(content).toContain("</character>");
+    expect(content).toContain("【性格设定】");
+  });
 });

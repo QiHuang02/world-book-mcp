@@ -8,7 +8,7 @@ import { ExtractionResultSchema } from "./extraction.js";
 import { StyleProfileSchema } from "./style-profile.js";
 import { WorldbookDraftEntrySchema, WorldbookEntryPlanSchema } from "./worldbook-draft.js";
 import { WorldbookPatchSchema } from "./worldbook-patch.js";
-import { CharacterCardConfigSchema } from "./character-card.js";
+import { CharacterCardConfigSchema, CharacterCardPatchSchema } from "./character-card.js";
 import { MvuConfigSchema } from "./mvu.js";
 import { HtmlBeautifyConfigSchema } from "./html-beautify.js";
 import { EjsConfigSchema } from "./ejs.js";
@@ -44,6 +44,8 @@ export const ProjectSchema = z.object({
   recordedDecisions: z.array(RecordedDecisionSchema).default([]),
   revision: z.number().int().nonnegative().default(0),
   characterCardConfig: CharacterCardConfigSchema.optional(),
+  importedCharacterCardPath: z.string().optional(),
+  characterCardPatches: z.array(CharacterCardPatchSchema).default([]),
   mvuConfig: MvuConfigSchema.optional(),
   htmlBeautifyConfig: HtmlBeautifyConfigSchema.optional(),
   ejsConfig: EjsConfigSchema.optional(),

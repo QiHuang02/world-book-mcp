@@ -47,4 +47,18 @@ describe("applyPatchToDraft", () => {
     const result = applyPatchToDraft([entry()], [{ op: "toggle_entry", match: { index: 0 }, enabled: false }]);
     expect(result.entries[0].enabled).toBe(false);
   });
+
+  it("matches uid against imported sourceUid before draft index", () => {
+    const importedA = { ...entry("导入A"), sourceUid: 10 };
+    const importedB = { ...entry("导入B"), sourceUid: 42 };
+    const result = applyPatchToDraft([importedA, importedB], [{ op: "update_entry", match: { uid: 42 }, changes: { content: "<entry>uid matched</entry>" } }]);
+
+    expect(result.entries[0].content).toContain("test");
+    expect(result.entries[1].content).toContain("uid matched");
+  });
+
+  it("falls back to legacy uid-as-index only when no sourceUid exists", () => {
+    const result = applyPatchToDraft([entry("旧A"), entry("旧B")], [{ op: "toggle_entry", match: { uid: 1 }, enabled: false }]);
+    expect(result.entries[1].enabled).toBe(false);
+  });
 });

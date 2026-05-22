@@ -44,4 +44,9 @@ describe("worldbook entry factory", () => {
     expect(second.entries).toHaveLength(1);
     expect(second.entries[0].comment).toBe("角色B");
   });
+
+  it("stores character_name as characterName", () => {
+    const result = upsertWorldbookDraftEntry(undefined, { comment: "角色C_基础设定", character_name: "角色C", keys: ["角色C"], content: "基础" });
+    expect(result.entry.characterName).toBe("角色C");
+  });
 });

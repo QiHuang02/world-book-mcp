@@ -4,13 +4,21 @@ import { ProjectSchema, type Project } from "../schemas/project.js";
 import { WorldbookDraftEntrySchema, type WorldbookDraftEntry } from "../schemas/worldbook-draft.js";
 import { createId, nowIso } from "../utils/ids.js";
 import { safeJsonParse, toPrettyJson } from "../utils/json.js";
-import { assertInside, ROOT_DIR, sanitizeFilename } from "./path-policy.js";
+import { assertInside, ROOT_DIR, sanitizeFilename, writeTextFileSafely } from "./path-policy.js";
 
 export const WORKSPACE_DIR = path.resolve(ROOT_DIR, ".worldbook");
 export const WORKSPACE_PROJECT_PATH = path.resolve(WORKSPACE_DIR, "project.json");
 export const WORKSPACE_DRAFT_DIR = path.resolve(WORKSPACE_DIR, "draft");
 
 export type InitWorkspaceIfExists = "error" | "return_existing" | "overwrite";
+export type InitProjectKind = "worldbook" | "character_card" | "mixed";
+
+export interface RootTemplateResult {
+  created: boolean;
+  reason: "created" | "existing_tavern_json";
+  path?: string;
+  existing_files?: string[];
+}
 
 export async function initWorkspaceProject(input: { name: string; projectId?: string; ifExists?: InitWorkspaceIfExists }): Promise<{ project: Project; created: boolean; workspace: WorkspacePaths }> {
   const ifExists = input.ifExists ?? "error";
@@ -35,6 +43,7 @@ export async function initWorkspaceProject(input: { name: string; projectId?: st
     sources: [],
     research: [],
     patches: [],
+    characterCardPatches: [],
     pendingDecisions: [],
     recordedDecisions: [],
     revision: 0,
@@ -108,6 +117,46 @@ export function draftEntryPath(comment: string): string {
   return assertInside(WORKSPACE_DRAFT_DIR, path.resolve(WORKSPACE_DRAFT_DIR, filename));
 }
 
+export async function ensureRootTemplateJson(input: { name: string; kind?: InitProjectKind }): Promise<RootTemplateResult> {
+  let existingFiles = await findRootTavernJsonFiles();
+  if (existingFiles.length > 0) {
+    return { created: false, reason: "existing_tavern_json", existing_files: existingFiles };
+  }
+
+  const kind = input.kind ?? "worldbook";
+  const template = kind === "worldbook" ? worldbookTemplate(input.name) : characterCardTemplate(input.name);
+  for (let attempt = 0; attempt < 1000; attempt += 1) {
+    const filename = await nextAvailableRootTemplateFilename(input.name);
+    const outputPath = assertInside(ROOT_DIR, path.resolve(ROOT_DIR, filename));
+    try {
+      await writeTextFileSafely(outputPath, toPrettyJson(template), { overwrite: false });
+      return { created: true, reason: "created", path: outputPath };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      existingFiles = await findRootTavernJsonFiles();
+      if (existingFiles.length > 0) return { created: false, reason: "existing_tavern_json", existing_files: existingFiles };
+    }
+  }
+  throw new Error("无法找到可用的模板文件名");
+}
+
+export async function findRootTavernJsonFiles(): Promise<string[]> {
+  const files = await fs.readdir(ROOT_DIR, { withFileTypes: true });
+  const result: string[] = [];
+  for (const file of files) {
+    if (!file.isFile() || !file.name.endsWith(".json")) continue;
+    if (isCommonProjectJson(file.name)) continue;
+    const filePath = path.resolve(ROOT_DIR, file.name);
+    try {
+      const parsed = safeJsonParse(await fs.readFile(filePath, "utf8"));
+      if (isTavernJson(parsed)) result.push(filePath);
+    } catch {
+      // 忽略无效 JSON 或无法读取的文件
+    }
+  }
+  return result.sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
+}
+
 export function workspacePaths(): WorkspacePaths {
   return {
     workspace_dir: WORKSPACE_DIR,
@@ -143,4 +192,109 @@ async function loadWorkspaceProjectIfExists(): Promise<Project | undefined> {
 async function withWorkspaceDraft(project: Project): Promise<Project> {
   const draft = await readWorkspaceDraftEntries();
   return draft ? { ...project, draft } : project;
+}
+
+async function nextAvailableRootTemplateFilename(name: string): Promise<string> {
+  const safeName = sanitizeFilename(name);
+  const candidates = [`${safeName}.json`, `${safeName}.template.json`];
+  for (const candidate of candidates) {
+    if (!await rootFileExists(candidate)) return candidate;
+  }
+  for (let index = 2; index < 1000; index += 1) {
+    const candidate = `${safeName}.template-${index}.json`;
+    if (!await rootFileExists(candidate)) return candidate;
+  }
+  throw new Error("无法找到可用的模板文件名");
+}
+
+async function rootFileExists(filename: string): Promise<boolean> {
+  try {
+    await fs.access(path.resolve(ROOT_DIR, filename));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isCommonProjectJson(filename: string): boolean {
+  return filename === "package.json" || filename === "package-lock.json" || filename === "tsconfig.json" || filename === "jsconfig.json";
+}
+
+function isTavernJson(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  if (record.spec === "chara_card_v3") return true;
+  const data = record.data;
+  if (data && typeof data === "object") {
+    const characterBook = (data as Record<string, unknown>).character_book;
+    if (characterBook && typeof characterBook === "object" && Array.isArray((characterBook as Record<string, unknown>).entries)) return true;
+  }
+  return isWorldbookJson(record);
+}
+
+function isWorldbookJson(record: Record<string, unknown>): boolean {
+  if (!record.entries || typeof record.entries !== "object" || Array.isArray(record.entries)) return false;
+  if (typeof record.name === "string") return true;
+  const entries = record.entries as Record<string, unknown>;
+  const values = Object.values(entries);
+  if (values.length === 0) return true;
+  return values.some(isWorldbookEntryLike);
+}
+
+function isWorldbookEntryLike(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const entry = value as Record<string, unknown>;
+  return typeof entry.comment === "string" || typeof entry.content === "string" || Array.isArray(entry.key) || typeof entry.position === "number";
+}
+
+function worldbookTemplate(name: string): unknown {
+  return {
+    name,
+    entries: {},
+  };
+}
+
+function characterCardTemplate(name: string): unknown {
+  return {
+    name,
+    description: "",
+    personality: "",
+    scenario: "",
+    first_mes: "",
+    mes_example: "",
+    creatorcomment: "",
+    avatar: "none",
+    talkativeness: "0.5",
+    fav: false,
+    tags: [],
+    spec: "chara_card_v3",
+    spec_version: "3.0",
+    data: {
+      name,
+      description: "",
+      personality: "",
+      scenario: "",
+      first_mes: "",
+      mes_example: "",
+      creator_notes: "",
+      system_prompt: "",
+      post_history_instructions: "",
+      tags: [],
+      creator: "",
+      character_version: "1.0",
+      alternate_greetings: [],
+      group_only_greetings: [],
+      extensions: {
+        talkativeness: "0.5",
+        fav: false,
+        world: name,
+        depth_prompt: { prompt: "", depth: 4, role: "system" },
+      },
+      character_book: {
+        name: `${name}世界书`,
+        entries: [],
+      },
+    },
+    create_date: new Date().toISOString(),
+  };
 }

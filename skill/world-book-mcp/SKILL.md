@@ -30,7 +30,7 @@ description: Use the world-book-mcp MCP server to author SillyTavern world books
 
 `world-book-mcp` 负责：
 
-- 给出稳定的工作流路由。
+- 提供可查询的参考工作流、能力矩阵与字段校验，但不通过固定 next-tool 字段接管流程编排。
 - 持久化原始材料、结构化事实、世界书 draft、角色卡 config、MVU/HTML/EJS config。
 - 接收简化条目/角色卡输入，自动补全完整 draft entry 与角色卡默认字段。
 - 校验配置合法性、内容禁词与文风问题。
@@ -48,7 +48,7 @@ description: Use the world-book-mcp MCP server to author SillyTavern world books
 拿到任意需求请按下面顺序起手，不要直接跳到具体工具：
 
 1. **`classify_worldbook_task`** — 把用户的自然语言请求归类为 15 种 task_type 之一，并返回 `suggested_decisions`。如果对用户意图存在多重歧义，调用时设 `prefer_user_decision: true`，强制走决策回路。
-2. **`get_worldbook_workflow`** — 用上一步得到的 `task_type` 取推荐流程；按需打开 `wants_character_card` / `wants_mvu` / `wants_html` / `wants_ejs` 让流程自动追加。
+2. **`get_worldbook_workflow`** — 用上一步得到的 `task_type` 查询参考流程；按需打开 `wants_character_card` / `wants_mvu` / `wants_html` / `wants_ejs` 追加相关能力。最终编排由主 AI 按用户目标决定，而不是依赖 MCP 返回固定下一步。
 3. **`get_tool_usage_guide`** — 任何工具的字段不确定时调它，返回用途、必填字段、示例输入和下一步推荐。
 4. **`get_worldbook_capability_matrix`** — 想确认某 task_type 下有哪些能力可用时调用，每条能力会标 `decision_hint`（`auto` / `prefer_clarification`）。
 
@@ -72,7 +72,7 @@ description: Use the world-book-mcp MCP server to author SillyTavern world books
 
 ### 项目与素材
 
-- `init_project` — 显式初始化当前工作区 project，适合空白目录首次使用，返回 `project_id`、`revision` 与 `.worldbook` 路径；已有项目用 `if_exists` 控制复用/覆盖。
+- `init_project` — 初始化当前目录的 `.worldbook/project.json` 与 `.worldbook/draft/`；若根目录没有酒馆格式 JSON，会安全创建模板 JSON；若已有世界书/角色卡 JSON，则不创建模板也不覆盖。
 - `list_projects` — 列出本地保存的 MCP project。
 - `get_project` — 查看 project 状态摘要或全量。
 - `ingest_text_source` — 保存用户文本素材。
@@ -120,10 +120,14 @@ description: Use the world-book-mcp MCP server to author SillyTavern world books
 
 ### 角色卡
 
+- `import_character_card_json` — 导入当前目录内已有 `chara_card_v3` 角色卡 JSON，提取 profile 与内嵌世界书 draft。
 - `upsert_character_profile` — 用简化字段创建/更新角色卡人设配置，MCP 自动补齐 `chara_card_v3` 默认字段。
 - `validate_character_card_config` — 校验角色卡 config 与嵌入世界书。
 - `validate_greetings` — 单独校验 first_mes 与 alternate_greetings。
 - `generate_character_card_json` — 导出 chara_card_v3 角色卡 JSON（自动合并 MVU / HTML / EJS）。
+- `create_character_card_patch` — 创建角色卡 profile / worldbook config / 内嵌世界书修改计划。
+- `preview_character_card_patch` — 预览角色卡 patch diff 与校验。
+- `apply_character_card_patch` — 应用角色卡 patch，安全导出 JSON 并更新 project。
 - `query_character_card` — 查询导出的角色卡 JSON。
 
 ### MVU / HTML / EJS
@@ -194,7 +198,7 @@ MCP draft  ─►  plan_worldbook_entries
 
 ## 调用习惯
 
-1. 每个新任务先 `classify_worldbook_task` + `get_worldbook_workflow`；空白目录/新项目先 `init_project`。
+1. 每个新任务先 `classify_worldbook_task` + `get_worldbook_workflow`；空白目录/新项目先 `init_project`，确保 `.worldbook/draft/` 存在，并让它按需创建根目录模板 JSON。
 2. 任何字段拿不准就 `get_tool_usage_guide`，不要靠猜。
 3. 原始材料用 `ingest_*`，结构化事实用 `submit_extraction_result`，**两者绝不混用**。
 4. 写世界书条目优先用 `upsert_worldbook_entry` / `upsert_worldbook_entries`，不要手写完整 SillyTavern entry JSON。

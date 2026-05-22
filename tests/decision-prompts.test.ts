@@ -41,7 +41,8 @@ describe("decision-prompts", () => {
     const recorded = recordUserDecision(requested.project, { id: "card_type", selected_values: ["multi"] });
     expect(recorded.project.pendingDecisions).toHaveLength(0);
     expect(recorded.project.recordedDecisions[0].selected_values).toEqual(["multi"]);
-    expect(recorded.recommended_next_tool).toBe("classify_worldbook_card_type");
+    expect(recorded.project.recordedDecisions[0].source_tool).toBe("classify_worldbook_card_type");
+    expect(recorded).not.toHaveProperty("recommended_next_tool");
     expect(getUserDecision(recorded.project, "card_type")?.id).toBe("card_type");
   });
 

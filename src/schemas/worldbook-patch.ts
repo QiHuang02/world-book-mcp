@@ -69,6 +69,8 @@ export const WorldbookPatchSchema = z.object({
 export const ImportWorldbookJsonInputSchema = z.object({
   path: z.string().min(1),
   project_name: z.string().optional(),
+  project_id: z.string().optional(),
+  if_exists: z.enum(["error", "return_existing", "overwrite"]).default("return_existing"),
 });
 
 export const CreateWorldbookPatchInputSchema = z.object({

@@ -1,23 +1,39 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { buildCharacterCardJson } from "../core/character-card-builder.js";
+import { buildCharacterCardJsonFromProject } from "../core/character-card-project-builder.js";
+import { importCharacterCardFromFile } from "../core/character-card-importer.js";
+import { applyCharacterCardPatchToProject, createCharacterCardPatch, previewCharacterCardPatch } from "../core/character-card-patch.js";
 import { queryCharacterCard } from "../core/character-card-query.js";
 import { validateCharacterCardConfig } from "../core/character-card-validator.js";
 import { createDeliveryChecklist } from "../core/delivery-checklist.js";
-import { buildEjsEntries } from "../core/ejs-entries.js";
-import { validateEjsConfig } from "../core/ejs-validator.js";
 import { validateGreetings } from "../core/greeting-validator.js";
-import { buildHtmlBeautifyAssets } from "../core/html-beautify-assets.js";
-import { validateHtmlBeautifyConfig } from "../core/html-beautify-validator.js";
-import { buildMvuAssets } from "../core/mvu-assets.js";
-import { validateMvuConfig } from "../core/mvu-validator.js";
-import { CharacterCardConfigSchema, GenerateCharacterCardJsonInputSchema, QueryCharacterCardInputSchema, UpsertCharacterProfileInputSchema, ValidateCharacterCardConfigInputSchema } from "../schemas/character-card.js";
-import { resolveCardExportPath, writeTextFileSafely } from "../storage/path-policy.js";
+import { ApplyCharacterCardPatchInputSchema, CharacterCardConfigSchema, CreateCharacterCardPatchInputSchema, GenerateCharacterCardJsonInputSchema, ImportCharacterCardJsonInputSchema, PreviewCharacterCardPatchInputSchema, QueryCharacterCardInputSchema, UpsertCharacterProfileInputSchema, ValidateCharacterCardConfigInputSchema } from "../schemas/character-card.js";
+import { resolveCardExportPath, resolveReadableCardPath, writeTempThenCommit, writeTextFileSafely } from "../storage/path-policy.js";
 import { loadProject, updateProject } from "../storage/project-store.js";
+import { initWorkspaceProject } from "../storage/workspace-store.js";
 import { toPrettyJson } from "../utils/json.js";
 import { toolText } from "./helpers.js";
 
 export function registerCharacterCardTools(server: McpServer): void {
+  server.tool("import_character_card_json", ImportCharacterCardJsonInputSchema.shape, async (input) => {
+    const parsed = ImportCharacterCardJsonInputSchema.parse(input);
+    const sourcePath = resolveReadableCardPath(parsed.path);
+    const { config, draft } = await importCharacterCardFromFile(sourcePath);
+    const validation = validateCharacterCardConfig({ config, draft });
+    if (!validation.valid) return toolText({ ok: false, validation });
+    const project = parsed.project_id
+      ? await loadProject(parsed.project_id)
+      : (await initWorkspaceProject({ name: parsed.project_name ?? config.card.name, ifExists: parsed.if_exists })).project;
+    const saved = await updateProject(project.id, (latest) => ({
+      ...latest,
+      name: parsed.project_name ?? config.card.name,
+      characterCardConfig: config,
+      draft,
+      importedCharacterCardPath: sourcePath,
+    }));
+    return toolText({ ok: true, project_id: saved.id, revision: saved.revision, name: config.card.name, worldbook_entry_count: draft.length, validation });
+  });
+
   server.tool("upsert_character_profile", UpsertCharacterProfileInputSchema.shape, async (input) => {
     const parsed = UpsertCharacterProfileInputSchema.parse(input);
     const result = await updateProject(parsed.project_id, (project) => {
@@ -69,29 +85,12 @@ export function registerCharacterCardTools(server: McpServer): void {
     const parsed = GenerateCharacterCardJsonInputSchema.parse(input);
     const project = await loadProject(parsed.project_id);
     if (!project.characterCardConfig) throw new Error("项目尚未保存 character card config");
-    const validation = validateCharacterCardConfig({ config: project.characterCardConfig, draft: project.draft, mvuEnabled: project.mvuConfig?.enabled });
+    const { card, validation } = buildCharacterCardJsonFromProject(project);
     if (!validation.valid) return toolText({ ok: false, validation });
-    const mvuValidation = project.mvuConfig?.enabled ? validateMvuConfig({ mvu: project.mvuConfig, characterCardConfig: project.characterCardConfig }) : undefined;
-    if (mvuValidation && !mvuValidation.valid) return toolText({ ok: false, validation: mvuValidation });
-    const mvuAssets = project.mvuConfig?.enabled ? buildMvuAssets(project.mvuConfig) : undefined;
-    const htmlValidation = project.htmlBeautifyConfig?.enabled ? validateHtmlBeautifyConfig({ html: project.htmlBeautifyConfig, mvu: project.mvuConfig, characterCardConfig: project.characterCardConfig }) : undefined;
-    if (htmlValidation && !htmlValidation.valid) return toolText({ ok: false, validation: htmlValidation });
-    const htmlAssets = project.htmlBeautifyConfig?.enabled ? buildHtmlBeautifyAssets(project.htmlBeautifyConfig) : undefined;
-    const ejsValidation = project.ejsConfig?.enabled ? validateEjsConfig({ ejs: project.ejsConfig, mvu: project.mvuConfig }) : undefined;
-    if (ejsValidation && !ejsValidation.valid) return toolText({ ok: false, validation: ejsValidation });
-    const ejsEntries = project.ejsConfig?.enabled ? buildEjsEntries(project.ejsConfig).worldbookEntries : undefined;
     if (parsed.strict_review) {
       const checklist = createDeliveryChecklist({ project, export_target: "character_card" });
       if (!checklist.ready_to_export) return toolText({ ok: false, error: "strict_review 未通过", checklist });
     }
-    const card = buildCharacterCardJson({
-      config: project.characterCardConfig,
-      worldbookEntries: project.draft,
-      worldbookName: project.characterCardConfig.worldbook.name ?? project.name,
-      mvuAssets,
-      htmlAssets,
-      ejsEntries,
-    });
     const outputPath = resolveCardExportPath(parsed.output_path, project.characterCardConfig.card.name);
     try {
       await writeTextFileSafely(outputPath, toPrettyJson(card), { overwrite: parsed.overwrite });
@@ -100,6 +99,63 @@ export function registerCharacterCardTools(server: McpServer): void {
       throw error;
     }
     return toolText({ ok: true, path: outputPath, name: card.name, worldbook_entry_count: card.data.character_book.entries.length });
+  });
+
+  server.tool("create_character_card_patch", CreateCharacterCardPatchInputSchema.shape, async (input) => {
+    const parsed = CreateCharacterCardPatchInputSchema.parse(input);
+    let patch: ReturnType<typeof createCharacterCardPatch> | undefined;
+    let preview: ReturnType<typeof previewCharacterCardPatch> | undefined;
+    const saved = await updateProject(parsed.project_id, (project) => {
+      if (!project.characterCardConfig) throw new Error("项目尚未保存 character card config");
+      patch = createCharacterCardPatch({ projectId: project.id, sourcePath: project.importedCharacterCardPath, operations: parsed.operations });
+      preview = previewCharacterCardPatch(project, patch);
+      return { ...project, characterCardPatches: [...(project.characterCardPatches ?? []), patch] };
+    });
+    return toolText({ project_id: saved.id, revision: saved.revision, patch_id: patch!.id, operation_count: patch!.operations.length, validation: preview!.validation });
+  });
+
+  server.tool("preview_character_card_patch", PreviewCharacterCardPatchInputSchema.shape, async (input) => {
+    const parsed = PreviewCharacterCardPatchInputSchema.parse(input);
+    const project = await loadProject(parsed.project_id);
+    const patch = project.characterCardPatches?.find((item) => item.id === parsed.patch_id);
+    if (!patch) throw new Error(`未找到 patch_id=${parsed.patch_id}`);
+    const preview = previewCharacterCardPatch(project, patch);
+    return toolText({ project_id: project.id, patch_id: patch.id, diff: preview.diff, validation: preview.validation });
+  });
+
+  server.tool("apply_character_card_patch", ApplyCharacterCardPatchInputSchema.shape, async (input) => {
+    const parsed = ApplyCharacterCardPatchInputSchema.parse(input);
+    const project = await loadProject(parsed.project_id);
+    const patch = project.characterCardPatches?.find((item) => item.id === parsed.patch_id);
+    if (!patch) throw new Error(`未找到 patch_id=${parsed.patch_id}`);
+    const applied = applyCharacterCardPatchToProject(project, patch.operations);
+    if (!applied.validation.valid) return toolText({ ok: false, validation: applied.validation, diff: applied.diff });
+    if (!applied.project.characterCardConfig) throw new Error("项目尚未保存 character card config");
+    const outputPath = resolveCardExportPath(parsed.output_path, applied.project.characterCardConfig.card.name);
+    let backupPath: string | undefined;
+    const { card, validation: buildValidation } = buildCharacterCardJsonFromProject(applied.project);
+    if (!buildValidation.valid) return toolText({ ok: false, validation: buildValidation, diff: applied.diff });
+    try {
+      const writeResult = await writeTempThenCommit({
+        targetPath: outputPath,
+        content: toPrettyJson(card),
+        tempId: patch.id,
+        overwrite: parsed.overwrite,
+        backup: parsed.backup,
+        commit: async () => {
+          await updateProject(parsed.project_id, (latest) => {
+            if (latest.revision !== project.revision) throw new Error(`project revision conflict: expected ${project.revision}, current ${latest.revision}`);
+            return { ...latest, characterCardConfig: applied.project.characterCardConfig, draft: applied.project.draft, importedCharacterCardPath: outputPath };
+          });
+        },
+      });
+      backupPath = writeResult.backupPath;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST") return toolText({ ok: false, error: "文件已存在，如需覆盖请设置 overwrite=true", path: outputPath, backupPath });
+      throw error;
+    }
+    const saved = await loadProject(parsed.project_id);
+    return toolText({ ok: true, project_id: saved.id, revision: saved.revision, patch_id: patch.id, path: outputPath, backupPath, diff: applied.diff, worldbook_entry_count: card.data.character_book.entries.length });
   });
 
   server.tool("query_character_card", QueryCharacterCardInputSchema.shape, async (input) => {

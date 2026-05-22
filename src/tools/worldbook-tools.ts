@@ -1,5 +1,3 @@
-import fs from "node:fs/promises";
-import path from "node:path";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createCharacterBasicEntryTemplate, createCharacterPersonalityEntryTemplate, validateCharacterAppearanceDistinctiveness, validateCharacterEntryStructure } from "../core/character-templates.js";
@@ -16,8 +14,9 @@ import { validateWorldbookDraft } from "../core/worldbook-validator.js";
 import { createWorldbookEntryPlan, validateWorldbookEntryPlan } from "../core/worldbook-planning.js";
 import { CreateWorldbookDraftTemplateInputSchema, EntryTypeSchema, GenerateWorldbookJsonInputSchema, UpdateWorldbookDraftEntriesInputSchema, UpsertWorldbookEntriesInputSchema, UpsertWorldbookEntryInputSchema, ValidateWorldbookDraftInputSchema } from "../schemas/worldbook-draft.js";
 import { ApplyWorldbookPatchInputSchema, CreateWorldbookPatchInputSchema, ImportWorldbookJsonInputSchema, PreviewWorldbookPatchInputSchema } from "../schemas/worldbook-patch.js";
-import { resolveBackupPath, resolveExportPath, resolveReadableWorldbookPath, writeTextFileSafely } from "../storage/path-policy.js";
-import { loadOrCreateProject, loadProject, updateProject } from "../storage/project-store.js";
+import { resolveExportPath, resolveReadableWorldbookPath, writeTempThenCommit, writeTextFileSafely } from "../storage/path-policy.js";
+import { loadProject, updateProject } from "../storage/project-store.js";
+import { initWorkspaceProject } from "../storage/workspace-store.js";
 import { toPrettyJson } from "../utils/json.js";
 import { toolText } from "./helpers.js";
 
@@ -134,10 +133,13 @@ export function registerWorldbookTools(server: McpServer): void {
     const parsed = ImportWorldbookJsonInputSchema.parse(input);
     const sourcePath = resolveReadableWorldbookPath(parsed.path);
     const { book, draft } = await importWorldbookFromFile(sourcePath);
-    const project = await loadOrCreateProject(undefined, parsed.project_name ?? book.name);
-    const saved = await updateProject(project.id, (latest) => ({ ...latest, name: parsed.project_name ?? book.name, draft, importedWorldbookPath: sourcePath }));
     const validation = validateWorldbookDraft(draft);
-    return toolText({ project_id: saved.id, worldbook_name: book.name, entry_count: draft.length, validation });
+    if (!validation.valid) return toolText({ ok: false, worldbook_name: book.name, entry_count: draft.length, validation });
+    const project = parsed.project_id
+      ? await loadProject(parsed.project_id)
+      : (await initWorkspaceProject({ name: parsed.project_name ?? book.name, ifExists: parsed.if_exists })).project;
+    const saved = await updateProject(project.id, (latest) => ({ ...latest, name: parsed.project_name ?? book.name, draft, importedWorldbookPath: sourcePath }));
+    return toolText({ ok: true, project_id: saved.id, revision: saved.revision, worldbook_name: book.name, entry_count: draft.length, validation });
   });
 
   server.tool("create_worldbook_patch", CreateWorldbookPatchInputSchema.shape, async (input) => {
@@ -173,25 +175,25 @@ export function registerWorldbookTools(server: McpServer): void {
     if (!validation.valid) return toolText({ ok: false, validation, diff: applied.diff });
     const outputPath = resolveExportPath(parsed.output_path, project.name);
     let backupPath: string | undefined;
-    if (parsed.backup) {
-      try {
-        await fs.access(outputPath);
-        backupPath = resolveBackupPath(outputPath);
-        await fs.mkdir(path.dirname(backupPath), { recursive: true });
-        await fs.copyFile(outputPath, backupPath);
-      } catch {
-        // 目标不存在时无需备份
-      }
-    }
     const book = buildWorldbookJson({ name: project.name, entries: applied.entries });
     try {
-      await writeTextFileSafely(outputPath, toPrettyJson(book), { overwrite: parsed.overwrite });
+      const writeResult = await writeTempThenCommit({
+        targetPath: outputPath,
+        content: toPrettyJson(book),
+        tempId: patch.id,
+        overwrite: parsed.overwrite,
+        backup: parsed.backup,
+        commit: async () => {
+          await updateProject(project.id, (latest) => ({ ...latest, draft: applied.entries, importedWorldbookPath: outputPath }), { expectedRevision: project.revision });
+        },
+      });
+      backupPath = writeResult.backupPath;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "EEXIST") return toolText({ ok: false, error: "文件已存在，如需覆盖请设置 overwrite=true", path: outputPath, backupPath });
       throw error;
     }
-    await updateProject(project.id, (latest) => ({ ...latest, draft: applied.entries, importedWorldbookPath: outputPath }));
-    return toolText({ ok: true, project_id: project.id, patch_id: patch.id, path: outputPath, backupPath, diff: applied.diff, entry_count: applied.entries.length });
+    const saved = await loadProject(project.id);
+    return toolText({ ok: true, project_id: saved.id, revision: saved.revision, patch_id: patch.id, path: outputPath, backupPath, diff: applied.diff, entry_count: applied.entries.length });
   });
 
   server.tool("query_worldbook", { path: z.string().min(1), mode: z.enum(["brief", "uid", "search", "stats"]), uid: z.number().int().optional(), query: z.string().optional() }, async (input) => toolText(await queryWorldbook(input)));

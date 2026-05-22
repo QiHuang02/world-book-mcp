@@ -66,9 +66,55 @@ args = ["-y", "@qihuang02/world-book-mcp"]
 - HTML 美化配置模板、校验、资产构建，并可自动合并进角色卡 JSON。
 - EJS 动态内容配置模板、校验、entries 构建，并可自动合并进角色卡内嵌世界书。
 - 查询导出的世界书 JSON 和角色卡 JSON。
+- 导入已有角色卡 JSON，并通过 patch 修改角色卡字段或内嵌世界书条目。
 
 暂不支持：
 - 内置网页搜索。
+
+## `.worldbook/` 工作目录
+
+`init_project` 的主作用是在当前项目目录创建/复用 MCP 专用工作区，尤其是确保 `.worldbook/draft/` 可用：
+
+```text
+.
+├─ .worldbook/
+│  ├─ project.json          # project 元信息，不保存 draft 正文
+│  └─ draft/
+│     ├─ 新墟城.json
+│     ├─ 角色B_基础设定.json
+│     └─ 角色B_性格.json
+└─ <导出的世界书或角色卡>.json
+```
+
+`upsert_worldbook_entry` / `upsert_worldbook_entries` 会把每条草稿写为 `.worldbook/draft/<safe-comment>.json`。分片文件保存的是 MCP draft entry，而不是最终 SillyTavern entry：
+
+```json
+{
+  "comment": "新墟城",
+  "entryType": "world_summary",
+  "keys": ["新墟", "废墟都市", "避难城"],
+  "secondaryKeys": [],
+  "content": "...",
+  "constant": true,
+  "position": "before_char",
+  "order": 1,
+  "enabled": true,
+  "preventRecursion": true,
+  "excludeRecursion": true
+}
+```
+
+校验、审查、lint、世界书导出和角色卡导出会优先合并读取 `.worldbook/draft/*.json`；若没有分片 draft，则兼容读取旧的 `project.draft`。默认导出路径是当前工作目录的 `<名称>.json`，相对路径和绝对路径都必须位于当前工作目录内，越界写入会失败。
+
+此外，`init_project` 会扫描当前工作目录根目录的一层 `*.json`：如果没有发现酒馆格式世界书或 `chara_card_v3` 角色卡 JSON，会自动创建一个根目录模板 JSON；如果已经存在酒馆格式 JSON，则不会额外创建模板，也不会覆盖已有 JSON。返回值中的 `root_template` 会说明模板是否创建、路径或已有文件列表。`kind=worldbook` 会创建独立世界书模板；`kind=character_card` 和 `kind=mixed` 会创建 `chara_card_v3` 模板，其中 `mixed` 明确表示角色卡 + 内嵌空世界书的一体化模板。
+
+## Patch、revision 与并发
+
+同一 `project_id` 的写入会在 MCP 进程内串行化，并在返回值中递增 `revision`。支持 `expected_revision` 的写入工具可用它做并发冲突检测：如果调用方基于旧 revision 写入，会返回 `project revision conflict`。
+
+`apply_worldbook_patch` / `apply_character_card_patch` 会同时写导出的 JSON 文件并更新 project 状态。实现会先写临时文件并替换目标文件，再更新 project；如果 project 更新失败，会尽力恢复旧导出文件或删除新写入文件。返回 `ok=false` 或抛出冲突错误时，调用方应重新读取 project 后再重试。
+
+patch 的 `match.uid` 优先匹配从已导入世界书保留的 `sourceUid`，用于定位原始 SillyTavern 条目 uid。对新建草稿或没有 `sourceUid` 的旧项目，建议使用 `index` 或唯一 `comment` 定位，避免把 uid 误当作导出后的连续下标。
 
 ## Tools 一览
 
@@ -76,7 +122,7 @@ args = ["-y", "@qihuang02/world-book-mcp"]
 | --- | --- | --- |
 | 工作流、项目与规范 | `get_worldbook_workflow` | 根据任务类型返回推荐 tool 流程。`wants_character_card=true` 时会自动追加角色卡流程。 |
 | 工作流、项目与规范 | `get_tool_usage_guide` | 查询某个 tool 的用途、调用时机、必填字段、示例输入、常见错误和下一步。 |
-| 工作流、项目与规范 | `init_project` | 显式初始化当前工作区项目，返回 `project_id`、`revision` 与 `.worldbook` 路径；已有项目可用 `if_exists` 控制复用或覆盖。 |
+| 工作流、项目与规范 | `init_project` | 初始化 `.worldbook/project.json` 与 `.worldbook/draft/`；若根目录没有酒馆格式 JSON，会安全创建模板 JSON；已有项目可用 `if_exists` 控制复用或覆盖。 |
 | 工作流、项目与规范 | `list_projects` | 列出本地保存的 MCP 项目。 |
 | 工作流、项目与规范 | `get_project` | 查看项目详情或摘要。 |
 | 工作流、项目与规范 | `get_entry_template` | 返回世界书条目模板。 |
@@ -92,9 +138,13 @@ args = ["-y", "@qihuang02/world-book-mcp"]
 | 世界书构建 | `update_worldbook_draft_entries` | 按 index 或 comment 局部更新草稿条目。 |
 | 世界书构建 | `validate_worldbook_draft` | 校验草稿配置和内容问题。 |
 | 世界书构建 | `generate_worldbook_json` | 导出 SillyTavern 世界书 JSON。 |
+| 角色卡 | `import_character_card_json` | 导入当前目录内已有 `chara_card_v3` 角色卡 JSON，提取 profile 与内嵌世界书 draft。 |
 | 角色卡 | `upsert_character_profile` | 用简化字段创建/更新角色卡人设配置，MCP 自动补齐 `chara_card_v3` 默认字段。 |
 | 角色卡 | `validate_character_card_config` | 校验角色卡配置和嵌入世界书。 |
 | 角色卡 | `generate_character_card_json` | 导出 `chara_card_v3` 角色卡 JSON；同一角色的 `character_basic` 与 `character_personality` 会合并为同一个内嵌世界书条目。 |
+| 角色卡 | `create_character_card_patch` | 为已有角色卡 project 创建 profile / worldbook config / 内嵌世界书修改计划。 |
+| 角色卡 | `preview_character_card_patch` | 预览角色卡 patch diff 与校验结果。 |
+| 角色卡 | `apply_character_card_patch` | 应用角色卡 patch，安全导出 JSON 并更新 project。 |
 | 角色卡 | `query_character_card` | 查询角色卡概要、开场白或内嵌世界书条目。 |
 | MVU / ZOD | `create_mvu_schema_template` | 创建 MVU/ZOD 变量系统配置模板。 |
 | MVU / ZOD | `submit_mvu_config` | 保存 MVU 配置。 |

@@ -29,7 +29,6 @@ export interface RecordUserDecisionInput {
 export interface RecordUserDecisionResult {
   project: Project;
   recorded: RecordedDecision;
-  recommended_next_tool?: string;
 }
 
 export interface ListUserDecisionsResult {
@@ -89,7 +88,7 @@ export function recordUserDecision(project: Project, input: RecordUserDecisionIn
   };
   const newRecorded = [...(project.recordedDecisions ?? []).filter((item) => item.id !== input.id), recorded];
   const newPending = (project.pendingDecisions ?? []).filter((item) => item.id !== input.id);
-  return { project: { ...project, pendingDecisions: newPending, recordedDecisions: newRecorded }, recorded, recommended_next_tool: pending?.source_tool };
+  return { project: { ...project, pendingDecisions: newPending, recordedDecisions: newRecorded }, recorded };
 }
 
 export function listUserDecisions(project: Project, filter?: { only_pending?: boolean; only_recorded?: boolean }): ListUserDecisionsResult {

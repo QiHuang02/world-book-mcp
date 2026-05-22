@@ -97,18 +97,18 @@ export function getWorkflow(input: WorkflowInput): { workflow: string[]; notes: 
       };
     case "style_extraction":
       return {
-        workflow: ["ingest_text_source", "create_style_extraction_outline", "submit_extraction_result", "lint_project_content"],
+        workflow: ["ingest_text_source", "create_style_extraction_template", "submit_style_profile", "build_style_worldbook_entries", "upsert_worldbook_entries", "validate_worldbook_draft", "lint_project_content"],
         notes: ["文风提取以写作规则和负面约束为主，不应照搬大段原文", ...commonNotes],
       };
     case "chapter_extraction":
       return {
-        workflow: ["ingest_text_source", "create_chapter_extraction_outline", "submit_extraction_result", "plan_worldbook_entries", "upsert_worldbook_entries", "validate_worldbook_draft"],
+        workflow: ["ingest_text_source", "create_chapter_extraction_template", "build_chapter_worldbook_entries", "upsert_worldbook_entries", "validate_worldbook_draft"],
         notes: ["章节提取应保留事件因果和角色状态变化，避免流水账", ...commonNotes],
       };
     case "modify_existing":
       return {
-        workflow: ["import_worldbook_json", "query_worldbook", "create_worldbook_patch", "preview_worldbook_patch", "apply_worldbook_patch"],
-        notes: ["修改已有世界书建议先导入并预览 patch，校验通过后再应用", ...commonNotes],
+        workflow: ["import_worldbook_json", "query_worldbook", "create_worldbook_patch", "preview_worldbook_patch", "apply_worldbook_patch", "import_character_card_json", "query_character_card", "create_character_card_patch", "preview_character_card_patch", "apply_character_card_patch"],
+        notes: ["修改已有 JSON 建议先导入并预览 patch，校验通过后再应用；世界书与角色卡按目标类型二选一", ...commonNotes],
       };
     case "query_existing":
       return { workflow: ["query_worldbook"], notes: commonNotes };

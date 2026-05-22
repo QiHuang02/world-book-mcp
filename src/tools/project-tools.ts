@@ -3,7 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { IngestTextSourceInputSchema } from "../schemas/source.js";
 import { IngestWebResearchInputSchema } from "../schemas/research.js";
 import { listProjects, loadOrCreateProject, loadProject, summarizeProject, updateProject } from "../storage/project-store.js";
-import { initWorkspaceProject } from "../storage/workspace-store.js";
+import { ensureRootTemplateJson, initWorkspaceProject } from "../storage/workspace-store.js";
 import { createId, nowIso } from "../utils/ids.js";
 import { toolText } from "./helpers.js";
 
@@ -15,6 +15,7 @@ export function registerProjectTools(server: McpServer): void {
     if_exists: z.enum(["error", "return_existing", "overwrite"]).default("error"),
   }, async (input) => {
     const { project, created, workspace } = await initWorkspaceProject({ name: input.name, projectId: input.project_id, ifExists: input.if_exists });
+    const rootTemplate = await ensureRootTemplateJson({ name: input.name, kind: input.kind });
     return toolText({
       project_id: project.id,
       name: project.name,
@@ -22,6 +23,7 @@ export function registerProjectTools(server: McpServer): void {
       revision: project.revision,
       created,
       workspace,
+      root_template: rootTemplate,
       project: summarizeProject(project, false),
     });
   });

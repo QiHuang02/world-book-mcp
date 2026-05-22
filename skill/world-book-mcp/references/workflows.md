@@ -1,8 +1,92 @@
-# 7 类标准工作流
+# 流程路由树与标准工作流
 
-> 何时阅读：当 SKILL.md 概览不够、需要照搬完整调用顺序时翻这里。每个工作流都已经按"主 AI 在哪步介入"标注。
+> 何时阅读：当 SKILL.md 概览不够、需要判断任务路径或照搬调用顺序时翻这里。MCP 只提供能力与参考流程；最终流程编排由主 AI 结合用户需求决定。
 
 ---
+
+## 流程路由树
+
+### 第 0 层：任务意图
+
+先判断用户真正要做什么：
+
+- **新建**：从零生成世界书 / 角色卡 / 资产。通常 `init_project` 起手；它会创建 `.worldbook/draft/`，并在根目录没有酒馆格式 JSON 时创建模板 JSON。
+- **修改已有**：已有世界书 JSON 走 `import_worldbook_json → create_worldbook_patch → preview_worldbook_patch → apply_worldbook_patch`。
+- **查询**：已有世界书用 `query_worldbook`；已有角色卡用 `query_character_card`。
+- **审查 / lint**：单段内容用 `lint_worldbook_content`；项目级用 `lint_project_content`、`create_final_review_report`、`create_delivery_checklist`。
+- **导出**：已有 draft/config 时直接 `validate_* → generate_worldbook_json` 或 `generate_character_card_json`。
+- **只做素材提取**：只需要结构化报告时，可停在 `submit_extraction_result` / `submit_derivative_extraction_outline`，不导出 JSON。
+
+### 第 1 层：来源类型
+
+判断设定来源与输入载体：
+
+- **原创**：用户口述、笔记、设定要求；可以用 `create_worldbuilding_design_template` / `create_worldbuilding_outline` 辅助补齐。
+- **同人 / 二创**：必须有用户提供的原文、wiki/资料摘要、本地文件内容，或用户明确允许主 AI 联网搜索后再用 `ingest_web_research` 保存摘要；不要凭空脑补原作事实。
+- **已有 JSON 改造**：世界书 JSON 用 `import_worldbook_json`；角色卡 JSON 用 `import_character_card_json`。
+- **输入载体**：
+  - 用户口述 / 粘贴文本：`ingest_text_source`。
+  - 本地文件文本：主 AI 先读取文件内容，再 `ingest_text_source`。
+  - 网络搜索摘要：主 AI 外部搜索并整理 facts，再 `ingest_web_research`。
+  - 已有世界书 JSON：`import_worldbook_json`。
+  - 已有角色卡 JSON：`import_character_card_json`，查询用 `query_character_card`。
+
+### 第 2 层：产物类型
+
+根据用户要交付的东西选择路径：
+
+- **纯世界书**：`upsert_worldbook_entry(s) → validate_worldbook_draft → generate_worldbook_json`。
+- **单人角色卡**：`upsert_worldbook_entry(s) → upsert_character_profile → validate_character_card_config → generate_character_card_json`。
+- **多人角色卡**：角色条目独立分片，导出角色卡时按 `characterName/name/comment` 聚合。
+- **世界书 + 角色卡**：先导出/校验世界书 draft，再生成角色卡；必要时分别 `generate_worldbook_json` 与 `generate_character_card_json`。
+- **资产-only**：MVU/HTML/EJS 可先 `create_*_template → submit_*_config → build_*_assets` 预览，不一定导出角色卡。
+- **只要提取报告**：停在 extraction/outline/profile，不调用 generate。
+
+### 第 3 层：角色卡策略
+
+- **单人卡**：默认不强制内嵌世界书；若人设复杂、需要 MVU/HTML/EJS 或用户要求完整卡，使用角色卡内嵌世界书承载条目。
+- **固定多角色卡**：每个核心角色有独立 `character_basic` / `character_personality`，显式传 `character_name` 避免串组。
+- **动态创建角色规则**：把角色创建、切换、关系规则写入世界书条目，通常更接近系统驱动/世界书-only。
+
+### 第 4 层：提取焦点
+
+按用户目标选择提取维度：
+
+- 角色：`create_extraction_outline` 或 `create_derivative_extraction_template`。
+- 世界观：`create_worldbuilding_outline` / `create_worldbuilding_design_template`。
+- 物品 / 装备 / 能力：`validate_item_entry`，再 `upsert_worldbook_entry`。
+- 事件 / 场景 / 规则：作为 `event` / `scene` / `other` entry 写入。
+- 文风：`create_style_extraction_template → submit_style_profile → build_style_worldbook_entries`。
+- 章节 / 故事线：`create_chapter_extraction_template → build_chapter_worldbook_entries`；二创长文也可用 `submit_derivative_extraction_outline` 的 `chapter_index`。
+- 关系：角色条目正文中结构化描述，或作为关系规则条目写入。
+
+### 第 5 层：增强资产
+
+判断是否需要：
+
+- **MVU/ZOD**：`create_mvu_schema_template → submit_mvu_config → validate_mvu_config → build_mvu_assets`。
+- **HTML 状态栏 / Regex scripts**：`create_html_beautify_template` 或 `create_html_regex_pair_template`，再 `submit_html_beautify_config` / `validate_regex_scripts`。
+- **EJS 动态内容**：EJS 依赖 MVU，走 `create_ejs_template → submit_ejs_config → validate_ejs_config → build_ejs_entries`。
+- **Tavern Helper**：由 MVU assets 自动合并到角色卡 extensions。
+
+### 第 6 层：导入 / 修改已有 JSON
+
+- **世界书 JSON**：`import_worldbook_json → create_worldbook_patch → preview_worldbook_patch → apply_worldbook_patch`。导入和导出路径必须位于当前工作目录内，patch 备份写入 `.worldbook/backups/`。
+- **角色卡 JSON**：`import_character_card_json → create_character_card_patch → preview_character_card_patch → apply_character_card_patch`。patch 可修改角色卡 profile、worldbook config 或内嵌世界书 draft，导出路径限制在当前工作目录内，备份写入 `.worldbook/backups/`。
+
+---
+
+## 7 类标准工作流
+
+
+## init_project 起手行为
+
+`init_project` 的主职责是初始化当前目录的 `.worldbook/project.json` 和 `.worldbook/draft/`。它还会扫描当前根目录一层 `*.json`：
+
+- 若没有发现 SillyTavern 世界书或 `chara_card_v3` 角色卡 JSON，则创建一个根目录模板 JSON。
+- 若已经存在酒馆格式 JSON，则不创建模板。
+- 不覆盖已有 JSON；同名普通 JSON 存在时会使用安全备用文件名。
+- 返回 `root_template`，说明模板是否创建、创建路径或已有酒馆 JSON 文件列表。
 
 ## 1. 从文本生成世界书
 
@@ -127,6 +211,19 @@ EJS 规则：
 ```
 
 `apply_worldbook_patch` 默认会在目标文件存在时备份到 `.worldbook/backups/`，覆盖前要求 `overwrite=true`。校验失败时不会写文件。
+
+## 8. 修改已有角色卡
+
+```text
+将目标 JSON 放在当前工作目录内
+→ import_character_card_json              # 导入 profile + 内嵌世界书 draft
+→ create_character_card_patch             # 修改 profile / worldbook config / 内嵌世界书
+→ preview_character_card_patch            # 看 diff + 校验
+→ apply_character_card_patch              # 应用 + 校验 + 备份 + 导出新 JSON
+→ query_character_card
+```
+
+`apply_character_card_patch` 覆盖前同样要求 `overwrite=true`，并在目标文件存在时备份到 `.worldbook/backups/`。
 
 ## 输出位置
 
