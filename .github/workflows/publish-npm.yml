@@ -31,7 +31,17 @@ jobs:
         run: npm run build
 
       - name: Publish package to npm
-        run: npm publish --access public
+        shell: bash
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+
+          if [[ "$VERSION" == *-* ]]; then
+            PRERELEASE_TAG="${VERSION#*-}"
+            PRERELEASE_TAG="${PRERELEASE_TAG%%.*}"
+            npm publish --access public --tag "$PRERELEASE_TAG"
+          else
+            npm publish --access public
+          fi
 
   release-skill:
     name: Package skill and publish release
