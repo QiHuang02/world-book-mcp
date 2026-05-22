@@ -1,6 +1,6 @@
 {
-  "name": "world-book-mcp",
-  "version": "0.1.0",
+  "name": "@qihuang02/world-book-mcp",
+  "version": "0.0.4-beta",
   "description": "MCP server for creating and validating SillyTavern world book JSON files.",
   "type": "module",
   "bin": {

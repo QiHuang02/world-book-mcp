@@ -42,6 +42,7 @@ export const ProjectSchema = z.object({
   patches: z.array(WorldbookPatchSchema).default([]),
   pendingDecisions: z.array(PendingDecisionSchema).default([]),
   recordedDecisions: z.array(RecordedDecisionSchema).default([]),
+  revision: z.number().int().nonnegative().default(0),
   characterCardConfig: CharacterCardConfigSchema.optional(),
   mvuConfig: MvuConfigSchema.optional(),
   htmlBeautifyConfig: HtmlBeautifyConfigSchema.optional(),

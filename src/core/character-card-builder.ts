@@ -137,8 +137,79 @@ function withId<T extends object>(value: T): T & { id: string } {
   return { ...value, id: typeof maybeId === "string" ? maybeId : randomUUID() };
 }
 
+function mergeCharacterProfileEntries(entries: WorldbookDraftEntry[]): WorldbookDraftEntry[] {
+  const merged: WorldbookDraftEntry[] = [];
+  const characterIndexes = new Map<string, number>();
+
+  for (const entry of entries) {
+    if (entry.entryType !== "character_basic" && entry.entryType !== "character_personality") {
+      merged.push(entry);
+      continue;
+    }
+
+    const characterName = inferCharacterName(entry);
+    const key = characterName.toLocaleLowerCase();
+    const existingIndex = characterIndexes.get(key);
+    if (existingIndex === undefined) {
+      characterIndexes.set(key, merged.length);
+      merged.push({ ...entry, comment: characterName, keys: uniqueStrings([characterName, ...entry.keys]) });
+      continue;
+    }
+
+    const existing = merged[existingIndex];
+    merged[existingIndex] = {
+      ...existing,
+      comment: characterName,
+      entryType: "character_basic",
+      keys: uniqueStrings([...existing.keys, ...entry.keys, characterName]),
+      secondaryKeys: uniqueStrings([...(existing.secondaryKeys ?? []), ...(entry.secondaryKeys ?? [])]),
+      content: mergeCharacterContent(existing.content, entry.content),
+      constant: existing.constant || entry.constant,
+      enabled: existing.enabled && entry.enabled,
+      order: Math.min(existing.order, entry.order),
+      position: existing.entryType === "character_basic" ? existing.position : entry.position,
+      depth: existing.depth ?? entry.depth,
+      scanDepth: existing.scanDepth ?? entry.scanDepth,
+    };
+  }
+
+  return merged;
+}
+
+function inferCharacterName(entry: WorldbookDraftEntry): string {
+  if (entry.characterName?.trim()) return entry.characterName.trim();
+  const nameMatch = entry.content.match(/^\s*name\s*[:：]\s*([^\n\r]+)/m);
+  if (nameMatch?.[1]) return nameMatch[1].trim();
+  return entry.comment.replace(/[_＿-]?(基础设定|基本设定|性格设定|性格|basic|personality)$/i, "").trim() || entry.comment;
+}
+
+function mergeCharacterContent(first: string, second: string): string {
+  const firstBlock = labelCharacterContent(first, "基础设定");
+  const secondBlock = labelCharacterContent(second, "性格设定");
+  if (!firstBlock.trim()) return secondBlock;
+  if (!secondBlock.trim()) return firstBlock;
+  if (firstBlock.includes(secondBlock)) return firstBlock;
+  if (secondBlock.includes(firstBlock)) return secondBlock;
+  return `${firstBlock.trim()}\n\n${secondBlock.trim()}`;
+}
+
+function labelCharacterContent(content: string, label: string): string {
+  const trimmed = content.trim();
+  if (!trimmed) return content;
+  if (hasSingleXmlWrapper(trimmed) || /^【[^】]+】/.test(trimmed)) return trimmed;
+  return `【${label}】\n${trimmed}`;
+}
+
+function hasSingleXmlWrapper(content: string): boolean {
+  return /^<([a-zA-Z_][\w-]*)>[\s\S]*<\/\1>$/.test(content.trim());
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
+}
+
 export function draftEntriesToCharacterBookEntries(entries: WorldbookDraftEntry[]): CharacterBookEntry[] {
-  return entries.map((entry, index) => ({
+  return mergeCharacterProfileEntries(entries).map((entry, index) => ({
     id: index,
     keys: entry.keys,
     secondary_keys: entry.secondaryKeys ?? [],

@@ -1,5 +1,3 @@
-import fs from "node:fs/promises";
-import path from "node:path";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { buildCharacterCardJson } from "../core/character-card-builder.js";
@@ -13,43 +11,43 @@ import { buildHtmlBeautifyAssets } from "../core/html-beautify-assets.js";
 import { validateHtmlBeautifyConfig } from "../core/html-beautify-validator.js";
 import { buildMvuAssets } from "../core/mvu-assets.js";
 import { validateMvuConfig } from "../core/mvu-validator.js";
-import { CharacterCardConfigSchema, CreateCharacterCardTemplateInputSchema, GenerateCharacterCardJsonInputSchema, QueryCharacterCardInputSchema, SubmitCharacterCardConfigInputSchema, ValidateCharacterCardConfigInputSchema } from "../schemas/character-card.js";
-import { resolveCardExportPath } from "../storage/path-policy.js";
-import { loadProject, saveProject } from "../storage/project-store.js";
+import { CharacterCardConfigSchema, GenerateCharacterCardJsonInputSchema, QueryCharacterCardInputSchema, UpsertCharacterProfileInputSchema, ValidateCharacterCardConfigInputSchema } from "../schemas/character-card.js";
+import { resolveCardExportPath, writeTextFileSafely } from "../storage/path-policy.js";
+import { loadProject, updateProject } from "../storage/project-store.js";
 import { toPrettyJson } from "../utils/json.js";
 import { toolText } from "./helpers.js";
 
 export function registerCharacterCardTools(server: McpServer): void {
-  server.tool("create_character_card_template", CreateCharacterCardTemplateInputSchema.shape, async (input) => {
-    const parsed = CreateCharacterCardTemplateInputSchema.parse(input);
-    const alternateGreetings = Array.from({ length: parsed.greeting_count }, () => "");
-    const config = CharacterCardConfigSchema.parse({
-      card: {
-        name: parsed.name,
-        description: "",
-        personality: "",
-        scenario: "",
-        first_mes: "",
-        alternate_greetings: alternateGreetings,
-        creator_notes: "",
-        system_prompt: "",
-        post_history_instructions: "",
-        tags: [],
-        creator: "",
-        character_version: "1.0",
-        talkativeness: "0.5",
-      },
-      worldbook: { source: parsed.include_worldbook ? "project_draft" : "none", name: parsed.name },
-    });
-    return toolText({ project_id: parsed.project_id, config, recommended_next_tool: "submit_character_card_config" });
-  });
-
-  server.tool("submit_character_card_config", SubmitCharacterCardConfigInputSchema.shape, async (input) => {
-    const parsed = SubmitCharacterCardConfigInputSchema.parse(input);
-    const project = await loadProject(parsed.project_id);
-    const saved = await saveProject({ ...project, characterCardConfig: parsed.config });
-    const validation = validateCharacterCardConfig({ config: parsed.config, draft: saved.draft, mvuEnabled: saved.mvuConfig?.enabled });
-    return toolText({ project_id: saved.id, validation, recommended_next_tool: validation.valid ? "generate_character_card_json" : "validate_character_card_config" });
+  server.tool("upsert_character_profile", UpsertCharacterProfileInputSchema.shape, async (input) => {
+    const parsed = UpsertCharacterProfileInputSchema.parse(input);
+    const result = await updateProject(parsed.project_id, (project) => {
+      const existingCard = project.characterCardConfig?.card;
+      const includeWorldbook = parsed.include_worldbook ?? project.characterCardConfig?.worldbook.source !== "none";
+      const card = CharacterCardConfigSchema.parse({
+        card: {
+          name: parsed.name,
+          description: parsed.description ?? existingCard?.description ?? "",
+          personality: parsed.personality ?? existingCard?.personality ?? "",
+          scenario: parsed.scenario ?? existingCard?.scenario ?? "",
+          first_mes: parsed.first_mes ?? existingCard?.first_mes ?? "",
+          alternate_greetings: parsed.alternate_greetings ?? existingCard?.alternate_greetings ?? [],
+          creator_notes: parsed.creator_notes ?? existingCard?.creator_notes ?? "",
+          system_prompt: parsed.system_prompt ?? existingCard?.system_prompt ?? "",
+          post_history_instructions: parsed.post_history_instructions ?? existingCard?.post_history_instructions ?? "",
+          tags: parsed.tags ?? existingCard?.tags ?? [],
+          creator: parsed.creator ?? existingCard?.creator ?? "",
+          character_version: parsed.character_version ?? existingCard?.character_version ?? "1.0",
+          talkativeness: parsed.talkativeness ?? existingCard?.talkativeness ?? "0.5",
+        },
+        worldbook: {
+          source: includeWorldbook ? "project_draft" : "none",
+          name: parsed.worldbook_name ?? project.characterCardConfig?.worldbook.name ?? parsed.name,
+        },
+      });
+      return { ...project, characterCardConfig: card };
+    }, { expectedRevision: parsed.expected_revision });
+    const validation = validateCharacterCardConfig({ config: result.characterCardConfig!, draft: result.draft, mvuEnabled: result.mvuConfig?.enabled });
+    return toolText({ project_id: result.id, revision: result.revision, validation });
   });
 
   server.tool("validate_character_card_config", ValidateCharacterCardConfigInputSchema.shape, async (input) => {
@@ -95,16 +93,12 @@ export function registerCharacterCardTools(server: McpServer): void {
       ejsEntries,
     });
     const outputPath = resolveCardExportPath(parsed.output_path, project.characterCardConfig.card.name);
-    if (!parsed.overwrite) {
-      try {
-        await fs.access(outputPath);
-        return toolText({ ok: false, error: "文件已存在，如需覆盖请设置 overwrite=true", path: outputPath });
-      } catch {
-        // 文件不存在，可以写入
-      }
+    try {
+      await writeTextFileSafely(outputPath, toPrettyJson(card), { overwrite: parsed.overwrite });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST") return toolText({ ok: false, error: "文件已存在，如需覆盖请设置 overwrite=true", path: outputPath });
+      throw error;
     }
-    await fs.mkdir(path.dirname(outputPath), { recursive: true });
-    await fs.writeFile(outputPath, toPrettyJson(card), "utf8");
     return toolText({ ok: true, path: outputPath, name: card.name, worldbook_entry_count: card.data.character_book.entries.length });
   });
 

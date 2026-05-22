@@ -15,21 +15,20 @@ import { validateRegexScripts } from "../core/regex-validator.js";
 import { BuildEjsEntriesInputSchema, CreateEjsTemplateInputSchema, SubmitEjsConfigInputSchema, ValidateEjsConfigInputSchema } from "../schemas/ejs.js";
 import { BuildHtmlBeautifyAssetsInputSchema, CreateHtmlBeautifyTemplateInputSchema, SubmitHtmlBeautifyConfigInputSchema, ValidateHtmlBeautifyConfigInputSchema } from "../schemas/html-beautify.js";
 import { BuildMvuAssetsInputSchema, CreateMvuSchemaTemplateInputSchema, SubmitMvuConfigInputSchema, ValidateMvuConfigInputSchema } from "../schemas/mvu.js";
-import { loadProject, saveProject } from "../storage/project-store.js";
+import { loadProject, updateProject } from "../storage/project-store.js";
 import { toolText } from "./helpers.js";
 
 export function registerMvuHtmlEjsTools(server: McpServer): void {
   server.tool("create_mvu_schema_template", CreateMvuSchemaTemplateInputSchema.shape, async (input) => {
     const parsed = CreateMvuSchemaTemplateInputSchema.parse(input);
-    return toolText({ project_id: parsed.project_id, ...createMvuTemplate({ characterNames: parsed.character_names, variableListPath: parsed.variable_list_path }), recommended_next_tool: "submit_mvu_config" });
+    return toolText({ project_id: parsed.project_id, ...createMvuTemplate({ characterNames: parsed.character_names, variableListPath: parsed.variable_list_path }) });
   });
 
   server.tool("submit_mvu_config", SubmitMvuConfigInputSchema.shape, async (input) => {
     const parsed = SubmitMvuConfigInputSchema.parse(input);
-    const project = await loadProject(parsed.project_id);
-    const saved = await saveProject({ ...project, mvuConfig: parsed.mvu });
+    const saved = await updateProject(parsed.project_id, (project) => ({ ...project, mvuConfig: parsed.mvu }));
     const validation = validateMvuConfig({ mvu: parsed.mvu, characterCardConfig: saved.characterCardConfig });
-    return toolText({ project_id: saved.id, validation, recommended_next_tool: validation.valid ? "build_mvu_assets" : "validate_mvu_config" });
+    return toolText({ project_id: saved.id, validation });
   });
 
   server.tool("validate_mvu_config", ValidateMvuConfigInputSchema.shape, async (input) => {
@@ -52,15 +51,14 @@ export function registerMvuHtmlEjsTools(server: McpServer): void {
 
   server.tool("create_html_beautify_template", CreateHtmlBeautifyTemplateInputSchema.shape, async (input) => {
     const parsed = CreateHtmlBeautifyTemplateInputSchema.parse(input);
-    return toolText({ project_id: parsed.project_id, ...createHtmlBeautifyTemplate({ target: parsed.target, theme: parsed.theme }), recommended_next_tool: "submit_html_beautify_config" });
+    return toolText({ project_id: parsed.project_id, ...createHtmlBeautifyTemplate({ target: parsed.target, theme: parsed.theme }) });
   });
 
   server.tool("submit_html_beautify_config", SubmitHtmlBeautifyConfigInputSchema.shape, async (input) => {
     const parsed = SubmitHtmlBeautifyConfigInputSchema.parse(input);
-    const project = await loadProject(parsed.project_id);
-    const saved = await saveProject({ ...project, htmlBeautifyConfig: parsed.html });
+    const saved = await updateProject(parsed.project_id, (project) => ({ ...project, htmlBeautifyConfig: parsed.html }));
     const validation = validateHtmlBeautifyConfig({ html: parsed.html, mvu: saved.mvuConfig, characterCardConfig: saved.characterCardConfig });
-    return toolText({ project_id: saved.id, validation, recommended_next_tool: validation.valid ? "build_html_beautify_assets" : "validate_html_beautify_config" });
+    return toolText({ project_id: saved.id, validation });
   });
 
   server.tool("validate_html_beautify_config", ValidateHtmlBeautifyConfigInputSchema.shape, async (input) => {
@@ -128,15 +126,14 @@ export function registerMvuHtmlEjsTools(server: McpServer): void {
 
   server.tool("create_ejs_template", CreateEjsTemplateInputSchema.shape, async (input) => {
     const parsed = CreateEjsTemplateInputSchema.parse(input);
-    return toolText({ project_id: parsed.project_id, ...createEjsTemplate({ templateType: parsed.template_type, characterName: parsed.character_name, affectionPath: parsed.affection_path, relationshipPath: parsed.relationship_path }), recommended_next_tool: "submit_ejs_config" });
+    return toolText({ project_id: parsed.project_id, ...createEjsTemplate({ templateType: parsed.template_type, characterName: parsed.character_name, affectionPath: parsed.affection_path, relationshipPath: parsed.relationship_path }) });
   });
 
   server.tool("submit_ejs_config", SubmitEjsConfigInputSchema.shape, async (input) => {
     const parsed = SubmitEjsConfigInputSchema.parse(input);
-    const project = await loadProject(parsed.project_id);
-    const saved = await saveProject({ ...project, ejsConfig: parsed.ejs });
+    const saved = await updateProject(parsed.project_id, (project) => ({ ...project, ejsConfig: parsed.ejs }));
     const validation = validateEjsConfig({ ejs: parsed.ejs, mvu: saved.mvuConfig });
-    return toolText({ project_id: saved.id, validation, recommended_next_tool: validation.valid ? "build_ejs_entries" : "validate_ejs_config" });
+    return toolText({ project_id: saved.id, validation });
   });
 
   server.tool("validate_ejs_config", ValidateEjsConfigInputSchema.shape, async (input) => {

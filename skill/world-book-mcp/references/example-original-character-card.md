@@ -163,43 +163,60 @@
 
 AI 根据模板填充内容，最后调用：
 
-### `draft_worldbook_entries`
+### `upsert_worldbook_entries`
+
+AI 只提交核心字段，MCP 自动补齐 `constant`、`position`、`order`、递归保护等完整 draft 配置：
 
 ```json
 {
   "project_id": "project_xxx",
   "entries": [
-    { "comment": "世界观总纲", "entryType": "world_summary", "content": "...", "constant": true, "position": "before_char", "order": 1, ... },
-    { "comment": "亚丝娜_基础设定", "entryType": "character_basic", "content": "<character>...</character>", "constant": true, "position": "after_char", "order": 10, ... },
-    { "comment": "亚丝娜_性格", "entryType": "character_personality", "content": "<personality>...</personality>", "constant": true, "position": "after_char", "order": 30, ... }
+    {
+      "comment": "世界观总纲",
+      "entry_type": "world_summary",
+      "keys": ["私立星见学园", "星见学园"],
+      "content": "封闭校园，故事围绕高二 A 班的日常与音乐部活动展开。",
+      "position": "before_char",
+      "order": 1
+    },
+    {
+      "comment": "亚丝娜_基础设定",
+      "entry_type": "character_basic",
+      "keys": ["亚丝娜"],
+      "content": "<character>\nname: 亚丝娜\nidentity: 高二 A 班学生，音乐部吉他手\n</character>",
+      "position": "after_char",
+      "order": 10
+    },
+    {
+      "comment": "亚丝娜_性格",
+      "entry_type": "character_personality",
+      "keys": ["亚丝娜"],
+      "content": "<personality>\nname: 亚丝娜\ncore: 表面冷静，遇到音乐相关话题会明显投入\n</personality>",
+      "position": "after_char",
+      "order": 30
+    }
   ]
 }
 ```
 
+导出角色卡时，`亚丝娜_基础设定` 与 `亚丝娜_性格` 会聚合成同一个内嵌世界书条目。
+
 ## 6. 角色卡
 
-### `create_character_card_template`
-
-```json
-{ "project_id": "project_xxx", "name": "亚丝娜", "include_worldbook": true, "greeting_count": 3 }
-```
-
-### `submit_character_card_config`
+### `upsert_character_profile`
 
 ```json
 {
   "project_id": "project_xxx",
-  "config": {
-    "card": {
-      "name": "亚丝娜",
-      "first_mes": "下午三点的音乐部排练室。亚丝娜抱着吉他坐在音箱上，看见你推门进来。<StatusPlaceHolderImpl/>",
-      "alternate_greetings": ["...", "...", "..."],
-      ...
-    },
-    "worldbook": { "source": "project_draft", "name": "亚丝娜世界" }
-  }
+  "name": "亚丝娜",
+  "first_mes": "下午三点的音乐部排练室。亚丝娜抱着吉他坐在音箱上，看见你推门进来。<StatusPlaceHolderImpl/>",
+  "alternate_greetings": ["...", "...", "..."],
+  "include_worldbook": true,
+  "worldbook_name": "亚丝娜世界"
 }
 ```
+
+不要手写完整 `characterCardConfig`；未传字段由 MCP 自动补默认值。
 
 ### `validate_greetings`
 

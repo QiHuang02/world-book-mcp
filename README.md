@@ -22,10 +22,11 @@
 - 查询单个 tool 的使用指南。
 - 解释 SillyTavern 世界书配置字段。
 - 扫描禁词与常见写作问题。
-- 保存、更新、校验世界书草稿。
+- 显式初始化 project，适合空白目录首次使用。
+- 通过简化输入保存、更新、校验世界书草稿：AI 只需提交 `comment`、`keys`、`content` 等核心字段，MCP 自动补全完整结构。
 - 导出独立 SillyTavern 世界书 JSON。
 - 导入已有世界书 JSON 并进行安全 patch。
-- 基础角色卡 JSON 生成，可嵌入项目世界书 draft。
+- 基础角色卡 JSON 生成，可嵌入项目世界书 draft；导出角色卡时同一角色的基础设定和性格设定会聚合为同一个内嵌世界书条目。
 - MVU/ZOD 配置模板、校验、资产构建，并可自动合并进角色卡 JSON。
 - HTML 美化配置模板、校验、资产构建，并可自动合并进角色卡 JSON。
 - EJS 动态内容配置模板、校验、entries 构建，并可自动合并进角色卡内嵌世界书。
@@ -58,15 +59,45 @@ npm test             # 运行单元测试
 
 ### 原始材料、结构化事实、draft JSON、最终 JSON
 
+- `init_project`：显式创建当前工作区 MCP project，适合空白目录首次起手；项目元数据写入 `.worldbook/project.json`。
 - `ingest_text_source` / `ingest_web_research`：保存原始文本或网页摘要。
 - `submit_extraction_result`：保存主 AI 从原始材料中提取出的结构化事实。
-- `create_worldbook_draft_template`：返回可填写的 MCP draft JSON 模板。
-- `draft_worldbook_entries`：保存主 AI 填写后的 draft。
+- `upsert_worldbook_entry` / `upsert_worldbook_entries`：推荐的主编辑入口。AI 只提交 `comment`、`keys`、`content` 等简化字段，MCP 自动补全完整 draft entry。
+- 底层全量 draft/config 提交逻辑已降级为内部/兼容层，不作为默认公开接口推荐。
 - `generate_worldbook_json` / `generate_character_card_json`：导出最终可导入 SillyTavern 的 JSON 文件。
 
 ### MCP 不做什么
 
 MCP 不直接理解长文本、不替主 AI 搜索网页、不自动脑补设定。它负责让主 AI 的输出符合稳定 schema，并在导出前执行校验。
+
+### 简化输入与并发保护
+
+推荐 agent 使用 `upsert_worldbook_entry` / `upsert_worldbook_entries`，只提交少量核心字段：
+
+```json
+{
+  "project_id": "project_xxx",
+  "comment": "原初异质",
+  "keys": ["原初异质", "异质", "根源力量"],
+  "content": "原初异质，没有人知道它从何而来……"
+}
+```
+
+MCP 会自动补全完整条目结构、默认位置、递归保护、启用状态等字段，并将 draft 拆分保存到 `.worldbook/draft/*.json`。默认按 `comment` 更新，避免不同条目因共享关键词而误合并；确需按关键词匹配旧条目时可设置 `match_by_keys: true`。Project 带有 `revision`，写入会在同一 MCP 进程内按 project 串行化；高并发 agent 可传 `expected_revision` 做冲突检测。
+
+角色卡同样推荐用简化字段：
+
+```json
+{
+  "project_id": "project_xxx",
+  "name": "孢子",
+  "first_mes": "……",
+  "alternate_greetings": ["……"],
+  "include_worldbook": true
+}
+```
+
+导出角色卡时，同一角色的 `character_basic` 与 `character_personality` 会自动聚合为同一个内嵌世界书条目。
 
 ## Tools 一览
 
@@ -74,6 +105,7 @@ MCP 不直接理解长文本、不替主 AI 搜索网页、不自动脑补设定
 
 - `get_worldbook_workflow`：根据任务类型返回推荐 tool 流程。`wants_character_card=true` 时会自动追加角色卡流程。
 - `get_tool_usage_guide`：查询某个 tool 的用途、调用时机、必填字段、示例输入、常见错误和下一步。
+- `init_project`：显式初始化当前工作区项目，返回 `project_id`、`revision` 与 `.worldbook` 路径；已有项目可用 `if_exists` 控制复用或覆盖。
 - `list_projects`：列出本地保存的 MCP 项目。
 - `get_project`：查看项目详情或摘要。
 - `get_entry_template`：返回世界书条目模板。
@@ -93,18 +125,17 @@ MCP 不直接理解长文本、不替主 AI 搜索网页、不自动脑补设定
 ### 世界书构建
 
 - `plan_worldbook_entries`：根据提取结果规划条目表。
-- `create_worldbook_draft_template`：根据规划表生成可填充草稿模板。
-- `draft_worldbook_entries`：保存世界书草稿。
+- `upsert_worldbook_entry`：用简化输入新增/更新单个条目，MCP 自动补全完整配置。
+- `upsert_worldbook_entries`：用简化输入批量新增/更新多个条目。
 - `update_worldbook_draft_entries`：按 index 或 comment 局部更新草稿条目。
 - `validate_worldbook_draft`：校验草稿配置和内容问题。
 - `generate_worldbook_json`：导出 SillyTavern 世界书 JSON。
 
 ### 角色卡
 
-- `create_character_card_template`：创建基础角色卡配置模板。
-- `submit_character_card_config`：保存角色卡配置。
+- `upsert_character_profile`：用简化字段创建/更新角色卡人设配置，MCP 自动补齐 `chara_card_v3` 默认字段。
 - `validate_character_card_config`：校验角色卡配置和嵌入世界书。
-- `generate_character_card_json`：导出 `chara_card_v3` 角色卡 JSON。
+- `generate_character_card_json`：导出 `chara_card_v3` 角色卡 JSON；同一角色的 `character_basic` 与 `character_personality` 会合并为同一个内嵌世界书条目。
 - `query_character_card`：查询角色卡概要、开场白或内嵌世界书条目。
 
 ### MVU / ZOD
@@ -131,17 +162,18 @@ MCP 不直接理解长文本、不替主 AI 搜索网页、不自动脑补设定
 ### 查询与 Patch
 
 - `query_worldbook`：查询已有世界书 JSON，支持 `brief`、`uid`、`search`、`stats`。
-- `import_worldbook_json`：把 `output/exports/` 中已有世界书导入为 MCP project draft。
+- `import_worldbook_json`：把当前工作目录内已有世界书 JSON 导入为 MCP project draft。
 - `create_worldbook_patch`：创建修改计划，不直接写文件。
 - `preview_worldbook_patch`：预览 patch diff 和校验结果。
 - `apply_worldbook_patch`：应用 patch，自动校验，可备份并导出新 JSON。
 
-## 输出目录
+## 工作区与输出目录
 
-- `output/projects/`：保存 MCP 项目状态。
-- `output/exports/`：保存导出的 SillyTavern 世界书 JSON。
-- `output/exports/backups/`：保存 patch 前的备份。
-- `output/exports/cards/`：保存导出的 SillyTavern 角色卡 JSON。
+- `.worldbook/project.json`：保存当前工作区 MCP 项目元数据。
+- `.worldbook/draft/*.json`：按条目拆分保存世界书 draft，便于 AI/人工逐条编辑和审阅。
+- `.worldbook/backups/`：保存 patch 覆盖前的备份。
+- 默认导出路径：`generate_worldbook_json` / `generate_character_card_json` 未传 `output_path` 时，直接在当前工作目录生成 `<名称>.json`。
+- 自定义读写路径必须位于当前工作目录内，防止越界读取或覆盖任意文件。
 
 这些运行时文件默认被 `.gitignore` 忽略。
 

@@ -4,6 +4,7 @@ coverage/
 
 output/projects/
 output/exports/
+.worldbook/
 
 .env
 .env.*

@@ -8,14 +8,14 @@
 
 ```text
 get_worldbook_workflow（task_type=from_text）
+→ init_project（已有 project_id 可跳过）   # 空白目录/新项目起手
 → ingest_text_source                      # 保存原文
 → create_extraction_outline               # 拿提取模板
 → 主 AI 阅读原文，按模板抽取结构化事实
 → submit_extraction_result                # 提交事实
 → plan_worldbook_entries                  # 规划条目
-→ create_worldbook_draft_template         # 拿 draft 模板
-→ 主 AI 填写每条 draft.content
-→ draft_worldbook_entries                 # 保存 draft
+→ 主 AI 编写条目正文
+→ upsert_worldbook_entry / upsert_worldbook_entries  # 简化输入保存 draft
 → validate_worldbook_draft                # 校验
 → 如有问题：update_worldbook_draft_entries  # 局部修复
 → generate_worldbook_json                 # 导出
@@ -26,6 +26,7 @@ get_worldbook_workflow（task_type=from_text）
 
 ```text
 get_worldbook_workflow（task_type=from_web_research）
+→ init_project（已有 project_id 可跳过）   # 空白目录/新项目起手
 → 主 AI 在外部完成网页搜索（MCP 不联网）
 → 主 AI 整理搜索摘要 + facts
 → ingest_web_research                     # 保存摘要
@@ -33,9 +34,8 @@ get_worldbook_workflow（task_type=from_web_research）
 → 主 AI 从摘要中抽取结构化事实
 → submit_extraction_result
 → plan_worldbook_entries
-→ create_worldbook_draft_template
-→ 主 AI 填写 draft.content
-→ draft_worldbook_entries
+→ 主 AI 编写条目正文
+→ upsert_worldbook_entry / upsert_worldbook_entries
 → validate_worldbook_draft
 → generate_worldbook_json
 → query_worldbook
@@ -45,28 +45,26 @@ get_worldbook_workflow（task_type=from_web_research）
 
 ```text
 validate_worldbook_draft                  # 先把世界书 draft 跑通
-→ create_character_card_template          # 拿基础卡 config
-→ 主 AI 填写 first_mes 和 alternate_greetings
-→ submit_character_card_config
+→ 主 AI 编写 first_mes 和 alternate_greetings
+→ upsert_character_profile                # 简化字段保存角色卡配置
 → validate_character_card_config
 → generate_character_card_json
 → query_character_card
 ```
 
-角色卡生成前一定先完成世界书 draft，因为当前规范推荐 `description` 为空，角色信息全部放入内嵌世界书。
+角色卡生成前一定先完成世界书 draft，因为当前规范推荐 `description` 为空，角色信息全部放入内嵌世界书。导出角色卡时，同一角色的 `character_basic` 与 `character_personality` 会自动聚合为一个内嵌条目。
 
 ## 4. 生成带 MVU/ZOD 的角色卡
 
 ```text
 validate_worldbook_draft
-→ create_character_card_template
 → create_mvu_schema_template
 → 主 AI 调整 schema_script / initvar / update_rules
 → submit_mvu_config
 → validate_mvu_config
 → build_mvu_assets                        # 可选：预览将合并的资产
 → 主 AI 填写带 <StatusPlaceHolderImpl/> 的开场白
-→ submit_character_card_config
+→ upsert_character_profile
 → validate_character_card_config
 → generate_character_card_json            # 自动合并 MVU 条目、正则、Tavern Helper
 → query_character_card
@@ -78,14 +76,13 @@ validate_worldbook_draft
 
 ```text
 validate_worldbook_draft
-→ create_character_card_template
 → create_html_beautify_template
 → 主 AI 调整 statusbar.html 或 global.regex_scripts
 → submit_html_beautify_config
 → validate_html_beautify_config
 → build_html_beautify_assets              # 可选预览
 → 主 AI 填写带 <StatusPlaceHolderImpl/> 的开场白
-→ submit_character_card_config
+→ upsert_character_profile
 → validate_character_card_config
 → generate_character_card_json            # 自动合并 regex scripts
 → query_character_card
@@ -97,7 +94,6 @@ HTML 状态栏通常配合 MVU 使用，可以单独生成全局 regex assets。
 
 ```text
 validate_worldbook_draft
-→ create_character_card_template
 → create_mvu_schema_template              # EJS 必须先有 MVU
 → submit_mvu_config
 → validate_mvu_config
@@ -106,7 +102,7 @@ validate_worldbook_draft
 → submit_ejs_config
 → validate_ejs_config
 → build_ejs_entries                       # 可选预览
-→ submit_character_card_config
+→ upsert_character_profile
 → validate_character_card_config
 → generate_character_card_json            # 自动把 EJS entries 合并进内嵌世界书
 → query_character_card
@@ -122,7 +118,7 @@ EJS 规则：
 ## 7. 修改已有世界书
 
 ```text
-将目标 JSON 放入 output/exports/
+将目标 JSON 放在当前工作目录内
 → import_worldbook_json                   # 导入为 project draft
 → create_worldbook_patch                  # 创建修改计划（不写文件）
 → preview_worldbook_patch                 # 看 diff + 校验
@@ -130,11 +126,12 @@ EJS 规则：
 → query_worldbook
 ```
 
-`apply_worldbook_patch` 默认会在目标文件存在时备份到 `output/exports/backups/`，覆盖前要求 `overwrite=true`。校验失败时不会写文件。
+`apply_worldbook_patch` 默认会在目标文件存在时备份到 `.worldbook/backups/`，覆盖前要求 `overwrite=true`。校验失败时不会写文件。
 
 ## 输出位置
 
-- 世界书：`output/exports/`
-- 角色卡：`output/exports/cards/`
-- patch 备份：`output/exports/backups/`
-- 项目状态：`output/projects/`
+- 世界书：默认导出到当前工作目录的 `<名称>.json`
+- 角色卡：默认导出到当前工作目录的 `<角色名>.json`
+- patch 备份：`.worldbook/backups/`
+- 项目状态：`.worldbook/project.json`
+- draft 分片：`.worldbook/draft/*.json`

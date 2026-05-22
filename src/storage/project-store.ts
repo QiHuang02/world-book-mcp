@@ -4,6 +4,7 @@ import { ProjectSchema, type Project } from "../schemas/project.js";
 import { createId, nowIso } from "../utils/ids.js";
 import { safeJsonParse, toPrettyJson } from "../utils/json.js";
 import { PROJECTS_DIR } from "./path-policy.js";
+import { isWorkspaceProject, loadWorkspaceProjectIfMatches, writeWorkspaceProject } from "./workspace-store.js";
 
 export async function ensureStorage(): Promise<void> {
   await fs.mkdir(PROJECTS_DIR, { recursive: true });
@@ -13,35 +14,80 @@ function projectPath(projectId: string): string {
   return path.join(PROJECTS_DIR, `${projectId}.json`);
 }
 
-export async function createProject(name: string): Promise<Project> {
+export async function createProject(name: string, projectId?: string): Promise<Project> {
   await ensureStorage();
   const timestamp = nowIso();
   const project: Project = {
-    id: createId("project"),
+    id: projectId ?? createId("project"),
     name,
     sources: [],
     research: [],
     patches: [],
     pendingDecisions: [],
     recordedDecisions: [],
+    revision: 0,
     createdAt: timestamp,
     updatedAt: timestamp,
   };
-  await saveProject(project);
+  await writeProject(project);
   return project;
 }
 
 export async function loadProject(projectId: string): Promise<Project> {
+  const workspaceProject = await loadWorkspaceProjectIfMatches(projectId);
+  if (workspaceProject) return workspaceProject;
   await ensureStorage();
   const text = await fs.readFile(projectPath(projectId), "utf8");
   return ProjectSchema.parse(safeJsonParse(text));
 }
 
+const projectQueues = new Map<string, Promise<unknown>>();
+
 export async function saveProject(project: Project): Promise<Project> {
+  return enqueueProjectWrite(project.id, async () => {
+    const latest = await loadProjectIfExists(project.id);
+    const updated = { ...project, revision: (latest?.revision ?? project.revision ?? 0) + 1, updatedAt: nowIso() };
+    if (await isWorkspaceProject(project.id)) await writeWorkspaceProject(updated);
+    else await writeProject(updated);
+    return updated;
+  });
+}
+
+export async function updateProject(projectId: string, mutator: (project: Project) => Project | Promise<Project>, options: { expectedRevision?: number } = {}): Promise<Project> {
+  return enqueueProjectWrite(projectId, async () => {
+    const project = await loadProject(projectId);
+    if (options.expectedRevision !== undefined && project.revision !== options.expectedRevision) {
+      throw new Error(`project revision conflict: expected ${options.expectedRevision}, current ${project.revision}`);
+    }
+    const next = await mutator(project);
+    const updated = { ...next, id: project.id, revision: project.revision + 1, updatedAt: nowIso() };
+    if (await isWorkspaceProject(project.id)) await writeWorkspaceProject(updated);
+    else await writeProject(updated);
+    return updated;
+  });
+}
+
+async function writeProject(project: Project): Promise<void> {
   await ensureStorage();
-  const updated = { ...project, updatedAt: nowIso() };
-  await fs.writeFile(projectPath(updated.id), toPrettyJson(updated), "utf8");
-  return updated;
+  await fs.writeFile(projectPath(project.id), toPrettyJson(project), "utf8");
+}
+
+async function loadProjectIfExists(projectId: string): Promise<Project | undefined> {
+  try {
+    return await loadProject(projectId);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
+}
+
+function enqueueProjectWrite<T>(projectId: string, operation: () => Promise<T>): Promise<T> {
+  const previous = projectQueues.get(projectId) ?? Promise.resolve();
+  const next = previous.catch(() => undefined).then(operation);
+  projectQueues.set(projectId, next.finally(() => {
+    if (projectQueues.get(projectId) === next) projectQueues.delete(projectId);
+  }));
+  return next;
 }
 
 export async function loadOrCreateProject(projectId: string | undefined, fallbackName: string): Promise<Project> {
@@ -96,6 +142,7 @@ export function summarizeProject(project: Project, includeContent = false): unkn
     plan_count: project.plan?.length ?? 0,
     draft_count: project.draft?.length ?? 0,
     importedWorldbookPath: project.importedWorldbookPath,
+    revision: project.revision,
     patch_count: project.patches?.length ?? 0,
     patches: includeContent ? project.patches : project.patches?.map((patch) => ({ id: patch.id, operation_count: patch.operations.length, createdAt: patch.createdAt })),
     has_character_card_config: Boolean(project.characterCardConfig),

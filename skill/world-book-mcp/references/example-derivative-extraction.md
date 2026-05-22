@@ -185,14 +185,31 @@ AI 填充每章的 key_events / character_state_changes 等。
 }
 ```
 
-### `draft_worldbook_entries`
+### `upsert_worldbook_entries`
 
-把章节条目、文风条目、规划生成的世界观与角色条目合并提交：
+把章节条目、文风条目、规划生成的世界观与角色条目用简化字段合并提交；不要手写完整 SillyTavern entry JSON：
 
 ```json
 {
   "project_id": "project_xxx",
-  "entries": [<规划生成 + 章节 + 文风 全部条目>]
+  "entries": [
+    {
+      "comment": "里世界总纲",
+      "entry_type": "world_summary",
+      "keys": ["里世界", "表世界"],
+      "content": "里世界与表世界并存，异常地点通过门、升降机或废墟边界连接。",
+      "position": "before_char",
+      "order": 1
+    },
+    {
+      "comment": "纸越空鱼_基础设定",
+      "entry_type": "character_basic",
+      "keys": ["纸越空鱼", "空鱼"],
+      "content": "<character>\nname: 纸越空鱼\nidentity: 女大学生，里世界探索者\n</character>",
+      "position": "after_char",
+      "order": 10
+    }
+  ]
 }
 ```
 

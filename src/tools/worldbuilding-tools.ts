@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createWorldbuildingDesignTemplate, createWorldbuildingOutline, validateWorldbuildingDesign, validateWorldbuildingSummary } from "../core/worldbuilding.js";
 import { WorldbuildingSummarySchema } from "../schemas/project.js";
-import { loadProject, saveProject } from "../storage/project-store.js";
+import { loadProject, updateProject } from "../storage/project-store.js";
 import { toolText } from "./helpers.js";
 
 export function registerWorldbuildingTools(server: McpServer): void {
@@ -10,14 +10,13 @@ export function registerWorldbuildingTools(server: McpServer): void {
     project_id: z.string().optional(),
     title: z.string().optional(),
     world_type: z.enum(["A_realistic_background", "B_small_world", "C_large_world"]).optional(),
-  }, async (input) => toolText({ project_id: input.project_id, ...createWorldbuildingOutline(input), recommended_next_tool: "submit_worldbuilding_summary" }));
+  }, async (input) => toolText({ project_id: input.project_id, ...createWorldbuildingOutline(input) }));
 
   server.tool("submit_worldbuilding_summary", { project_id: z.string(), summary: WorldbuildingSummarySchema }, async (input) => {
-    const project = await loadProject(input.project_id);
     const summary = WorldbuildingSummarySchema.parse(input.summary);
-    await saveProject({ ...project, worldbuildingSummary: summary });
+    await updateProject(input.project_id, (project) => ({ ...project, worldbuildingSummary: summary }));
     const validation = validateWorldbuildingSummary(summary);
-    return toolText({ project_id: input.project_id, validation, recommended_next_tool: validation.ok ? "submit_extraction_result" : "validate_worldbuilding_summary" });
+    return toolText({ project_id: input.project_id, validation });
   });
 
   server.tool("validate_worldbuilding_summary", { project_id: z.string().optional(), summary: WorldbuildingSummarySchema.optional() }, async (input) => {
