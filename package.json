@@ -2,6 +2,10 @@
   "name": "@qihuang02/world-book-mcp",
   "version": "0.0.4-beta",
   "description": "MCP server for creating and validating SillyTavern world book JSON files.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/QiHuang02/world-book-mcp"
+  },
   "type": "module",
   "bin": {
     "world-book-mcp": "dist/index.js"
