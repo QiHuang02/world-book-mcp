@@ -49,7 +49,7 @@
 
 ## recursion
 
-所有条目必须显式开启双递归保护：
+通过 `upsert_worldbook_entry` / `upsert_worldbook_entries` 写入时，MCP 会自动开启双递归保护。底层 draft 中的完整结构必须满足：
 
 ```json
 {
@@ -91,6 +91,24 @@
 | 物品 / 能力 / 场景 / 事件 | 50-98 |
 | NPC / 其他 | 99-100 |
 
+## 简化条目输入
+
+推荐 agent 用 `upsert_worldbook_entry` / `upsert_worldbook_entries` 写条目，只提交核心字段：
+
+```json
+{
+  "project_id": "project_xxx",
+  "comment": "原初异质",
+  "keys": ["原初异质", "异质", "根源力量"],
+  "content": "原初异质，没有人知道它从何而来……",
+  "entry_type": "world_summary",
+  "position": "before_char",
+  "order": 1
+}
+```
+
+MCP 会自动补全 enabled、constant 默认值、递归保护、角色卡内嵌世界书 extensions 等字段，并把 draft 条目拆分保存到 `.worldbook/draft/*.json`。默认按 `comment` 更新，避免多个角色条目共享同一个角色名 key 时被误合并；需要按关键词匹配旧条目时显式传 `match_by_keys: true`。不要让 AI 手写完整 SillyTavern entry JSON。
+
 ## content 格式
 
 除世界观总纲和背景外，世界书条目建议使用 XML 包裹 YAML：
@@ -112,15 +130,13 @@ identity: 身份
 
 - `description` 为空。
 - 角色信息写入内嵌世界书 `character_book.entries`。
+- 用 `upsert_character_profile` 提交 `name`、`first_mes`、`alternate_greetings` 等简化字段，不要手写完整角色卡 config。
 - `first_mes` 必填。
 - `alternate_greetings` 是字符串数组。
 - `character_version` 默认 `1.0`。
 - `talkativeness` 默认 `0.5`。
 
-当前角色卡暂不自动生成：
-
-- EJS。
-- HTML 美化。
+导出角色卡时，同一角色的 `character_basic` 与 `character_personality` 会自动聚合成同一个内嵌世界书条目；MVU、HTML、EJS 资产会按配置自动合并。
 
 ## MVU / ZOD 配置规则
 
@@ -218,6 +234,6 @@ EJS 规则：
 
 为了避免 MCP 读取或覆盖任意文件：
 
-- 世界书读取/导出限制在 `output/exports/`。
-- 角色卡读取/导出限制在 `output/exports/cards/`。
-- patch 备份限制在 `output/exports/backups/`。
+- 世界书读取/导出限制在当前工作目录内；默认导出到 `<名称>.json`。
+- 角色卡读取/导出限制在当前工作目录内；默认导出到 `<角色名>.json`。
+- patch 备份限制在 `.worldbook/backups/`。

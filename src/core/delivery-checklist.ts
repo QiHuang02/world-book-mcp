@@ -32,7 +32,7 @@ export function createDeliveryChecklist(input: { project: Project; export_target
 
   // 世界书 draft
   if (!input.project.draft || input.project.draft.length === 0) {
-    items.push({ section: "worldbook_draft", status: input.export_target === "worldbook" ? "blocking" : "warning", message: "项目尚未保存世界书 draft", related_tools: ["draft_worldbook_entries", "create_worldbook_draft_template"] });
+    items.push({ section: "worldbook_draft", status: input.export_target === "worldbook" ? "blocking" : "warning", message: "项目尚未保存世界书 draft", related_tools: ["upsert_worldbook_entry", "upsert_worldbook_entries"] });
   } else {
     items.push({ section: "worldbook_draft", status: review.sections.worldbook?.ok ? "ok" : "blocking", message: review.sections.worldbook?.ok ? "世界书 draft 校验通过" : "世界书 draft 存在阻塞性错误", related_tools: ["validate_worldbook_draft", "update_worldbook_draft_entries"] });
   }
@@ -40,7 +40,7 @@ export function createDeliveryChecklist(input: { project: Project; export_target
   // 角色卡
   if (input.export_target === "character_card") {
     if (!input.project.characterCardConfig) {
-      items.push({ section: "character_card", status: "blocking", message: "项目尚未保存角色卡配置", related_tools: ["create_character_card_template", "submit_character_card_config"] });
+      items.push({ section: "character_card", status: "blocking", message: "项目尚未保存角色卡配置", related_tools: ["upsert_character_profile"] });
     } else {
       items.push({ section: "character_card", status: review.sections.character_card?.ok ? "ok" : "blocking", message: review.sections.character_card?.ok ? "角色卡配置通过校验" : "角色卡配置存在错误", related_tools: ["validate_character_card_config", "validate_greetings"] });
     }

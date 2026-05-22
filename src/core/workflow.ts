@@ -26,6 +26,7 @@ export interface WorkflowInput {
 export function getWorkflow(input: WorkflowInput): { workflow: string[]; notes: string[] } {
   const commonNotes = [
     "生成 JSON 前必须调用 validate_worldbook_draft",
+    "推荐用 upsert_worldbook_entry / upsert_worldbook_entries 写条目，避免手写完整 JSON",
     "网页搜索由宿主 AI 完成，MCP 只接收搜索摘要",
   ];
   if (input.wants_html && !input.wants_character_card) {
@@ -64,7 +65,7 @@ export function getWorkflow(input: WorkflowInput): { workflow: string[]; notes: 
           "plan_worldbook_entries",
           "create_worldbook_draft_template",
           "get_entry_template",
-          "draft_worldbook_entries",
+          "upsert_worldbook_entries",
           "validate_worldbook_draft",
           "lint_project_content",
           "create_final_review_report",
@@ -82,7 +83,7 @@ export function getWorkflow(input: WorkflowInput): { workflow: string[]; notes: 
           "plan_worldbook_entries",
           "create_worldbook_draft_template",
           "get_entry_template",
-          "draft_worldbook_entries",
+          "upsert_worldbook_entries",
           "validate_worldbook_draft",
           "lint_project_content",
           "create_final_review_report",
@@ -91,7 +92,7 @@ export function getWorkflow(input: WorkflowInput): { workflow: string[]; notes: 
       };
     case "item_ability_equipment":
       return {
-        workflow: withCharacterCard(input, ["get_entry_template", "draft_worldbook_entries", "validate_worldbook_draft", "lint_project_content", "create_final_review_report", "generate_worldbook_json"]),
+        workflow: withCharacterCard(input, ["get_entry_template", "upsert_worldbook_entries", "validate_worldbook_draft", "lint_project_content", "create_final_review_report", "generate_worldbook_json"]),
         notes: ["物品/能力/装备条目应保持 XML 包裹 YAML，并按触发策略设置 keys", ...commonNotes],
       };
     case "style_extraction":
@@ -101,7 +102,7 @@ export function getWorkflow(input: WorkflowInput): { workflow: string[]; notes: 
       };
     case "chapter_extraction":
       return {
-        workflow: ["ingest_text_source", "create_chapter_extraction_outline", "submit_extraction_result", "plan_worldbook_entries", "draft_worldbook_entries", "validate_worldbook_draft"],
+        workflow: ["ingest_text_source", "create_chapter_extraction_outline", "submit_extraction_result", "plan_worldbook_entries", "upsert_worldbook_entries", "validate_worldbook_draft"],
         notes: ["章节提取应保留事件因果和角色状态变化，避免流水账", ...commonNotes],
       };
     case "modify_existing":
@@ -130,7 +131,7 @@ function extractionWorkflow(sourceTool: "ingest_text_source" | "ingest_web_resea
     "plan_worldbook_entries",
     "create_worldbook_draft_template",
     "get_entry_template",
-    "draft_worldbook_entries",
+    "upsert_worldbook_entries",
     "validate_worldbook_draft",
     "lint_project_content",
     "create_final_review_report",
@@ -143,11 +144,10 @@ function withCharacterCard(input: WorkflowInput, workflow: string[]): string[] {
   if (!input.wants_character_card) return workflow;
   return [
     ...workflow,
-    "create_character_card_template",
+    "upsert_character_profile",
     ...(input.wants_mvu ? ["create_mvu_schema_template", "submit_mvu_config", "validate_mvu_config", "build_mvu_assets"] : []),
     ...(input.wants_html ? ["create_html_beautify_template", "submit_html_beautify_config", "validate_html_beautify_config", "build_html_beautify_assets"] : []),
     ...(input.wants_ejs ? ["create_ejs_template", "submit_ejs_config", "validate_ejs_config", "build_ejs_entries"] : []),
-    "submit_character_card_config",
     "validate_character_card_config",
     "generate_character_card_json",
     "query_character_card",

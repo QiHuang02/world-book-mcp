@@ -4,7 +4,7 @@ import { getWorkflow } from "../src/core/workflow.js";
 describe("getWorkflow", () => {
   it("appends character card tools when requested", () => {
     const result = getWorkflow({ task_type: "from_text", wants_character_card: true });
-    expect(result.workflow).toContain("create_character_card_template");
+    expect(result.workflow).toContain("upsert_character_profile");
     expect(result.workflow).toContain("generate_character_card_json");
   });
 

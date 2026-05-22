@@ -32,6 +32,7 @@ export const WorldbookDraftEntrySchema = z.object({
   keys: z.array(z.string()).default([]),
   secondaryKeys: z.array(z.string()).default([]),
   content: z.string().default(""),
+  characterName: z.string().optional(),
   constant: z.boolean(),
   position: PositionNameSchema,
   order: z.number(),
@@ -50,6 +51,38 @@ export const WorldbookEntryPlanSchema = z.object({
   constant: z.boolean(),
   keys: z.array(z.string()).default([]),
   reason: z.string(),
+});
+
+export const SimplifiedWorldbookEntryInputSchema = z.object({
+  comment: z.string().min(1),
+  content: z.string().default(""),
+  character_name: z.string().optional(),
+  characterName: z.string().optional(),
+  keys: z.array(z.string()).default([]),
+  secondary_keys: z.array(z.string()).optional(),
+  secondaryKeys: z.array(z.string()).optional(),
+  entry_type: EntryTypeSchema.optional(),
+  entryType: EntryTypeSchema.optional(),
+  position: PositionNameSchema.optional(),
+  order: z.number().optional(),
+  constant: z.boolean().optional(),
+  enabled: z.boolean().optional(),
+  depth: z.number().int().min(0).optional(),
+  scan_depth: z.number().int().min(0).nullable().optional(),
+  scanDepth: z.number().int().min(0).nullable().optional(),
+});
+
+export const UpsertWorldbookEntryInputSchema = SimplifiedWorldbookEntryInputSchema.extend({
+  project_id: z.string(),
+  expected_revision: z.number().int().nonnegative().optional(),
+  match_by_keys: z.boolean().default(false),
+});
+
+export const UpsertWorldbookEntriesInputSchema = z.object({
+  project_id: z.string(),
+  entries: z.array(SimplifiedWorldbookEntryInputSchema).min(1),
+  expected_revision: z.number().int().nonnegative().optional(),
+  match_by_keys: z.boolean().default(false),
 });
 
 export const DraftWorldbookEntriesInputSchema = z.object({

@@ -1,6 +1,6 @@
 ---
 name: world-book-mcp
-description: Use the world-book-mcp MCP server to author SillyTavern world books, chara_card_v3 character cards, MVU/ZOD variable systems, HTML status-bar beautification, and EJS dynamic content. Invoke this skill whenever the user wants to build, modify, validate, query, import, or export SillyTavern world books or character cards (single, multi, worldbook-only, derivative novel extraction, item/equipment, style profile, chapter outline, content lint), or whenever the user mentions tools like get_worldbook_workflow, ingest_text_source, plan_worldbook_entries, generate_worldbook_json, generate_character_card_json, request_user_decision.
+description: Use the world-book-mcp MCP server to author SillyTavern world books, chara_card_v3 character cards, MVU/ZOD variable systems, HTML status-bar beautification, and EJS dynamic content. Invoke this skill whenever the user wants to build, modify, validate, query, import, or export SillyTavern world books or character cards (single, multi, worldbook-only, derivative novel extraction, item/equipment, style profile, chapter outline, content lint), or whenever the user mentions tools like init_project, upsert_worldbook_entry, upsert_worldbook_entries, upsert_character_profile, get_worldbook_workflow, ingest_text_source, plan_worldbook_entries, generate_worldbook_json, generate_character_card_json, request_user_decision.
 ---
 
 # world-book-mcp 使用指南
@@ -32,7 +32,7 @@ description: Use the world-book-mcp MCP server to author SillyTavern world books
 
 - 给出稳定的工作流路由。
 - 持久化原始材料、结构化事实、世界书 draft、角色卡 config、MVU/HTML/EJS config。
-- 生成可填写的 draft 模板与 entry 模板。
+- 接收简化条目/角色卡输入，自动补全完整 draft entry 与角色卡默认字段。
 - 校验配置合法性、内容禁词与文风问题。
 - 导出符合 SillyTavern 规范的最终 JSON。
 - 安全地查询、导入、patch 已有 JSON。
@@ -56,7 +56,7 @@ description: Use the world-book-mcp MCP server to author SillyTavern world books
 
 ## 完整工具清单
 
-下列分组覆盖全部已注册的 76 个 MCP 工具。
+下列分组覆盖当前对 agent 公开推荐的 MCP 工具。底层全量 draft/config 提交逻辑已降级为内部/兼容层，默认不要引导 agent 手写完整 JSON。
 
 ### 元能力 / 路由
 
@@ -72,6 +72,7 @@ description: Use the world-book-mcp MCP server to author SillyTavern world books
 
 ### 项目与素材
 
+- `init_project` — 显式初始化当前工作区 project，适合空白目录首次使用，返回 `project_id`、`revision` 与 `.worldbook` 路径；已有项目用 `if_exists` 控制复用/覆盖。
 - `list_projects` — 列出本地保存的 MCP project。
 - `get_project` — 查看 project 状态摘要或全量。
 - `ingest_text_source` — 保存用户文本素材。
@@ -106,12 +107,12 @@ description: Use the world-book-mcp MCP server to author SillyTavern world books
 
 - `create_worldbook_entry_plan` — 综合 extraction + 卡型生成完整条目表。
 - `validate_worldbook_entry_plan` — 校验条目表 position / order / keys。
-- `create_worldbook_draft_template` — 按 plan 生成可填写的 draft 模板。
-- `draft_worldbook_entries` — 保存 draft。
+- `upsert_worldbook_entry` — 用简化输入新增/更新单个世界书条目，MCP 自动补全完整配置并写入 `.worldbook/draft/*.json`；默认按 `comment` 更新，必要时可设 `match_by_keys=true`。
+- `upsert_worldbook_entries` — 用简化输入批量新增/更新世界书条目，同样默认按 `comment` 匹配。
 - `update_worldbook_draft_entries` — 按 index 或 comment 局部更新 draft。
 - `validate_worldbook_draft` — 校验 draft 配置和内容。
 - `generate_worldbook_json` — 导出独立 SillyTavern 世界书 JSON。
-- `import_worldbook_json` — 把 `output/exports/` 已有 JSON 导入为 project draft。
+- `import_worldbook_json` — 把当前工作目录内已有 JSON 导入为 project draft。
 - `create_worldbook_patch` — 创建修改计划（不写文件）。
 - `preview_worldbook_patch` — 预览 patch diff 与校验。
 - `apply_worldbook_patch` — 应用 patch、自动校验、可备份覆盖。
@@ -119,8 +120,7 @@ description: Use the world-book-mcp MCP server to author SillyTavern world books
 
 ### 角色卡
 
-- `create_character_card_template` — 创建基础角色卡 config 模板。
-- `submit_character_card_config` — 保存角色卡 config。
+- `upsert_character_profile` — 用简化字段创建/更新角色卡人设配置，MCP 自动补齐 `chara_card_v3` 默认字段。
 - `validate_character_card_config` — 校验角色卡 config 与嵌入世界书。
 - `validate_greetings` — 单独校验 first_mes 与 alternate_greetings。
 - `generate_character_card_json` — 导出 chara_card_v3 角色卡 JSON（自动合并 MVU / HTML / EJS）。
@@ -181,8 +181,9 @@ description: Use the world-book-mcp MCP server to author SillyTavern world books
               （或 submit_derivative_extraction_outline + sync_extraction=true）
    │
    ▼
-MCP draft  ─►  plan_worldbook_entries → create_worldbook_draft_template
-              → draft_worldbook_entries → validate_worldbook_draft
+MCP draft  ─►  plan_worldbook_entries
+              → upsert_worldbook_entry / upsert_worldbook_entries
+              → validate_worldbook_draft
    │
    ▼
 最终 JSON  ─►  generate_worldbook_json
@@ -193,22 +194,23 @@ MCP draft  ─►  plan_worldbook_entries → create_worldbook_draft_template
 
 ## 调用习惯
 
-1. 每个新任务先 `classify_worldbook_task` + `get_worldbook_workflow`。
+1. 每个新任务先 `classify_worldbook_task` + `get_worldbook_workflow`；空白目录/新项目先 `init_project`。
 2. 任何字段拿不准就 `get_tool_usage_guide`，不要靠猜。
 3. 原始材料用 `ingest_*`，结构化事实用 `submit_extraction_result`，**两者绝不混用**。
-4. 世界书 draft 必须先 `validate_worldbook_draft`，再 `generate_worldbook_json`。
-5. 角色卡生成前应先完成世界书 draft —— 当前规范推荐 `description` 为空，角色信息全部进内嵌世界书。
-6. 修改已有世界书：`import_worldbook_json` → `create_worldbook_patch` → `preview_worldbook_patch` → `apply_worldbook_patch`，**先 preview 再 apply**。
-7. 启用 MVU 时开场白末尾必须含 `<StatusPlaceHolderImpl/>`。
-8. 启用 HTML 状态栏一般要同时启用 MVU。EJS 必须依赖 MVU，变量路径必须以 `stat_data` 开头。
-9. 想强制硬闸门：`generate_*_json` 设 `strict_review: true`，未通过 `create_delivery_checklist` 就拒绝导出。
+4. 写世界书条目优先用 `upsert_worldbook_entry` / `upsert_worldbook_entries`，不要手写完整 SillyTavern entry JSON。
+5. 世界书 draft 必须先 `validate_worldbook_draft`，再 `generate_worldbook_json`。
+6. 角色卡生成前应先完成世界书 draft，并用 `upsert_character_profile` 写角色卡字段；当前规范推荐 `description` 为空，角色信息全部进内嵌世界书。
+7. 修改已有世界书：`import_worldbook_json` → `create_worldbook_patch` → `preview_worldbook_patch` → `apply_worldbook_patch`，**先 preview 再 apply**。
+8. 启用 MVU 时开场白末尾必须含 `<StatusPlaceHolderImpl/>`。
+9. 启用 HTML 状态栏一般要同时启用 MVU。EJS 必须依赖 MVU，变量路径必须以 `stat_data` 开头。
+10. 想强制硬闸门：`generate_*_json` 设 `strict_review: true`，未通过 `create_delivery_checklist` 就拒绝导出。
 
 ## 常见错误与红线
 
 - ❌ 把整篇原文塞进 `submit_extraction_result.characters/world` —— 应该先 `ingest_text_source` 保存原文，再提交结构化事实。
-- ❌ 把 `create_worldbook_draft_template` 返回的 draft 直接当成 SillyTavern JSON 导入 —— 必须先 `generate_worldbook_json`。
+- ❌ 让 AI 手写完整 SillyTavern entry JSON —— 应使用 `upsert_worldbook_entry` / `upsert_worldbook_entries` 提交简化字段，由 MCP 补全结构。
 - ❌ `constant=false`（绿灯）的条目没填 `keys` —— 绿灯条目必须有触发关键字。
-- ❌ 角色卡 `description` 写大量人设 —— 当前规范要求 `description` 为空，所有人设进内嵌世界书。
+- ❌ 角色卡 `description` 写大量人设 —— 当前规范要求 `description` 为空，所有人设进内嵌世界书；角色卡字段用 `upsert_character_profile` 更新。
 - ❌ EJS 用 `const` / `let` 读阶段变量 —— 应该用 `var` + `typeof`，避免重复声明报错；并且 `getwi('条目名')` 必须 `await`。
 - ❌ 状态栏 HTML 用全局选择器 `body` / `html` / `*` —— 必须用作用域 class（如 `.wbm-statusbar`），否则会污染整个 SillyTavern 界面。
 - ❌ 跳过决策直接走默认值 —— 用户描述模糊时先 `classify_worldbook_task` 拿 `suggested_decisions`，再 `request_user_decision` + `record_user_decision`。

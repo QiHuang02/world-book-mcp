@@ -7,12 +7,12 @@ describe("path policy", () => {
   });
 
   it("accepts relative export paths", () => {
-    expect(resolveReadableWorldbookPath("demo.json").replace(/\\/g, "/")).toContain("/output/exports/demo.json");
+    expect(resolveReadableWorldbookPath("demo.json").replace(/\\/g, "/")).toContain("/world-book-mcp/demo.json");
   });
 
-  it("creates backup paths inside backups directory", () => {
+  it("creates backup paths inside workspace backups directory", () => {
     const backup = resolveBackupPath("demo.json", new Date("2026-01-01T00:00:00.000Z")).replace(/\\/g, "/");
-    expect(backup).toContain("/output/exports/backups/demo.2026-01-01T00-00-00-000Z.bak.json");
+    expect(backup).toContain("/world-book-mcp/.worldbook/backups/demo.2026-01-01T00-00-00-000Z.bak.json");
   });
 
   it("rejects card paths outside cards directory", () => {

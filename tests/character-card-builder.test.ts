@@ -32,12 +32,25 @@ const draft: WorldbookDraftEntry[] = [
   {
     comment: "角色A_基础设定",
     entryType: "character_basic",
-    keys: [],
+    keys: ["角色A"],
     secondaryKeys: [],
-    content: "<character>\nname: 角色A\n</character>",
+    content: "<character>\nname: 角色A\n基础: 设定\n</character>",
     constant: true,
     position: "after_char",
     order: 10,
+    enabled: true,
+    preventRecursion: true,
+    excludeRecursion: true,
+  },
+  {
+    comment: "角色A_性格设定",
+    entryType: "character_personality",
+    keys: ["A性格"],
+    secondaryKeys: [],
+    content: "性格: 冷静。",
+    constant: true,
+    position: "after_char",
+    order: 11,
     enabled: true,
     preventRecursion: true,
     excludeRecursion: true,
@@ -51,6 +64,10 @@ describe("buildCharacterCardJson", () => {
     expect(card.spec_version).toBe("3.0");
     expect(card.data.name).toBe("角色A");
     expect(card.data.character_book.entries).toHaveLength(1);
+    expect(card.data.character_book.entries[0].comment).toBe("角色A");
+    expect(card.data.character_book.entries[0].keys).toEqual(["角色A", "A性格"]);
+    expect(card.data.character_book.entries[0].content).toContain("基础: 设定");
+    expect(card.data.character_book.entries[0].content).toContain("性格: 冷静");
     expect(card.data.character_book.entries[0].extensions.prevent_recursion).toBe(true);
   });
 

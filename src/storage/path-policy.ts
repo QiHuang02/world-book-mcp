@@ -3,9 +3,9 @@ import path from "node:path";
 export const ROOT_DIR = process.cwd();
 export const OUTPUT_DIR = path.resolve(ROOT_DIR, "output");
 export const PROJECTS_DIR = path.resolve(OUTPUT_DIR, "projects");
-export const EXPORTS_DIR = path.resolve(OUTPUT_DIR, "exports");
-export const BACKUPS_DIR = path.resolve(EXPORTS_DIR, "backups");
-export const CARDS_DIR = path.resolve(EXPORTS_DIR, "cards");
+export const EXPORTS_DIR = path.resolve(ROOT_DIR);
+export const BACKUPS_DIR = path.resolve(ROOT_DIR, ".worldbook", "backups");
+export const CARDS_DIR = path.resolve(ROOT_DIR);
 
 export function assertInside(baseDir: string, candidate: string): string {
   const resolvedBase = path.resolve(baseDir);
@@ -24,8 +24,8 @@ export function resolveExportPath(outputPath: string | undefined, fallbackName: 
 }
 
 export function resolveReadableWorldbookPath(inputPath: string): string {
-  const resolved = path.isAbsolute(inputPath) ? inputPath : path.resolve(EXPORTS_DIR, inputPath);
-  return assertInside(EXPORTS_DIR, resolved);
+  const resolved = path.isAbsolute(inputPath) ? inputPath : path.resolve(ROOT_DIR, inputPath);
+  return assertInside(ROOT_DIR, resolved);
 }
 
 export function resolveBackupPath(originalPath: string, timestamp = new Date()): string {
@@ -42,10 +42,35 @@ export function resolveCardExportPath(outputPath: string | undefined, fallbackNa
 }
 
 export function resolveReadableCardPath(inputPath: string): string {
-  const resolved = path.isAbsolute(inputPath) ? inputPath : path.resolve(CARDS_DIR, inputPath);
-  return assertInside(CARDS_DIR, resolved);
+  const resolved = path.isAbsolute(inputPath) ? inputPath : path.resolve(ROOT_DIR, inputPath);
+  return assertInside(ROOT_DIR, resolved);
 }
 
 export function sanitizeFilename(name: string): string {
   return name.replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_").trim() || "worldbook";
+}
+
+const fileWriteQueues = new Map<string, Promise<unknown>>();
+
+export async function writeTextFileSafely(filePath: string, content: string, options: { overwrite?: boolean } = {}): Promise<void> {
+  const resolved = path.resolve(filePath);
+  const overwrite = options.overwrite ?? false;
+  if (!overwrite) {
+    await import("node:fs/promises").then(async (fs) => {
+      await fs.mkdir(path.dirname(resolved), { recursive: true });
+      await fs.writeFile(resolved, content, { encoding: "utf8", flag: "wx" });
+    });
+    return;
+  }
+
+  const previous = fileWriteQueues.get(resolved) ?? Promise.resolve();
+  const next = previous.catch(() => undefined).then(async () => {
+    const fs = await import("node:fs/promises");
+    await fs.mkdir(path.dirname(resolved), { recursive: true });
+    await fs.writeFile(resolved, content, "utf8");
+  });
+  fileWriteQueues.set(resolved, next.finally(() => {
+    if (fileWriteQueues.get(resolved) === next) fileWriteQueues.delete(resolved);
+  }));
+  return next;
 }
