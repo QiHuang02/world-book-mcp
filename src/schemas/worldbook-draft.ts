@@ -75,6 +75,8 @@ export const CreateWorldbookDraftTemplateInputSchema = z.object({
   order: z.number().optional(),
   constant: z.boolean().optional(),
   enabled: z.boolean().optional(),
+  scan_depth: z.number().int().min(0).nullable().optional(),
+  scanDepth: z.number().int().min(0).nullable().optional(),
 });
 
 export const CreateWorldbookDraftEntryInputSchema = CreateWorldbookDraftTemplateInputSchema.extend({

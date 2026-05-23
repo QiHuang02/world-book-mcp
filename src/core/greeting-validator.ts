@@ -18,6 +18,7 @@ const USER_PRESET_PATTERNS = [
   { pattern: /你(?:穿着|长着|有着|拥有|露出|坐在自己的房间|躺在床上|刚刚醒来)/, message: "开场白疑似预设 user 外貌、服装、动作或所在房间" },
   { pattern: /<user>(?:是|已经|正在|穿着|长着|拥有)/i, message: "开场白疑似预设 <user> 的状态或行动" },
   { pattern: /你(?:是个|是一个|作为)(?:男|女|少年|少女|学生|老师|贵族|平民)/, message: "开场白疑似预设 user 身份或性别" },
+  { pattern: /你(?:回答|走上前|伸手|点头|摇头|跟着|只能|只好|不得不|必须)/, message: "开场白疑似预设 user 后续行动或选择" },
 ];
 
 export function validateGreetings(input: { config: CharacterCardConfig; mvu_enabled?: boolean }): GreetingValidationResult {

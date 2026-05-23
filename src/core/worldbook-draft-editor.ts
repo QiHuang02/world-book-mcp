@@ -43,6 +43,8 @@ export function createWorldbookDraftTemplate(input: CreateWorldbookDraftTemplate
   const entryType = input.entryType ?? input.entry_type ?? "other";
   const characterName = input.characterName ?? input.character_name;
   const keySeed = characterName?.trim() || comment;
+  const constant = input.constant ?? true;
+  const scanDepth = input.scanDepth ?? input.scan_depth ?? (!constant ? 2 : undefined);
   return {
     comment,
     entryType,
@@ -50,10 +52,11 @@ export function createWorldbookDraftTemplate(input: CreateWorldbookDraftTemplate
     secondaryKeys: [],
     content: "",
     ...(characterName?.trim() ? { characterName: characterName.trim() } : {}),
-    constant: input.constant ?? true,
+    constant,
     position: input.position ?? "before_char",
     order: input.order ?? defaultOrderForEntryType(entryType),
     enabled: input.enabled ?? true,
+    ...(scanDepth === null || scanDepth === undefined ? {} : { scanDepth }),
     preventRecursion: true,
     excludeRecursion: true,
   };
@@ -190,9 +193,9 @@ function defaultOrderForEntryType(entryType: WorldbookDraftEntry["entryType"]): 
     case "world_summary":
       return 1;
     case "background":
-      return 10;
+      return 2;
     case "character_overview":
-      return 20;
+      return 4;
     case "character_basic":
       return 30;
     case "character_personality":

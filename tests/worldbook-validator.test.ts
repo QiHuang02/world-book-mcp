@@ -47,4 +47,10 @@ describe("validateWorldbookDraft", () => {
     const result = validateWorldbookDraft([makeEntry({ scanDepth: undefined })]);
     expect(result.warnings.some((issue) => issue.field === "scanDepth")).toBe(true);
   });
+
+  it("warns when a key contains comma-separated values", () => {
+    const result = validateWorldbookDraft([makeEntry({ keys: ["角色A,别名A"], scanDepth: 2 })]);
+    expect(result.valid).toBe(true);
+    expect(result.warnings.some((issue) => issue.message.includes("多个触发词"))).toBe(true);
+  });
 });

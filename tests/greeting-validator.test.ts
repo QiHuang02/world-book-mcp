@@ -34,4 +34,10 @@ describe("validateGreetings", () => {
     const result = validateGreetings({ config: makeConfig("清晨，角色A站在门口，看向你。"), mvu_enabled: true });
     expect(result.warnings.some((issue) => issue.message.includes("StatusPlaceHolderImpl"))).toBe(true);
   });
+
+  it("rejects user preset follow-up choices", () => {
+    const result = validateGreetings({ config: makeConfig("夜里，角色A站在门口，看向你。你只好点头跟着他离开。") });
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((issue) => issue.message.includes("后续行动"))).toBe(true);
+  });
 });

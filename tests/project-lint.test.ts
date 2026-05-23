@@ -47,4 +47,31 @@ describe("lintProjectContent", () => {
     expect(result.summary.scanned_target_count).toBeGreaterThan(1);
     expect(result.issues.some((issue) => issue.path.includes("first_mes"))).toBe(true);
   });
+
+  it("flags dash variants and common micro-expression cliches", () => {
+    const project: Project = {
+      id: "project_test",
+      name: "测试",
+      patches: [],
+      draft: [{
+        comment: "条目",
+        entryType: "other",
+        keys: ["条目"],
+        secondaryKeys: [],
+        content: "他嘴角上扬—眸光落在门边。",
+        constant: false,
+        position: "after_char",
+        order: 1,
+        enabled: true,
+        preventRecursion: true,
+        excludeRecursion: true,
+      }],
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    const result = lintProjectContent(project);
+    expect(result.ok).toBe(false);
+    expect(result.issues.some((issue) => issue.term === "—")).toBe(true);
+    expect(result.issues.some((issue) => issue.term === "嘴角上扬")).toBe(true);
+  });
 });

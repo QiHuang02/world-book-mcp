@@ -30,13 +30,19 @@ const FORBIDDEN_TERMS = [
   "喉结",
   "纽扣",
   "指节发白",
+  "嘴角上扬",
+  "勾唇",
+  "眸光",
+  "眼底",
   "——",
+  "—",
+  "–",
 ];
 
 const QUANTUM_TERMS = ["一丝", "一缕", "一抹", "些许", "微微", "隐约"];
 const PERCEPTION_TERMS = ["看起来", "听起来", "显得", "似乎", "仿佛", "好像"];
 const CONTRAST_TERMS = ["鲜明对比", "形成对比", "截然不同", "反差"];
-const MICRO_EXPRESSION_TERMS = ["弧度", "弯起嘴角", "翘起嘴角", "喉结", "指节发白", "咬住嘴唇"];
+const MICRO_EXPRESSION_TERMS = ["弧度", "弯起嘴角", "翘起嘴角", "嘴角上扬", "勾唇", "眸光", "眼底", "喉结", "指节发白", "咬住嘴唇"];
 const VOICE_TONE_TERMS = ["温柔的语气", "冰冷的声音", "沙哑地说", "低沉地说", "柔声说"];
 const EXTREME_EMOTION_TERMS = ["极度", "万分", "无比", "崩溃", "撕心裂肺"];
 const METAPHOR_TERMS = ["石子", "湖面", "涟漪", "拉满的弓", "琴弦", "闪电", "晨光", "星辰", "落叶"];

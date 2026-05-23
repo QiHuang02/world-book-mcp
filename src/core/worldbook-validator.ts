@@ -21,6 +21,7 @@ export interface ValidationResult {
 }
 
 const BAD_KEY_SEPARATORS = /[，、；;]/;
+const COMMA_IN_KEY = /,/;
 
 export function validateWorldbookDraft(entries: WorldbookDraftEntry[]): ValidationResult {
   const issues: ValidationIssue[] = [];
@@ -66,6 +67,9 @@ export function validateWorldbookDraft(entries: WorldbookDraftEntry[]): Validati
       }
       if (BAD_KEY_SEPARATORS.test(key)) {
         issues.push({ entry: entry.comment, field: "keys", severity: "error", message: `关键词包含中文或错误分隔符: ${key}`, suggestion: "使用数组或英文逗号分隔后的独立字符串" });
+      }
+      if (COMMA_IN_KEY.test(key)) {
+        issues.push({ entry: entry.comment, field: "keys", severity: "warning", message: `关键词疑似把多个触发词写在同一字符串中: ${key}`, suggestion: "请拆成数组中的多个独立字符串，例如 [\"A\", \"B\"]" });
       }
       const previousEntry = keySeen.get(normalizedKey);
       if (previousEntry && previousEntry !== entry.comment) {

@@ -45,6 +45,18 @@ describe("worldbook draft editor", () => {
     expect(entry.characterName).toBe("嬴政");
   });
 
+  it("defaults green draft templates to scanDepth 2", () => {
+    const entry = createWorldbookDraftTemplate({ comment: "场景", constant: false });
+
+    expect(entry.constant).toBe(false);
+    expect(entry.scanDepth).toBe(2);
+  });
+
+  it("uses order recommendations from config rules", () => {
+    expect(createWorldbookDraftTemplate({ comment: "背景", entry_type: "background" }).order).toBe(2);
+    expect(createWorldbookDraftTemplate({ comment: "速览", entry_type: "character_overview" }).order).toBe(4);
+  });
+
   it("updates multiple fields", () => {
     const entry = updateWorldbookDraftFields(createWorldbookDraftTemplate({ comment: "条目" }), {
       content: "内容",

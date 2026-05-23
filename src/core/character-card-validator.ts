@@ -31,6 +31,12 @@ export function validateCharacterCardConfig(input: {
   if (config.card.description.trim()) {
     warnings.push({ field: "card.description", severity: "warning", message: "当前规范建议 description 为空，角色信息放入世界书条目" });
   }
+  if (looksLikeLongSetting(config.card.personality)) {
+    warnings.push({ field: "card.personality", severity: "warning", message: "personality 中疑似包含大段人设，当前规范建议移入 character_personality 世界书条目" });
+  }
+  if (looksLikeLongSetting(config.card.scenario)) {
+    warnings.push({ field: "card.scenario", severity: "warning", message: "scenario 中疑似包含大段场景或背景设定，当前规范建议移入世界书条目" });
+  }
 
   const greetingValidation = validateGreetings({ config, mvu_enabled: input.mvuEnabled });
   errors.push(...greetingValidation.errors);
@@ -57,4 +63,9 @@ export function validateCharacterCardConfig(input: {
       greeting_count: 1 + config.card.alternate_greetings.length,
     },
   };
+}
+
+function looksLikeLongSetting(value: string): boolean {
+  const trimmed = value.trim();
+  return trimmed.length >= 120 || /<[^>]+>|角色档案|背景|关系|性格|经历|世界观/.test(trimmed);
 }

@@ -49,7 +49,7 @@
 
 ## recursion
 
-通过 `create_worldbook_draft_entry(s)` 创建切片模板时，MCP 会自动开启双递归保护。底层 draft 中的完整结构必须满足：
+通过 `create_worldbook_draft_entry` 或 `create_worldbook_draft_entries` 创建切片模板时，MCP 会自动开启双递归保护。底层 draft 中的完整结构必须满足：
 
 ```json
 {
@@ -88,6 +88,7 @@
 | 背景 / 区域 / 社会规则 | 2-3 |
 | 多角色速览 | 4 |
 | 角色基础 / 性格 | 10-45 |
+| 势力 / 阵营 | 40 |
 | 物品 / 能力 / 场景 / 事件 | 50-98 |
 | NPC / 其他 | 99-100 |
 
@@ -123,7 +124,7 @@
 }
 ```
 
-`create_worldbook_draft_entry(s)` 会自动补全 enabled、constant 默认值、递归保护等字段，并把 draft 条目拆分保存到 `.worldbook/draft/*.json`。`update_worldbook_draft_field(s)` 按 `comment` 定位并更新字段；导出前必须调用 `confirm_worldbook_draft_complete` 确认完整。
+`create_worldbook_draft_entry` / `create_worldbook_draft_entries` 会自动补全 enabled、constant 默认值、递归保护等字段，并把 draft 条目拆分保存到 `.worldbook/draft/*.json`。`update_worldbook_draft_field` 按 `comment` 更新单字段；`update_worldbook_draft_fields` 可一次更新同一条目的少量字段。导出前必须调用 `confirm_worldbook_draft_complete` 确认完整。
 
 ## content 格式
 
@@ -136,7 +137,7 @@ identity: 身份
 </character>
 ```
 
-不要把纯 JSON 直接写进 `content`。
+不要把纯 JSON 直接写进 `content`。世界书写作应先完成概念层设计，再把确认后的世界观、角色、物品、事件等拆成 draft 条目。
 
 ## 角色卡配置规则
 

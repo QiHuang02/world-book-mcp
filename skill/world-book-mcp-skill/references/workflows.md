@@ -37,8 +37,8 @@ MCP 不保存原始素材或网页摘要；需要持久化的成果写入结构�
 
 根据用户要交付的东西选择路径：
 
-- **纯世界书**：`create_worldbook_draft_entry(s) → update_worldbook_draft_field(s) → confirm_worldbook_draft_complete → generate_worldbook_json`。
-- **单人角色卡**：`create_worldbook_draft_entry(s) → update_worldbook_draft_field(s) → upsert_character_profile → confirm_character_card_draft_complete → generate_character_card_json`。
+- **纯世界书**：`create_worldbook_draft_entry` / `create_worldbook_draft_entries` → `update_worldbook_draft_field` / `update_worldbook_draft_fields` → `confirm_worldbook_draft_complete` → 内容与配置检查 → `generate_worldbook_json`。
+- **单人角色卡**：`create_worldbook_draft_entry` / `create_worldbook_draft_entries` → `update_worldbook_draft_field` / `update_worldbook_draft_fields` → `upsert_character_profile` → `validate_character_card_config` / `validate_greetings` → 内容与配置检查 → `generate_character_card_json`。
 - **多人角色卡**：角色条目独立分片，导出角色卡时按 `characterName/name/comment` 聚合。
 - **世界书 + 角色卡**：先导出/校验世界书 draft，再生成角色卡；必要时分别 `generate_worldbook_json` 与 `generate_character_card_json`。
 - **资产-only**：MVU/HTML/EJS 可先 `create_*_template → submit_*_config → build_*_assets` 预览，不一定导出角色卡。
@@ -64,7 +64,7 @@ MCP 不保存原始素材或网页摘要；需要持久化的成果写入结构�
 
 ### 第 5 层：增强资产
 
-判断是否需要：
+判断是否需要：用户未明确要求时，不主动追加 MVU、HTML 或 EJS。
 
 - **MVU/ZOD**：`create_mvu_schema_template → submit_mvu_config → validate_mvu_config → build_mvu_assets`。
 - **HTML 状态栏 / Regex scripts**：`create_html_beautify_template` 或 `create_html_regex_pair_template`，再 `submit_html_beautify_config` / `validate_regex_scripts`。
@@ -98,13 +98,14 @@ MCP 不保存原始素材或网页摘要；需要持久化的成果写入结构�
 → create_extraction_outline               # 可选：拿提取模板
 → submit_extraction_result                # 可选：保存结构化事实
 → 宿主 AI 按 skill 规则规划条目切片
-→ create_worldbook_draft_entry(s)          # 创建切片模板
+→ create_worldbook_draft_entry / create_worldbook_draft_entries # 创建切片模板
 → 对话助手 编写条目正文
-→ update_worldbook_draft_field(s)          # 逐字段填充 entry_type / keys / content 等
-→ confirm_worldbook_draft_complete         # 确认可合并
-→ 如有问题：update_worldbook_draft_field(s) # 局部修复
-→ generate_worldbook_json                 # 合并导出
-→ query_worldbook                         # 抽查
+→ update_worldbook_draft_field / update_worldbook_draft_fields   # 填充 entry_type / keys / content 等
+→ confirm_worldbook_draft_complete                               # 确认可合并
+→ lint_project_content / create_final_review_report              # 内容自查与配置检查
+→ 如有问题：update_worldbook_draft_field / update_worldbook_draft_fields # 局部修复
+→ generate_worldbook_json                                        # 合并导出；严格交付可设 strict_review=true
+→ query_worldbook                                                # 抽查
 ```
 
 ## 2. 从网页资料生成世界书
@@ -117,10 +118,11 @@ MCP 不保存原始素材或网页摘要；需要持久化的成果写入结构�
 → create_extraction_outline               # 可选
 → submit_extraction_result                # 可选：保存结构化事实
 → 宿主 AI 按 skill 规则规划条目切片
-→ create_worldbook_draft_entry(s)
+→ create_worldbook_draft_entry / create_worldbook_draft_entries
 → 对话助手 编写条目正文
-→ update_worldbook_draft_field(s)
+→ update_worldbook_draft_field / update_worldbook_draft_fields
 → confirm_worldbook_draft_complete
+→ lint_project_content / create_final_review_report
 → generate_worldbook_json
 → query_worldbook
 ```
@@ -131,8 +133,10 @@ MCP 不保存原始素材或网页摘要；需要持久化的成果写入结构�
 validate_worldbook_draft                  # 先把世界书 draft 跑通
 → 对话助手 编写 first_mes 和 alternate_greetings
 → upsert_character_profile                # 简化字段保存角色卡配置
+→ validate_greetings
 → validate_character_card_config
-→ generate_character_card_json
+→ lint_project_content / create_final_review_report
+→ generate_character_card_json            # 严格交付可设 strict_review=true
 → query_character_card
 ```
 

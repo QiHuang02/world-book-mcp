@@ -30,12 +30,20 @@ description: Use the world-book-mcp MCP server to author SillyTavern world books
 2. **再整理材料**
    - 用户给出长文本、本地文件或网页资料时，由宿主 AI 在对话内阅读、搜索、摘要并整理结构化事实。
    - MCP 只保存 project、draft、角色卡配置和导出产物；不保存原始素材或网页摘要。
+   - 世界观需求先做概念设计，再把确认后的设定条目化；不要把概念设计和 draft 写入混成一步。
    - 需要持久化的最终成果直接写入 `.worldbook/draft/*.json`。
 
 3. **最后写入与导出**
-   - 世界书条目先用 `create_worldbook_draft_entry(s)` 创建分片模板，再用 `update_worldbook_draft_field(s)` 逐字段填充。
+   - 世界书条目先用 `create_worldbook_draft_entry` / `create_worldbook_draft_entries` 创建分片模板，再用 `update_worldbook_draft_field` 更新单字段，或用 `update_worldbook_draft_fields` 一次更新同一条目的少量字段。
    - 角色卡字段用 `upsert_character_profile` 保存。
-   - 导出前先校验；需要严格交付时使用 `create_delivery_checklist` 或 `strict_review`。
+   - 导出前必须完成内容自查与配置检查；需要严格交付时使用 `lint_project_content`、`create_final_review_report`、`create_delivery_checklist` 或 `strict_review`。
+
+## 全局约束
+
+- **世界观设计与世界书条目化分层**：有世界观需求时，先用世界观设计/摘要工具确认概念层，再规划和写入世界书 draft 条目。
+- **不主动追加增强资产**：用户未明确要求时，不主动建议 MVU、HTML 或 EJS；用户要求 EJS 时必须先确认或配置 MVU。
+- **交付前强制检查**：导出前必须完成内容自查与配置检查，可使用 `lint_project_content`、`create_final_review_report`、`create_delivery_checklist`，或在导出时设置 `strict_review: true`。
+- **内容格式优先 XML 包裹 YAML**：除世界观总纲和背景等概念性条目外，角色、性格、物品、能力、场景、事件、NPC 条目优先使用 XML 包裹 YAML。
 
 ## 首选起手式
 
@@ -110,9 +118,8 @@ description: Use the world-book-mcp MCP server to author SillyTavern world books
 - `import_character_card_json` — 导入当前目录内已有 `chara_card_v3` 角色卡 JSON，提取 profile 并将内嵌世界书切片为 draft。
 - `upsert_character_profile` — 用简化字段创建/更新角色卡人设配置，MCP 自动补齐 `chara_card_v3` 默认字段。
 - `validate_character_card_config` — 校验角色卡 config 与嵌入世界书。
-- `confirm_character_card_draft_complete` — 确认角色卡 profile、内嵌世界书 draft 与资产可合并导出。
 - `validate_greetings` — 单独校验 first_mes 与 alternate_greetings。
-- `generate_character_card_json` — 导出 chara_card_v3 角色卡 JSON（自动合并 MVU / HTML / EJS），导出后保留 draft。
+- `generate_character_card_json` — 导出 chara_card_v3 角色卡 JSON（自动合并 MVU / HTML / EJS）；导出前会检查角色卡 profile 与内嵌世界书 draft 是否可合并，导出后保留 draft。
 - `create_character_card_patch` — 创建角色卡 profile / worldbook config / 内嵌世界书修改计划。
 - `preview_character_card_patch` — 预览角色卡 patch diff 与校验。
 - `apply_character_card_patch` — 应用角色卡 patch，安全导出 JSON、更新 project，并保留更新后的 draft。
@@ -177,8 +184,8 @@ description: Use the world-book-mcp MCP server to author SillyTavern world books
               （或 submit_derivative_extraction_outline + sync_extraction=true）
    │
    ▼
-MCP draft  ─►  create_worldbook_draft_entry(s)
-              → update_worldbook_draft_field(s)
+MCP draft  ─►  create_worldbook_draft_entry / create_worldbook_draft_entries
+              → update_worldbook_draft_field / update_worldbook_draft_fields
               → confirm_worldbook_draft_complete
    │
    ▼
@@ -193,13 +200,13 @@ MCP draft  ─►  create_worldbook_draft_entry(s)
 1. 每个新任务先按 `references/task-routing.md` 判断任务类型，并参考本 skill 工作流；空白目录/新项目先 `init_project`，确保 `.worldbook/draft/` 存在，并让它按需创建根目录模板 JSON。
 2. 任何字段拿不准先查本 skill 文档与 `references/config-rules.md`，按文档字段规则生成。
 3. 原始材料、网页摘要和本地文件内容由宿主 AI 在对话内整理；MCP 只保存结构化事实、draft、配置与导出结果。
-4. 写世界书条目必须先用 `create_worldbook_draft_entry(s)` 创建切片模板，再用 `update_worldbook_draft_field(s)` 逐字段填充；不要一次 tool call 提交完整条目对象。
+4. 写世界书条目必须先用 `create_worldbook_draft_entry` 或 `create_worldbook_draft_entries` 创建切片模板，再用 `update_worldbook_draft_field` 或 `update_worldbook_draft_fields` 填充字段；不要绕过 draft 直接改导出 JSON。
 5. 世界书 draft 必须先 `confirm_worldbook_draft_complete`，再 `generate_worldbook_json`。
 6. 角色卡生成前应先完成世界书 draft，并用 `upsert_character_profile` 写角色卡字段；当前规范推荐 `description` 为空，角色信息全部进内嵌世界书。
 7. 修改已有世界书：`import_worldbook_json` → `create_worldbook_patch` → `preview_worldbook_patch` → `apply_worldbook_patch`，**先 import 切片为 draft、先 preview 再 apply**；不要绕过 draft 直接改导出 JSON。
-8. 启用 MVU 时开场白末尾必须含 `<StatusPlaceHolderImpl/>`。
+8. 用户未明确要求时，不主动建议或启用 MVU、HTML、EJS。启用 MVU 时开场白末尾必须含 `<StatusPlaceHolderImpl/>`。
 9. 启用 HTML 状态栏一般要同时启用 MVU。EJS 必须依赖 MVU，变量路径必须以 `stat_data` 开头。
-10. 想强制硬闸门：`generate_*_json` 设 `strict_review: true`，未通过 `create_delivery_checklist` 就拒绝导出。
+10. 导出前必须执行内容自查与配置检查；严格交付使用 `create_delivery_checklist` 或 `strict_review: true`。
 
 ## 常见错误与红线
 

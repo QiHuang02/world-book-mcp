@@ -36,6 +36,17 @@ describe("validateCharacterCardConfig", () => {
     expect(result.warnings.some((issue) => issue.field === "card.description")).toBe(true);
   });
 
+  it("warns when personality or scenario contain long settings", () => {
+    const result = validateCharacterCardConfig({
+      config: makeConfig({
+        personality: "<personality>\n性格: 冷静\n</personality>",
+        scenario: "这是一段很长的世界观背景".repeat(8),
+      }),
+    });
+    expect(result.warnings.some((issue) => issue.field === "card.personality")).toBe(true);
+    expect(result.warnings.some((issue) => issue.field === "card.scenario")).toBe(true);
+  });
+
   it("rejects project_draft without draft", () => {
     const config = makeConfig();
     config.worldbook = { source: "project_draft" };
