@@ -27,7 +27,7 @@ describe("createFinalReviewReport", () => {
         allow_custom: true,
         multiple: false,
         created_at: "2026-01-01T00:00:00.000Z",
-        source_tool: "classify_worldbook_card_type",
+        source_tool: "skill.task-routing",
       }],
     });
     const report = createFinalReviewReport(project);

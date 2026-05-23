@@ -22,7 +22,7 @@ describe("decision-prompts", () => {
       id: "card_type",
       question: "卡型？",
       options: [{ value: "single", label: "单角色卡", is_recommended: true }, { value: "multi", label: "多角色卡" }],
-      source_tool: "classify_worldbook_card_type",
+      source_tool: "skill.task-routing",
     });
     expect(result.project.pendingDecisions).toHaveLength(1);
     expect(result.prompt_text).toContain("卡型？");
@@ -36,12 +36,12 @@ describe("decision-prompts", () => {
       question: "卡型？",
       options: [{ value: "single", label: "单角色卡" }, { value: "multi", label: "多角色卡" }],
       allow_custom: false,
-      source_tool: "classify_worldbook_card_type",
+      source_tool: "skill.task-routing",
     });
     const recorded = recordUserDecision(requested.project, { id: "card_type", selected_values: ["multi"] });
     expect(recorded.project.pendingDecisions).toHaveLength(0);
     expect(recorded.project.recordedDecisions[0].selected_values).toEqual(["multi"]);
-    expect(recorded.project.recordedDecisions[0].source_tool).toBe("classify_worldbook_card_type");
+    expect(recorded.project.recordedDecisions[0].source_tool).toBe("skill.task-routing");
     expect(recorded).not.toHaveProperty("recommended_next_tool");
     expect(getUserDecision(recorded.project, "card_type")?.id).toBe("card_type");
   });

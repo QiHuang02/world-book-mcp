@@ -19,55 +19,45 @@ description: Use the world-book-mcp MCP server to author SillyTavern world books
 - 用户希望加 MVU/ZOD 变量系统、HTML 状态栏、EJS 阶段化人设。
 - 用户提到本 skill 工具清单中的任何工具名（`ingest_text_source`、`plan_worldbook_entries`、`generate_worldbook_json`、`generate_character_card_json`、`request_user_decision` 等）。
 
-## 角色边界
+## 使用思路
 
-主 AI 负责：
+完成一个世界书或角色卡任务时，按“判断目标 → 整理材料 → 写入草稿 → 校验导出”的顺序推进。
 
-- 理解用户需求与歧义。
-- 阅读用户提供的文本，或在外部搜索网页。
-- 按提取模板抽取结构化事实。
-- 编写世界书条目正文与角色卡开场白。
+1. **先判断目标**
+   - 判断用户要做的是原创、二创提取、修改已有 JSON、查询、自查，还是 MVU/HTML/EJS 扩展。
+   - 卡型、世界观类型、是否启用 MVU/HTML/EJS 不明确时，先向用户确认。
 
-`world-book-mcp` 负责：
+2. **再整理材料**
+   - 用户给出长文本时，先阅读并整理出结构化事实，再提交给项目。
+   - 网页资料先在对话中搜索和整理成摘要、facts、来源 URL，再用 `ingest_web_research` 保存。
 
-- 提供可查询的参考工作流、能力矩阵与字段校验，但不通过固定 next-tool 字段接管流程编排。
-- 持久化原始材料、结构化事实、世界书 draft、角色卡 config、MVU/HTML/EJS config。
-- 接收简化条目/角色卡输入，自动补全完整 draft entry 与角色卡默认字段。
-- 校验配置合法性、内容禁词与文风问题。
-- 导出符合 SillyTavern 规范的最终 JSON。
-- 安全地查询、导入、patch 已有 JSON。
-
-`world-book-mcp` **不**负责：
-
-- 联网搜索（不内置任何 fetcher，必须由主 AI 在外部完成后用 `ingest_web_research` 提交摘要）。
-- 自动理解长文本（主 AI 必须自己读原文）。
-- 自动设计复杂 MVU 逻辑、EJS 控制器或 HTML UI。
+3. **最后写入与导出**
+   - 世界书条目用 `upsert_worldbook_entry` / `upsert_worldbook_entries` 保存为分片草稿。
+   - 角色卡字段用 `upsert_character_profile` 保存。
+   - 导出前先校验；需要严格交付时使用 `create_delivery_checklist` 或 `strict_review`。
 
 ## 首选起手式
 
 拿到任意需求请按下面顺序起手，不要直接跳到具体工具：
 
-1. **`classify_worldbook_task`** — 把用户的自然语言请求归类为 15 种 task_type 之一，并返回 `suggested_decisions`。如果对用户意图存在多重歧义，调用时设 `prefer_user_decision: true`，强制走决策回路。
-2. 参考本 skill 的 `references/workflows.md` 编排流程；MCP 不再提供固定 workflow tool，流程由 skill 文档和主 AI 判断负责。
-3. **`get_tool_usage_guide`** — 任何工具的字段不确定时调它，返回用途、必填字段、示例输入和下一步推荐。
-4. **`get_worldbook_capability_matrix`** — 想确认某 task_type 下有哪些能力可用时调用，每条能力会标 `decision_hint`（`auto` / `prefer_clarification`）。
+1. 按 [`references/task-routing.md`](references/task-routing.md) 判断任务类型。
+2. 如果用户目标、卡型、世界观类型、是否启用 MVU/HTML/EJS 不明确，先列出需要确认的问题。
+3. 按 [`references/workflows.md`](references/workflows.md) 选择合适流程，并根据用户目标裁剪步骤。
+4. 字段不确定时先查本工具清单与 [`references/config-rules.md`](references/config-rules.md)；需要模板或配置说明时调用 `get_entry_template` / `explain_worldbook_config`。
+5. 需要记录用户选择时，使用 `request_user_decision` / `record_user_decision`。
 
-详细 7 类工作流见 [`references/workflows.md`](references/workflows.md)。
+详细工作流见 [`references/workflows.md`](references/workflows.md)。
 
 ## 完整工具清单
 
-下列分组覆盖当前对 agent 公开推荐的 MCP 工具。底层全量 draft/config 提交逻辑已降级为内部/兼容层，默认不要引导 agent 手写完整 JSON。
+下列分组覆盖常用工具。日常写入优先使用简化 upsert 工具；完整 config 提交仅用于高级场景。
 
-### 元能力 / 路由
+### 参考模板 / 配置说明
 
-- `classify_worldbook_task` — 把自然语言请求分类为 task_type。
-- `propose_clarification_questions` — 主动列出歧义点。
-- `get_worldbook_capability_matrix` — 按 task_type 列出可用能力。
-- `get_tool_usage_guide` — 单个工具的使用文档。
 - `get_entry_template` — 按 entryType 取条目模板。
 - `explain_worldbook_config` — 解释 position / constant / order / keys / scanDepth / recursion。
-- `classify_worldbook_card_type` — 根据角色数推断 single / multi / worldbook_only。
-- `classify_worldbuilding_type` — 根据题材推断 A 现实背景 / B 小世界 / C 大世界。
+
+任务类型、卡型、世界观类型和能力选择规则见 [`references/task-routing.md`](references/task-routing.md)。
 
 ### 项目与素材
 
@@ -75,12 +65,12 @@ description: Use the world-book-mcp MCP server to author SillyTavern world books
 - `list_projects` — 列出本地保存的 MCP project。
 - `get_project` — 查看 project 状态摘要或全量。
 - `ingest_text_source` — 保存用户文本素材。
-- `ingest_web_research` — 保存主 AI 整理后的网页摘要。
+- `ingest_web_research` — 保存已整理好的网页摘要。
 
 ### 提取
 
 - `create_extraction_outline` — 创建结构化提取模板（角色 / 世界 / 物品 / 事件）。
-- `submit_extraction_result` — 提交主 AI 抽取的结构化事实。
+- `submit_extraction_result` — 提交从素材中抽取的结构化事实。
 - `plan_worldbook_entries` — 把 extraction 转成条目计划。
 - `create_derivative_extraction_template` — 二创长文 outline（章节索引 + 角色 8 维 + 世界 5 维）。
 - `submit_derivative_extraction_outline` — 提交二创 outline，可同步成 extraction。
@@ -134,18 +124,22 @@ description: Use the world-book-mcp MCP server to author SillyTavern world books
 ### MVU / HTML / EJS
 
 - `create_mvu_schema_template` — 创建 MVU/ZOD config 模板。
-- `submit_mvu_config` — 保存 MVU config。
+- `upsert_mvu_schema` — 局部更新 MVU schema 与变量路径。
+- `upsert_mvu_update_rules` — 局部更新 MVU initvar 与 update_rules。
+- `submit_mvu_config` — 高级入口：保存完整 MVU config。
 - `validate_mvu_config` — 校验 ZOD schema、initvar、update_rules、占位符。
 - `build_mvu_assets` — 预览将合并的世界书条目 / 正则 / Tavern Helper 脚本。
 - `create_html_beautify_template` — 创建状态栏 / 全局 HTML 美化模板。
-- `submit_html_beautify_config` — 保存 HTML 美化 config。
+- `upsert_html_statusbar` — 局部更新状态栏 HTML、主题和开关。
+- `submit_html_beautify_config` — 高级入口：保存完整 HTML 美化 config。
 - `validate_html_beautify_config` — 校验 HTML、CSS 作用域、正则配置。
 - `build_html_beautify_assets` — 预览将合并的 regex scripts。
 - `create_html_regex_pair_template` — 单独生成显示 / 隐藏正则对模板。
 - `validate_regex_scripts` — 单独校验一组 regex scripts。
 - `create_ejs_phase_plan` — 阶段化人设规划模板。
 - `create_ejs_template` — `phase_profile` / `palette` / `custom` EJS 模板。
-- `submit_ejs_config` — 保存 EJS config。
+- `upsert_ejs_entry` — 按 name 局部新增/更新单个 EJS entry。
+- `submit_ejs_config` — 高级入口：保存完整 EJS config。
 - `validate_ejs_config` — 校验 MVU 依赖、变量路径、EJS 标签、`getwi` 引用。
 - `build_ejs_entries` — 预览将合并进角色卡内嵌世界书的 EJS entries。
 
@@ -167,7 +161,7 @@ description: Use the world-book-mcp MCP server to author SillyTavern world books
 
 ### 用户决策回路
 
-- `request_user_decision` — 把歧义写入 `pendingDecisions`，返回 `prompt_text` 让 AI 复述给用户。
+- `request_user_decision` — 登记一个待用户确认的问题，并生成可直接展示给用户的选项文本。
 - `record_user_decision` — 记录用户答复，从 pending 移到 recorded。
 - `list_user_decisions` — 列出 pending / recorded。
 - `clear_user_decision` — 清掉指定 id 的 pending 与 recorded。
@@ -199,8 +193,8 @@ MCP draft  ─►  plan_worldbook_entries
 
 ## 调用习惯
 
-1. 每个新任务先 `classify_worldbook_task` 并参考本 skill 工作流；空白目录/新项目先 `init_project`，确保 `.worldbook/draft/` 存在，并让它按需创建根目录模板 JSON。
-2. 任何字段拿不准就 `get_tool_usage_guide`，不要靠猜。
+1. 每个新任务先按 `references/task-routing.md` 判断任务类型，并参考本 skill 工作流；空白目录/新项目先 `init_project`，确保 `.worldbook/draft/` 存在，并让它按需创建根目录模板 JSON。
+2. 任何字段拿不准先查本 skill 文档与 `references/config-rules.md`；需要确定性模板时调用 `get_entry_template`，需要配置解释时调用 `explain_worldbook_config`。
 3. 原始材料用 `ingest_*`，结构化事实用 `submit_extraction_result`，**两者绝不混用**。
 4. 写世界书条目优先用 `upsert_worldbook_entry` / `upsert_worldbook_entries`，不要手写完整 SillyTavern entry JSON。
 5. 世界书 draft 必须先 `validate_worldbook_draft`，再 `generate_worldbook_json`。
@@ -213,17 +207,18 @@ MCP draft  ─►  plan_worldbook_entries
 ## 常见错误与红线
 
 - ❌ 把整篇原文塞进 `submit_extraction_result.characters/world` —— 应该先 `ingest_text_source` 保存原文，再提交结构化事实。
-- ❌ 让 AI 手写完整 SillyTavern entry JSON —— 应使用 `upsert_worldbook_entry` / `upsert_worldbook_entries` 提交简化字段，由 MCP 补全结构。
+- ❌ 手写完整 SillyTavern entry JSON —— 应使用 `upsert_worldbook_entry` / `upsert_worldbook_entries` 提交简化字段，由工具补全结构。
 - ❌ `constant=false`（绿灯）的条目没填 `keys` —— 绿灯条目必须有触发关键字。
 - ❌ 角色卡 `description` 写大量人设 —— 当前规范要求 `description` 为空，所有人设进内嵌世界书；角色卡字段用 `upsert_character_profile` 更新。
 - ❌ EJS 用 `const` / `let` 读阶段变量 —— 应该用 `var` + `typeof`，避免重复声明报错；并且 `getwi('条目名')` 必须 `await`。
 - ❌ 状态栏 HTML 用全局选择器 `body` / `html` / `*` —— 必须用作用域 class（如 `.wbm-statusbar`），否则会污染整个 SillyTavern 界面。
-- ❌ 跳过决策直接走默认值 —— 用户描述模糊时先 `classify_worldbook_task` 拿 `suggested_decisions`，再 `request_user_decision` + `record_user_decision`。
+- ❌ 跳过决策直接走默认值 —— 用户描述模糊时按 `references/task-routing.md` 的问题清单判断需要询问什么，再用 `request_user_decision` + `record_user_decision` 持久化选择。
 
 ## 进阶参考
 
 按需懒加载，不必一次性读完。
 
+- [`references/task-routing.md`](references/task-routing.md) — 任务类型判断、关键词路由与澄清问题清单。
 - [`references/workflows.md`](references/workflows.md) — 7 类标准工作流的完整调用顺序。
 - [`references/config-rules.md`](references/config-rules.md) — position / constant / keys / scanDepth / recursion / order / content 格式 / 角色卡 / MVU / HTML / EJS 字段规则。
 - [`references/decision-loop.md`](references/decision-loop.md) — 用户决策回路设计、`prefer_user_decision`、checklist 闸门。

@@ -16,31 +16,10 @@
 
 ## 1. 分类与歧义检测
 
-### `classify_worldbook_task`
+AI 按 [`task-routing.md`](task-routing.md) 在 skill 内部判断：
 
-```json
-{
-  "request": "我想创建一个角色卡"
-}
-```
-
-返回（关键字段）：
-
-```json
-{
-  "task_type": "original_character_card",
-  "needs_clarification": true,
-  "needs_user_decision": true,
-  "suggested_decisions": [
-    { "id": "origin_type", ... },
-    { "id": "card_type", ... },
-    { "id": "worldbuilding_type", ... },
-    { "id": "wants_mvu", ... },
-    { "id": "wants_ejs", ... },
-    { "id": "wants_html", ... }
-  ]
-}
-```
+- task_type = `original_character_card`
+- 需求较模糊，需要询问 origin_type / card_type / worldbuilding_type / wants_mvu / wants_ejs / wants_html
 
 ## 2. 决策回路
 
@@ -59,11 +38,11 @@
     { "value": "worldbook_only", "label": "纯世界书" }
   ],
   "allow_custom": false,
-  "source_tool": "classify_worldbook_card_type"
+  "source_tool": "skill.task-routing"
 }
 ```
 
-返回的 `prompt_text` 由 AI 复述给用户：
+将返回的问题文本展示给用户：
 
 ```
 【需要用户决定】请确认卡型
@@ -122,11 +101,7 @@
 
 ## 4. 卡型规划
 
-### `classify_worldbook_card_type`
-
-```json
-{ "core_character_count": 1, "has_character_card": true }
-```
+AI 已通过用户决策确定 `card_type=single_character_card`。
 
 ### `create_worldbook_entry_plan`
 
@@ -164,7 +139,7 @@ AI 根据模板填充内容，最后调用：
 
 ### `upsert_worldbook_entries`
 
-AI 只提交核心字段，MCP 自动补齐 `constant`、`position`、`order`、递归保护等完整 draft 配置：
+只提交核心字段即可；工具会补齐 `constant`、`position`、`order`、递归保护等完整 draft 配置：
 
 ```json
 {
@@ -215,7 +190,7 @@ AI 只提交核心字段，MCP 自动补齐 `constant`、`position`、`order`、
 }
 ```
 
-不要手写完整 `characterCardConfig`；未传字段由 MCP 自动补默认值。
+不要手写完整 `characterCardConfig`；未传字段会自动补默认值。
 
 ### `validate_greetings`
 
@@ -303,7 +278,7 @@ AI 只提交核心字段，MCP 自动补齐 `constant`、`position`、`order`、
 
 ## 关键点回顾
 
-- 用户描述模糊时不要直接走默认值，先 `classify_worldbook_task` 获得 `suggested_decisions`，逐一走决策回路。
+- 用户描述模糊时不要直接走默认值，先按 `task-routing.md` 判断需要询问哪些问题，再逐一走决策回路。
 - 每条决策都用 `request_user_decision` + `record_user_decision`，回答会持久化。
 - 启用 MVU 时开场白末尾必须含 `<StatusPlaceHolderImpl/>`。
 - 单角色卡的角色拆分条目必须全部蓝灯。

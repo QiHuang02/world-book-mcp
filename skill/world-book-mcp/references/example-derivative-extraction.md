@@ -163,7 +163,7 @@ AI 填充每章的 key_events / character_state_changes 等。
 
 ## 6. 卡型规划与起草
 
-### `classify_worldbook_card_type`
+### 卡型判断（skill 内部）
 
 ```json
 { "core_character_count": 1, "has_character_card": false, "is_system_driven": true }
@@ -246,4 +246,4 @@ AI 填充每章的 key_events / character_state_changes 等。
 - `sync_extraction=true` 让 outline 直接成为后续 plan/draft 的输入。
 - 章节条目应保持绿灯，scanDepth=2。
 - 文风条目保持蓝灯并放置于 `before_an`。
-- 整个流程完全是 AI 编排，MCP 只做结构与校验。
+- 先整理事实，再用工具保存、校验和导出。

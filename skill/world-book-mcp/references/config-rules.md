@@ -107,7 +107,7 @@
 }
 ```
 
-MCP 会自动补全 enabled、constant 默认值、递归保护、角色卡内嵌世界书 extensions 等字段，并把 draft 条目拆分保存到 `.worldbook/draft/*.json`。默认按 `comment` 更新，避免多个角色条目共享同一个角色名 key 时被误合并；需要按关键词匹配旧条目时显式传 `match_by_keys: true`。不要让 AI 手写完整 SillyTavern entry JSON。
+通过 upsert 工具写入时，会自动补全 enabled、constant 默认值、递归保护、角色卡内嵌世界书 extensions 等字段，并把 draft 条目拆分保存到 `.worldbook/draft/*.json`。默认按 `comment` 更新，避免多个角色条目共享同一个角色名 key 时被误合并；需要按关键词匹配旧条目时显式传 `match_by_keys: true`。不要手写完整 SillyTavern entry JSON。
 
 ## content 格式
 

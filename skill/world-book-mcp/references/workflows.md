@@ -1,6 +1,6 @@
 # 流程路由树与标准工作流
 
-> 何时阅读：当 SKILL.md 概览不够、需要判断任务路径或照搬调用顺序时翻这里。MCP 只提供能力与参考流程；最终流程编排由主 AI 结合用户需求决定。
+> 何时阅读：当 SKILL.md 概览不够、需要判断任务路径或参考调用顺序时翻这里。本页给出常用流程，可按用户目标裁剪步骤。
 
 ---
 
@@ -22,12 +22,12 @@
 判断设定来源与输入载体：
 
 - **原创**：用户口述、笔记、设定要求；可以用 `create_worldbuilding_design_template` / `create_worldbuilding_outline` 辅助补齐。
-- **同人 / 二创**：必须有用户提供的原文、wiki/资料摘要、本地文件内容，或用户明确允许主 AI 联网搜索后再用 `ingest_web_research` 保存摘要；不要凭空脑补原作事实。
+- **同人 / 二创**：必须有用户提供的原文、wiki/资料摘要、本地文件内容，或用户明确允许对话助手 联网搜索后再用 `ingest_web_research` 保存摘要；不要凭空脑补原作事实。
 - **已有 JSON 改造**：世界书 JSON 用 `import_worldbook_json`；角色卡 JSON 用 `import_character_card_json`。
 - **输入载体**：
   - 用户口述 / 粘贴文本：`ingest_text_source`。
-  - 本地文件文本：主 AI 先读取文件内容，再 `ingest_text_source`。
-  - 网络搜索摘要：主 AI 外部搜索并整理 facts，再 `ingest_web_research`。
+  - 本地文件文本：对话助手 先读取文件内容，再 `ingest_text_source`。
+  - 网络搜索摘要：对话助手 外部搜索并整理 facts，再 `ingest_web_research`。
   - 已有世界书 JSON：`import_worldbook_json`。
   - 已有角色卡 JSON：`import_character_card_json`，查询用 `query_character_card`。
 
@@ -91,14 +91,14 @@
 ## 1. 从文本生成世界书
 
 ```text
-classify_worldbook_task（request=用户需求）
+按 task-routing 判断任务类型与歧义
 → init_project（已有 project_id 可跳过）   # 空白目录/新项目起手
 → ingest_text_source                      # 保存原文
 → create_extraction_outline               # 拿提取模板
-→ 主 AI 阅读原文，按模板抽取结构化事实
+→ 对话助手 阅读原文，按模板抽取结构化事实
 → submit_extraction_result                # 提交事实
 → plan_worldbook_entries                  # 规划条目
-→ 主 AI 编写条目正文
+→ 对话助手 编写条目正文
 → upsert_worldbook_entry / upsert_worldbook_entries  # 简化输入保存 draft
 → validate_worldbook_draft                # 校验
 → 如有问题：upsert_worldbook_entry / upsert_worldbook_entries  # 局部修复
@@ -109,16 +109,16 @@ classify_worldbook_task（request=用户需求）
 ## 2. 从网页摘要生成世界书
 
 ```text
-classify_worldbook_task（request=用户需求）
+按 task-routing 判断任务类型与歧义
 → init_project（已有 project_id 可跳过）   # 空白目录/新项目起手
-→ 主 AI 在外部完成网页搜索（MCP 不联网）
-→ 主 AI 整理搜索摘要 + facts
+→ 在对话中完成网页搜索并整理资料
+→ 对话助手 整理搜索摘要 + facts
 → ingest_web_research                     # 保存摘要
 → create_extraction_outline
-→ 主 AI 从摘要中抽取结构化事实
+→ 对话助手 从摘要中抽取结构化事实
 → submit_extraction_result
 → plan_worldbook_entries
-→ 主 AI 编写条目正文
+→ 对话助手 编写条目正文
 → upsert_worldbook_entry / upsert_worldbook_entries
 → validate_worldbook_draft
 → generate_worldbook_json
@@ -129,7 +129,7 @@ classify_worldbook_task（request=用户需求）
 
 ```text
 validate_worldbook_draft                  # 先把世界书 draft 跑通
-→ 主 AI 编写 first_mes 和 alternate_greetings
+→ 对话助手 编写 first_mes 和 alternate_greetings
 → upsert_character_profile                # 简化字段保存角色卡配置
 → validate_character_card_config
 → generate_character_card_json
@@ -143,11 +143,11 @@ validate_worldbook_draft                  # 先把世界书 draft 跑通
 ```text
 validate_worldbook_draft
 → create_mvu_schema_template
-→ 主 AI 调整 schema_script / initvar / update_rules
+→ 对话助手 调整 schema_script / initvar / update_rules
 → submit_mvu_config
 → validate_mvu_config
 → build_mvu_assets                        # 可选：预览将合并的资产
-→ 主 AI 填写带 <StatusPlaceHolderImpl/> 的开场白
+→ 对话助手 填写带 <StatusPlaceHolderImpl/> 的开场白
 → upsert_character_profile
 → validate_character_card_config
 → generate_character_card_json            # 自动合并 MVU 条目、正则、Tavern Helper
@@ -161,11 +161,11 @@ validate_worldbook_draft
 ```text
 validate_worldbook_draft
 → create_html_beautify_template
-→ 主 AI 调整 statusbar.html 或 global.regex_scripts
+→ 对话助手 调整 statusbar.html 或 global.regex_scripts
 → submit_html_beautify_config
 → validate_html_beautify_config
 → build_html_beautify_assets              # 可选预览
-→ 主 AI 填写带 <StatusPlaceHolderImpl/> 的开场白
+→ 对话助手 填写带 <StatusPlaceHolderImpl/> 的开场白
 → upsert_character_profile
 → validate_character_card_config
 → generate_character_card_json            # 自动合并 regex scripts
@@ -182,7 +182,7 @@ validate_worldbook_draft
 → submit_mvu_config
 → validate_mvu_config
 → create_ejs_template
-→ 主 AI 调整 EJS 控制器和阶段条目内容
+→ 对话助手 调整 EJS 控制器和阶段条目内容
 → submit_ejs_config
 → validate_ejs_config
 → build_ejs_entries                       # 可选预览

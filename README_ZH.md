@@ -118,13 +118,14 @@ patch 的 `match.uid` 优先匹配从已导入世界书保留的 `sourceUid`，�
 
 ## Tools 一览
 
+任务分类、工作流选择和澄清策略由随包 `skill/world-book-mcp/` 文档指导，不再作为 MCP tools 暴露。
+
 | 分类 | Tool | 说明 |
 | --- | --- | --- |
-| 工作流、项目与规范 | `get_tool_usage_guide` | 查询某个 tool 的用途、调用时机、必填字段、示例输入、常见错误和下一步。 |
+| 工作流、项目与规范 | `get_entry_template` | 返回世界书条目模板。 |
 | 工作流、项目与规范 | `init_project` | 初始化 `.worldbook/project.json` 与 `.worldbook/draft/`；若根目录没有酒馆格式 JSON，会安全创建模板 JSON；已有项目可用 `if_exists` 控制复用或覆盖。 |
 | 工作流、项目与规范 | `list_projects` | 返回当前 `.worldbook/project.json` 工作区项目；未初始化时返回空列表。 |
 | 工作流、项目与规范 | `get_project` | 查看项目详情或摘要。 |
-| 工作流、项目与规范 | `get_entry_template` | 返回世界书条目模板。 |
 | 工作流、项目与规范 | `explain_worldbook_config` | 解释 position、constant、order、keys、递归等配置。 |
 | 工作流、项目与规范 | `lint_worldbook_content` | 扫描禁词和常见写作问题。 |
 | 素材输入 | `ingest_text_source` | 接收小说片段、设定、用户笔记等文本。 |

@@ -1,129 +1,140 @@
 # 用户决策回路
 
-> 何时阅读：当 AI 检测到用户需求模糊（卡型 / 世界观类型 / 是否启用 MVU/HTML/EJS / 提取焦点等），或 `get_worldbook_capability_matrix` 中某条任务标了 `decision_hint=prefer_clarification` 时，先读这份再调用 `request_user_decision`。
+> 何时阅读：用户需求存在多个合理方向时使用，例如卡型、世界观类型、是否启用 MVU/HTML/EJS、二创提取范围、修改已有 JSON 的目标等。
 
----
+决策回路用于把“需要用户确认的问题”记录到项目里。这样后续校验、交付检查和继续对话时，都能知道哪些问题已经确认、哪些还没确认。
 
-MCP 工具的调用是请求—响应模型，工具内部不能"暂停 + 唤起用户"。控制权始终在 AI 手里。`world-book-mcp` 用一组配套的工具实现等价的"AI 编排式询问—回答"机制，让 AI 在不确定时正式向用户发问，用户回答持久化保存，并在导出前作为闸门。
+## 使用顺序
 
----
-
-## 设计原则
-
-1. AI 主动判断歧义，主动调用 `request_user_decision`。MCP 不替 AI 做决定。
-2. 问题与回答都保存在 `project.pendingDecisions / recordedDecisions`，跨工具调用、跨对话可见。
-3. 工具不会"自动暂停" AI，仅返回"请向用户复述"的格式化文本。
-4. 导出层有两道闸门：`create_delivery_checklist` 把 pending 计入 blocking；`generate_*_json strict_review=true` 强制要求 checklist 通过。
-
----
+1. 按 [`task-routing.md`](task-routing.md) 判断哪些信息还不明确。
+2. 用 `request_user_decision` 登记问题和选项。
+3. 将返回的问题文本展示给用户。
+4. 用户回答后，用 `record_user_decision` 保存选择。
+5. 继续正常工作流。
 
 ## 工具一览
 
 | 工具 | 作用 |
 |---|---|
-| `request_user_decision` | 写入 pending；返回 prompt_text 供 AI 复述 |
-| `record_user_decision` | 写入 recorded；从 pending 移除；保留 source_tool 作为来源审计字段 |
-| `list_user_decisions` | 列出 pending / recorded |
-| `clear_user_decision` | 清掉指定 id 的 pending 与 recorded |
+| `request_user_decision` | 登记待确认问题；生成可展示给用户的选项文本 |
+| `record_user_decision` | 保存用户选择；从 pending 移到 recorded |
+| `list_user_decisions` | 查看待确认和已确认的问题 |
+| `clear_user_decision` | 清除指定问题，便于重新询问 |
 
----
+## 常见决策模板
 
-## 与 clarification 的关系
-
-`classify_worldbook_task` / `propose_clarification_questions` 会输出 `suggested_decisions`（一组 SuggestedDecision），AI 拿到后可以几乎直接 spread 给 `request_user_decision`：
+### 原创 / 二创
 
 ```json
 {
-  "project_id": "project_xxx",
-  "id": "card_type",
-  "question": "请确认卡型",
-  "options": [...],
+  "id": "origin_type",
+  "question": "请确认这次任务是原创、二创还是混合？",
+  "options": [
+    { "value": "original", "label": "原创", "description": "无原作素材，由用户提供创意" },
+    { "value": "derivative", "label": "二创", "description": "基于已有小说/游戏/网页等素材" },
+    { "value": "mixed", "label": "混合", "description": "原创为主，借鉴部分已有素材" }
+  ],
   "allow_custom": false,
   "multiple": false,
-  "source_tool": "classify_worldbook_card_type"
+  "source_tool": "skill.task-routing"
 }
 ```
 
-`request_user_decision` 返回的 `prompt_text` 已经包含问题、选项编号、推荐项、是否允许自由输入等，AI 只需把它复述给用户即可。
-
----
-
-## prefer_user_decision
-
-部分判定型工具支持 `prefer_user_decision: true`，强制走决策回路而不返回默认推断结果：
-
-- `classify_worldbook_task`
-- `classify_worldbook_card_type`
-- `classify_worldbuilding_type`
-
-返回中包含：
+### 卡型
 
 ```json
 {
-  "needs_user_decision": true,
-  "suggested_decisions": [...]
+  "id": "card_type",
+  "question": "请确认卡型（决定蓝绿灯策略）",
+  "options": [
+    { "value": "single_character_card", "label": "单角色卡", "description": "1 个核心角色，所有拆分条目蓝灯", "is_recommended": true },
+    { "value": "multi_character_card", "label": "多角色卡", "description": "2+ 核心角色，速览蓝灯/详情绿灯" },
+    { "value": "worldbook_only", "label": "纯世界书", "description": "无角色卡承载，由系统/EJS 驱动" }
+  ],
+  "allow_custom": false,
+  "multiple": false,
+  "source_tool": "skill.task-routing"
 }
 ```
 
-AI 可以在不确定时显式启用此开关，把决定权交给用户；是否调用 `request_user_decision` 由 AI 根据这些决策项自行编排。
+### 世界观类型
 
----
+```json
+{
+  "id": "worldbuilding_type",
+  "question": "请确认世界观类型 A/B/C",
+  "options": [
+    { "value": "A_realistic_background", "label": "A 真实背景", "description": "现代/历史现实舞台，只补必要细节" },
+    { "value": "B_small_world", "label": "B 小世界", "description": "学校、宅邸、小镇等封闭舞台" },
+    { "value": "C_large_world", "label": "C 大世界", "description": "架空大陆、奇幻/科幻文明" }
+  ],
+  "allow_custom": false,
+  "multiple": false,
+  "source_tool": "skill.task-routing"
+}
+```
 
-## 决策状态如何被使用
+### 二创提取维度
 
-### `create_final_review_report`
+```json
+{
+  "id": "extraction_focus",
+  "question": "请确认要提取哪些维度",
+  "options": [
+    { "value": "characters", "label": "角色", "is_recommended": true },
+    { "value": "world", "label": "世界观" },
+    { "value": "items", "label": "物品/能力" },
+    { "value": "events", "label": "事件" },
+    { "value": "style", "label": "文风" },
+    { "value": "chapters", "label": "章节" }
+  ],
+  "allow_custom": false,
+  "multiple": true,
+  "source_tool": "skill.task-routing"
+}
+```
 
-新增 `pending_decisions` section：当 `pendingDecisions.length > 0` 时为 warning，并加入推荐 `record_user_decision` 的提示。final review 本身不阻断导出，仅做汇总。
+### 是否启用扩展能力
 
-### `create_delivery_checklist`
+```json
+{
+  "id": "wants_mvu",
+  "question": "是否启用 MVU/ZOD 变量系统？",
+  "options": [
+    { "value": "yes", "label": "是" },
+    { "value": "no", "label": "否" }
+  ],
+  "allow_custom": false,
+  "multiple": false,
+  "source_tool": "skill.task-routing"
+}
+```
 
-把 pending decisions 升级为 **blocking**：未解决就 `ready_to_export = false`。
+同类问题可使用稳定 id：
 
-### `get_worldbook_capability_matrix`
-
-每条任务标注 `decision_hint`：
-
-- `auto`：默认走自动判定（如 `query_existing`、`modify_existing`、`content_lint`）
-- `prefer_clarification`：建议先走决策（其他大多数任务）
-
-AI 可以以此选择是否启用 `prefer_user_decision`。
-
-### `generate_worldbook_json` / `generate_character_card_json`
-
-新增 `strict_review: boolean`。`true` 时若 delivery checklist 未通过（包括 pending decisions），直接返回 ok=false 并附完整 checklist。
-
----
+- `wants_html`：是否启用 HTML 状态栏 / 前端美化。
+- `wants_ejs`：是否启用 EJS 动态内容。
+- `source_kind`：二创素材类型。
+- `modification_kind`：修改已有 JSON 的操作类型。
 
 ## 完整生命周期示例
 
-```
-1. classify_worldbook_task                  # 给出 suggested_decisions
-2. request_user_decision (id: card_type)    # 写入 pending
-   → AI 复述 prompt_text 给用户
-   ← 用户回答
-3. record_user_decision (id: card_type)     # 移到 recorded
-4. request_user_decision (id: worldbuilding_type)
-   ...
-5. record_user_decision (id: worldbuilding_type)
-6. classify_worldbook_card_type             # 现在带上用户决定
-7. ... 进入正常工作流
-8. create_delivery_checklist                # 检查导出条件
+```text
+1. 判断需要确认：卡型、世界观类型、是否启用 MVU/HTML
+2. request_user_decision (id: card_type)
+3. 将问题文本展示给用户
+4. 用户回答：单角色卡
+5. record_user_decision (id: card_type, selected_values: ["single_character_card"])
+6. 继续询问 worldbuilding_type / wants_mvu / wants_html
+7. 所有关键问题确认后进入正常工作流
+8. 导出前运行 create_delivery_checklist
 9. generate_character_card_json strict_review=true
 ```
 
----
+## 使用注意
 
-## 何时使用 clear_user_decision
-
-- 用户改变主意：调用 `clear_user_decision` 然后 `request_user_decision` 重新发起。
-- AI 判定先前 recorded 的答案与当前上下文冲突：先 clear 再询问。
-- pending 已经过期且不再适用：直接 clear。
-
----
-
-## 边界与限制
-
-- MCP 不做真正的 elicitation。控制权回到 AI 后，AI 必须在对话中主动复述 prompt_text 给用户。
-- 同一 id 的 `request` 会覆盖 pending；如已存在 recorded，AI 可选择 clear 后重发。
-- `record_user_decision` 在选项不允许自由输入时会拒绝非法 selected_values。
-- pending 与 recorded 仅按 id 关联；AI 应使用稳定的 id（如 `card_type`、`worldbuilding_type`），避免随机字符串。
+- 同一 id 的新问题会覆盖当前 pending；如果用户改主意，先 `clear_user_decision` 再重新询问。
+- 已确认的答案与当前上下文冲突时，先 clear 再重新记录。
+- 使用稳定 id，例如 `card_type`、`worldbuilding_type`、`wants_mvu`，不要使用随机字符串。
+- `record_user_decision` 会校验选项；不允许自由输入的问题只能记录列出的 `value`。
+- pending decisions 会影响 `create_delivery_checklist`；交付前应全部解决。

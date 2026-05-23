@@ -118,9 +118,10 @@ Patch `match.uid` first matches the `sourceUid` preserved from an imported World
 
 ## Tools Overview
 
+Task routing, workflow choice, and clarification strategy are handled by the bundled `skill/world-book-mcp/` documentation rather than MCP tools.
+
 | Category | Tool | Description |
 | --- | --- | --- |
-| Workflow, Projects, and Specs | `get_tool_usage_guide` | Queries a tool's purpose, when to call it, required fields, sample input, common mistakes, and next steps. |
 | Workflow, Projects, and Specs | `init_project` | Initializes `.worldbook/project.json` and `.worldbook/draft/`; safely creates a root template JSON when no Tavern-format JSON exists; existing projects can be reused or overwritten with `if_exists`. |
 | Workflow, Projects, and Specs | `list_projects` | Returns the current `.worldbook/project.json` workspace project, or an empty list if no workspace exists. |
 | Workflow, Projects, and Specs | `get_project` | Views project details or a summary. |
