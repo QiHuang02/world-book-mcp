@@ -1,6 +1,6 @@
 # world-book-mcp
 
-`world-book-mcp` 是一个使用 Node.js + TypeScript 编写的 MCP 服务器，用于辅助 AI 从文本或网页搜索摘要中整理信息，并导出符合 SillyTavern 格式的世界书 JSON、基础 `chara_card_v3` 角色卡 JSON，以及可选 MVU/ZOD、HTML 美化和 EJS 动态内容资产。
+`world-book-mcp` 是一个使用 Node.js + TypeScript 编写的 MCP 服务器，用于管理 `.worldbook/` 草稿工作区，并辅助 AI 校验、patch 和导出符合 SillyTavern 格式的世界书 JSON、基础 `chara_card_v3` 角色卡 JSON，以及可选 MVU/ZOD、HTML 美化和 EJS 动态内容资产。原文阅读、网页搜索和事实提取由宿主 AI 在对话中完成；本服务器只保存结构化 project 状态、draft 条目、配置和导出 JSON。
 
 ## 安装
 
@@ -48,16 +48,11 @@ args = ["-y", "@qihuang02/world-book-mcp"]
 
 当前版本支持：
 
-- 接收文本素材。
-- 接收网页搜索摘要。
-- 创建信息提取 outline。
-- 提交结构化提取结果。
-- 自动规划世界书条目。
-- 返回世界书条目模板。
-- 查询单个 tool 的使用指南。
-- 解释 SillyTavern 世界书配置字段。
-- 扫描禁词与常见写作问题。
 - 显式初始化 project，适合空白目录首次使用。
+- 创建信息提取 outline。
+- 提交由宿主 AI 整理好的结构化提取结果。
+- 根据调用方显式提供的卡型、角色、世界分区、物品、场景和事件创建世界书条目规划。
+- 扫描禁词与常见写作问题。
 - 先创建 `.worldbook/draft/*.json` 切片模板，再逐字段更新、确认完整并合并导出，避免 AI 一次提交完整条目对象。
 - 导出独立 SillyTavern 世界书 JSON。
 - 导入已有世界书 JSON，先切片为 `.worldbook/draft/*.json`，再进行安全 patch / 合并导出。
@@ -104,7 +99,7 @@ args = ["-y", "@qihuang02/world-book-mcp"]
 }
 ```
 
-校验、审查、lint、世界书导出和角色卡导出会优先合并读取 `.worldbook/draft/*.json`；若没有分片 draft，则兼容读取旧的 `project.draft`。`.worldbook/draft/` 是长期工作区：`generate_worldbook_json` / `generate_character_card_json` 导出后不会清空草稿，`apply_worldbook_patch` / `apply_character_card_patch` 合并导出后也会保留更新后的分片草稿，供下次继续修改。默认导出路径是当前工作目录的 `<名称>.json`，相对路径和绝对路径都必须位于当前工作目录内，越界写入会失败。
+校验、审查、lint、世界书导出和角色卡导出会合并读取 `.worldbook/draft/*.json`；分片 draft 文件是草稿的唯一事实来源。`.worldbook/draft/` 是长期工作区：`generate_worldbook_json` / `generate_character_card_json` 导出后不会清空草稿，`apply_worldbook_patch` / `apply_character_card_patch` 合并导出后也会保留更新后的分片草稿，供下次继续修改。默认导出路径是当前工作目录的 `<名称>.json`，相对路径和绝对路径都必须位于当前工作目录内，越界写入会失败。
 
 此外，`init_project` 会扫描当前工作目录根目录的一层 `*.json`：如果没有发现酒馆格式世界书或 `chara_card_v3` 角色卡 JSON，会自动创建一个根目录模板 JSON；如果已经存在酒馆格式 JSON，则不会额外创建模板，也不会覆盖已有 JSON。返回值中的 `root_template` 会说明模板是否创建、路径或已有文件列表。`kind=worldbook` 会创建独立世界书模板；`kind=character_card` 和 `kind=mixed` 会创建 `chara_card_v3` 模板，其中 `mixed` 明确表示角色卡 + 内嵌空世界书的一体化模板。
 
@@ -114,7 +109,7 @@ args = ["-y", "@qihuang02/world-book-mcp"]
 
 `apply_worldbook_patch` / `apply_character_card_patch` 会以当前 project draft 为输入，同时写导出的 JSON 文件并更新 project 状态；成功后保留更新后的 `.worldbook/draft/*.json`。实现会先写临时文件并替换目标文件，再更新 project；如果 project 更新失败，会尽力恢复旧导出文件或删除新写入文件。返回 `ok=false` 或抛出冲突错误时，调用方应重新读取 project 后再重试。
 
-patch 的 `match.uid` 优先匹配从已导入世界书保留的 `sourceUid`，用于定位原始 SillyTavern 条目 uid。对新建草稿或没有 `sourceUid` 的旧项目，建议使用 `index` 或唯一 `comment` 定位，避免把 uid 误当作导出后的连续下标。
+patch 的 `match.uid` 优先匹配从已导入世界书保留的 `sourceUid`，用于定位原始 SillyTavern 条目 uid。对没有 `sourceUid` 的新建草稿，建议使用 `index` 或唯一 `comment` 定位，避免把 uid 误当作导出后的连续下标。
 
 ## Tools 一览
 
@@ -128,6 +123,8 @@ patch 的 `match.uid` 优先匹配从已导入世界书保留的 `sourceUid`，�
 | 工作流、项目与规范 | `lint_worldbook_content` | 扫描禁词和常见写作问题。 |
 | 提取 | `create_extraction_outline` | 创建角色、世界观、物品、事件的提取模板。 |
 | 提取 | `submit_extraction_result` | 提交主 AI 提取好的结构化事实。 |
+| 世界书构建 | `create_worldbook_entry_plan` | 根据调用方显式提供的卡型、角色、世界分区、物品、场景和事件创建条目规划。 |
+| 世界书构建 | `validate_worldbook_entry_plan` | 校验显式条目规划的 position、order 和关键词触发规则。 |
 | 世界书构建 | `create_worldbook_draft_entry` | 创建单个 `.worldbook/draft/*.json` 切片模板。 |
 | 世界书构建 | `create_worldbook_draft_entries` | 批量创建切片模板。 |
 | 世界书构建 | `update_worldbook_draft_field` | 按 comment 定位并逐字段更新 draft。 |

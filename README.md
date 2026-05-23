@@ -1,6 +1,6 @@
 # world-book-mcp
 
-`world-book-mcp` is an MCP server built with Node.js and TypeScript. It helps AI organize information from text or web-search summaries and export SillyTavern-compatible World Book JSON, basic `chara_card_v3` character card JSON, and optional MVU/ZOD, HTML beautification, and EJS dynamic content assets.
+`world-book-mcp` is an MCP server built with Node.js and TypeScript. It manages a `.worldbook/` drafting workspace and helps AI validate, patch, and export SillyTavern-compatible World Book JSON, basic `chara_card_v3` character card JSON, and optional MVU/ZOD, HTML beautification, and EJS dynamic content assets. Source reading, web search, and fact extraction are handled by the host AI in conversation; this server stores structured project state, draft entries, configurations, and exported JSON.
 
 ## Installation
 
@@ -48,16 +48,11 @@ args = ["-y", "@qihuang02/world-book-mcp"]
 
 The current version supports:
 
-- Ingesting text materials.
-- Ingesting web-search summaries.
-- Creating information extraction outlines.
-- Submitting structured extraction results.
-- Automatically planning World Book entries.
-- Returning World Book entry templates.
-- Querying the usage guide for a single tool.
-- Explaining SillyTavern World Book configuration fields.
-- Scanning forbidden terms and common writing issues.
 - Explicitly initializing a project, suitable for first-time use in an empty directory.
+- Creating information extraction outlines.
+- Submitting structured extraction results prepared by the host AI.
+- Creating explicit World Book entry plans from caller-provided card type, characters, world sections, items, scenes, and events.
+- Scanning forbidden terms and common writing issues.
 - Creating `.worldbook/draft/*.json` slice templates first, then updating them field by field, confirming completeness, and merging them into exported JSON.
 - Exporting standalone SillyTavern World Book JSON.
 - Importing existing World Book JSON by slicing it into `.worldbook/draft/*.json`, then applying safe patches / merged exports.
@@ -104,7 +99,7 @@ The primary role of `init_project` is to create or reuse the single MCP workspac
 }
 ```
 
-Validation, review, lint, World Book export, and character card export preferentially merge `.worldbook/draft/*.json`; if no split draft exists, they fall back to legacy `project.draft`. `.worldbook/draft/` is the long-lived workspace: `generate_worldbook_json` / `generate_character_card_json` do not clear drafts after export, and `apply_worldbook_patch` / `apply_character_card_patch` retain the updated split draft entries after merging into exported JSON. By default, exports are written to `<name>.json` in the current working directory. Relative and absolute output paths must stay inside the current working directory; out-of-bound writes are rejected.
+Validation, review, lint, World Book export, and character card export merge `.worldbook/draft/*.json`; split draft files are the draft source of truth. `.worldbook/draft/` is the long-lived workspace: `generate_worldbook_json` / `generate_character_card_json` do not clear drafts after export, and `apply_worldbook_patch` / `apply_character_card_patch` retain the updated split draft entries after merging into exported JSON. By default, exports are written to `<name>.json` in the current working directory. Relative and absolute output paths must stay inside the current working directory; out-of-bound writes are rejected.
 
 `init_project` also scans one level of `*.json` files in the current working directory. If no SillyTavern World Book or `chara_card_v3` JSON exists, it safely creates a root template JSON. If a Tavern-format JSON already exists, it does not create another template and never overwrites existing JSON files. The returned `root_template` field reports whether a template was created, its path, or the existing files that caused creation to be skipped. `kind=worldbook` creates a standalone World Book template; `kind=character_card` and `kind=mixed` create a `chara_card_v3` template, with `mixed` explicitly meaning a character card plus an empty embedded World Book.
 
@@ -114,7 +109,7 @@ Writes for the same `project_id` are serialized inside the MCP process and retur
 
 `apply_worldbook_patch` / `apply_character_card_patch` use the current project draft as input, write the exported JSON file, and update project state together; on success, the updated `.worldbook/draft/*.json` files are retained. The implementation writes a temp file, replaces the target file, then updates the project; if the project update fails, it best-effort restores the previous exported file or removes the newly written target. When a patch returns `ok=false` or throws a revision conflict, reload the project before retrying.
 
-Patch `match.uid` first matches the `sourceUid` preserved from an imported World Book, so it targets the original SillyTavern entry uid. For newly created drafts or legacy projects without `sourceUid`, prefer `index` or a unique `comment` to avoid confusing uid with the regenerated contiguous export index.
+Patch `match.uid` first matches the `sourceUid` preserved from an imported World Book, so it targets the original SillyTavern entry uid. For newly created drafts without `sourceUid`, prefer `index` or a unique `comment` to avoid confusing uid with the regenerated contiguous export index.
 
 ## Tools Overview
 
@@ -128,6 +123,8 @@ Task routing, workflow choice, and clarification strategy are handled by the bun
 | Workflow, Projects, and Specs | `lint_worldbook_content` | Scans forbidden terms and common writing issues. |
 | Extraction | `create_extraction_outline` | Creates an extraction template for characters, worldbuilding, items, and events. |
 | Extraction | `submit_extraction_result` | Submits structured facts extracted by the main AI. |
+| World Book Building | `create_worldbook_entry_plan` | Creates an explicit entry plan from caller-provided card type, characters, world sections, items, scenes, and events. |
+| World Book Building | `validate_worldbook_entry_plan` | Validates an explicit entry plan's position, order, and keyword-trigger rules. |
 | World Book Building | `create_worldbook_draft_entry` | Creates one `.worldbook/draft/*.json` slice template. |
 | World Book Building | `create_worldbook_draft_entries` | Creates multiple slice templates. |
 | World Book Building | `update_worldbook_draft_field` | Locates a draft by comment and updates one field. |
