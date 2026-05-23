@@ -11,6 +11,8 @@ function emptyProject(): Project {
     patches: [],
     pendingDecisions: [],
     recordedDecisions: [],
+    revision: 1,
+    characterCardPatches: [],
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
   };
