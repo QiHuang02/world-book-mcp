@@ -46,8 +46,6 @@ function project(): Project {
   return {
     id: "project_card_patch",
     name: "导入角色",
-    sources: [],
-    research: [],
     patches: [],
     characterCardPatches: [],
     pendingDecisions: [],

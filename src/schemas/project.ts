@@ -1,12 +1,10 @@
 import { z } from "zod";
-import { SourceDocumentSchema } from "./source.js";
-import { WebResearchBundleSchema } from "./research.js";
 import { ChapterOutlineSchema } from "./chapter-outline.js";
 import { PendingDecisionSchema, RecordedDecisionSchema } from "./decision.js";
 import { DerivativeExtractionOutlineSchema } from "./derivative-outline.js";
 import { ExtractionResultSchema } from "./extraction.js";
 import { StyleProfileSchema } from "./style-profile.js";
-import { WorldbookDraftEntrySchema, WorldbookEntryPlanSchema } from "./worldbook-draft.js";
+import { WorldbookDraftEntrySchema } from "./worldbook-draft.js";
 import { WorldbookPatchSchema } from "./worldbook-patch.js";
 import { CharacterCardConfigSchema, CharacterCardPatchSchema } from "./character-card.js";
 import { MvuConfigSchema } from "./mvu.js";
@@ -29,14 +27,11 @@ export const WorldbuildingSummarySchema = z.object({
 export const ProjectSchema = z.object({
   id: z.string(),
   name: z.string(),
-  sources: z.array(SourceDocumentSchema).default([]),
-  research: z.array(WebResearchBundleSchema).default([]),
   extraction: ExtractionResultSchema.optional(),
   derivativeOutline: DerivativeExtractionOutlineSchema.optional(),
   styleProfile: StyleProfileSchema.optional(),
   chapterOutline: ChapterOutlineSchema.optional(),
   worldbuildingSummary: WorldbuildingSummarySchema.optional(),
-  plan: z.array(WorldbookEntryPlanSchema).optional(),
   draft: z.array(WorldbookDraftEntrySchema).optional(),
   importedWorldbookPath: z.string().optional(),
   patches: z.array(WorldbookPatchSchema).default([]),

@@ -1,7 +1,17 @@
-import type { EntryType, PositionName, WorldbookDraftEntry, WorldbookEntryPlan } from "../schemas/worldbook-draft.js";
+import type { EntryType, PositionName, WorldbookDraftEntry } from "../schemas/worldbook-draft.js";
 import type { ValidationIssue } from "./worldbook-validator.js";
 
 export type SkillCardType = "single_character_card" | "multi_character_card" | "worldbook_only";
+
+export interface WorldbookEntryPlan {
+  comment: string;
+  entryType: EntryType;
+  position: PositionName;
+  order: number;
+  constant: boolean;
+  keys: string[];
+  reason: string;
+}
 
 export interface WorldbookPlanInput {
   card_type: SkillCardType;

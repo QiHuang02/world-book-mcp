@@ -46,15 +46,6 @@ function enqueueProjectWrite<T>(projectId: string, operation: () => Promise<T>):
   return next;
 }
 
-export async function loadOrCreateProject(projectId: string | undefined, fallbackName: string): Promise<Project> {
-  if (projectId) {
-    return loadProject(projectId);
-  }
-  const existing = await loadWorkspaceProjectIfExists();
-  if (existing) return loadProject(existing.id);
-  return createProject(fallbackName);
-}
-
 export async function listProjects(): Promise<Project[]> {
   const project = await loadWorkspaceProjectIfExists();
   if (!project) return [];
@@ -65,22 +56,6 @@ export function summarizeProject(project: Project, includeContent = false): unkn
   return {
     id: project.id,
     name: project.name,
-    sources: includeContent ? project.sources : project.sources.map((source) => ({
-      id: source.id,
-      title: source.title,
-      sourceType: source.sourceType,
-      sourceUrl: source.sourceUrl,
-      tags: source.tags,
-      characters: source.content.length,
-      createdAt: source.createdAt,
-    })),
-    research: project.research.map((bundle) => ({
-      id: bundle.id,
-      topic: bundle.topic,
-      item_count: bundle.items.length,
-      items: includeContent ? bundle.items : undefined,
-      createdAt: bundle.createdAt,
-    })),
     has_extraction: Boolean(project.extraction),
     extraction_summary: project.extraction ? {
       title: project.extraction.title,
@@ -91,7 +66,6 @@ export function summarizeProject(project: Project, includeContent = false): unkn
     } : undefined,
     has_worldbuilding_summary: Boolean(project.worldbuildingSummary),
     worldbuilding_summary: includeContent ? project.worldbuildingSummary : undefined,
-    plan_count: project.plan?.length ?? 0,
     draft_count: project.draft?.length ?? 0,
     importedWorldbookPath: project.importedWorldbookPath,
     importedCharacterCardPath: project.importedCharacterCardPath,

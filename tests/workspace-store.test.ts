@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { initWorkspaceProject, loadWorkspaceProjectIfMatches, WORKSPACE_DRAFT_DIR, WORKSPACE_PROJECT_PATH, writeWorkspaceDraftEntry } from "../src/storage/workspace-store.js";
-import { createProject, ensureStorage, listProjects, loadOrCreateProject, loadProject, updateProject } from "../src/storage/project-store.js";
+import { createProject, ensureStorage, listProjects, loadProject, updateProject } from "../src/storage/project-store.js";
 import { createWorldbookDraftTemplate, updateWorldbookDraftField, updateWorldbookDraftFields } from "../src/core/worldbook-draft-editor.js";
 import { validateWorldbookDraft } from "../src/core/worldbook-validator.js";
 import { buildWorldbookJson } from "../src/core/worldbook-builder.js";
@@ -28,17 +28,6 @@ describe("workspace store", () => {
     await cleanupWorkspace();
   });
 
-  it("loadOrCreateProject creates the workspace project instead of output/projects", async () => {
-    await cleanupWorkspace();
-
-    const project = await loadOrCreateProject(undefined, "自动项目");
-
-    expect(project.name).toBe("自动项目");
-    await expect(fs.access(WORKSPACE_PROJECT_PATH)).resolves.toBeUndefined();
-    await expect(fs.access(path.resolve(path.dirname(WORKSPACE_PROJECT_PATH), "..", "output", "projects"))).rejects.toMatchObject({ code: "ENOENT" });
-    await cleanupWorkspace();
-  });
-
   it("loadProject only accepts the current workspace project id", async () => {
     await cleanupWorkspace();
     const project = await createProject("当前项目");
@@ -51,7 +40,7 @@ describe("workspace store", () => {
   it("listProjects returns only the current workspace project", async () => {
     await cleanupWorkspace();
     const project = await createProject("列表项目");
-    await updateProject(project.id, (latest) => ({ ...latest, sources: [] }));
+    await updateProject(project.id, (latest) => ({ ...latest, importedWorldbookPath: "列表项目.json" }));
 
     const projects = await listProjects();
 

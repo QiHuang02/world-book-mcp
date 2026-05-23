@@ -19,7 +19,7 @@ export function registerPrompts(server: McpServer): void {
   );
 
   server.prompt(
-    "draft_entries_from_plan",
+    "draft_entries_from_material",
     { project_id: z.string().optional() },
     ({ project_id }) => ({
       messages: [
@@ -27,7 +27,7 @@ export function registerPrompts(server: McpServer): void {
           role: "user",
           content: {
             type: "text",
-            text: `请根据 plan_worldbook_entries 的规划表和 get_entry_template 的模板起草世界书条目。项目：${project_id ?? "未指定"}。条目内容优先使用 XML 包裹 YAML。`,
+            text: `请根据用户材料、skill 配置规则和现有 draft 需求规划并起草世界书条目。项目：${project_id ?? "未指定"}。先创建 draft 切片模板，再逐字段写入 entry_type / keys / content；条目内容优先使用 XML 包裹 YAML。`,
           },
         },
       ],

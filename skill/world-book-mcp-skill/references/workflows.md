@@ -22,14 +22,16 @@
 判断设定来源与输入载体：
 
 - **原创**：用户口述、笔记、设定要求；可以用 `create_worldbuilding_design_template` / `create_worldbuilding_outline` 辅助补齐。
-- **同人 / 二创**：必须有用户提供的原文、wiki/资料摘要、本地文件内容，或用户明确允许对话助手 联网搜索后再用 `ingest_web_research` 保存摘要；不要凭空脑补原作事实。
+- **同人 / 二创**：必须有用户提供的原文、wiki/资料摘要、本地文件内容，或用户明确允许对话助手联网搜索后在对话内整理资料；不要凭空脑补原作事实。
 - **已有 JSON 改造**：世界书 JSON 用 `import_worldbook_json`；角色卡 JSON 用 `import_character_card_json`。
 - **输入载体**：
-  - 用户口述 / 粘贴文本：`ingest_text_source`。
-  - 本地文件文本：对话助手 先读取文件内容，再 `ingest_text_source`。
-  - 网络搜索摘要：对话助手 外部搜索并整理 facts，再 `ingest_web_research`。
+  - 用户口述 / 粘贴文本：宿主 AI 在对话内阅读并整理事实。
+  - 本地文件文本：宿主 AI 先读取文件内容，再在对话内整理事实。
+  - 网络搜索摘要：宿主 AI 外部搜索并整理 facts 与来源 URL。
   - 已有世界书 JSON：`import_worldbook_json`。
   - 已有角色卡 JSON：`import_character_card_json`，查询用 `query_character_card`。
+
+MCP 不保存原始素材或网页摘要；需要持久化的成果写入结构化 extraction、draft、角色卡配置或导出 JSON。
 
 ### 第 2 层：产物类型
 
@@ -76,8 +78,7 @@
 
 ---
 
-## 7 类标准工作流
-
+## 标准工作流
 
 ## init_project 起手行为
 
@@ -93,11 +94,10 @@
 ```text
 按 task-routing 判断任务类型与歧义
 → init_project（已有 project_id 可跳过）   # 空白目录/新项目起手
-→ ingest_text_source                      # 保存原文
-→ create_extraction_outline               # 拿提取模板
-→ 对话助手 阅读原文，按模板抽取结构化事实
-→ submit_extraction_result                # 提交事实
-→ plan_worldbook_entries                  # 规划条目
+→ 宿主 AI 阅读用户文本/文件内容，整理结构化事实
+→ create_extraction_outline               # 可选：拿提取模板
+→ submit_extraction_result                # 可选：保存结构化事实
+→ 宿主 AI 按 skill 规则规划条目切片
 → create_worldbook_draft_entry(s)          # 创建切片模板
 → 对话助手 编写条目正文
 → update_worldbook_draft_field(s)          # 逐字段填充 entry_type / keys / content 等
@@ -107,18 +107,16 @@
 → query_worldbook                         # 抽查
 ```
 
-## 2. 从网页摘要生成世界书
+## 2. 从网页资料生成世界书
 
 ```text
 按 task-routing 判断任务类型与歧义
 → init_project（已有 project_id 可跳过）   # 空白目录/新项目起手
-→ 在对话中完成网页搜索并整理资料
-→ 对话助手 整理搜索摘要 + facts
-→ ingest_web_research                     # 保存摘要
-→ create_extraction_outline
-→ 对话助手 从摘要中抽取结构化事实
-→ submit_extraction_result
-→ plan_worldbook_entries
+→ 在对话中完成网页搜索、来源筛选和摘要
+→ 对话助手 整理 facts + 来源 URL
+→ create_extraction_outline               # 可选
+→ submit_extraction_result                # 可选：保存结构化事实
+→ 宿主 AI 按 skill 规则规划条目切片
 → create_worldbook_draft_entry(s)
 → 对话助手 编写条目正文
 → update_worldbook_draft_field(s)

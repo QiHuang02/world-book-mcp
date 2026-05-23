@@ -125,14 +125,9 @@ Task routing, workflow choice, and clarification strategy are handled by the bun
 | Workflow, Projects, and Specs | `init_project` | Initializes `.worldbook/project.json` and `.worldbook/draft/`; safely creates a root template JSON when no Tavern-format JSON exists; existing projects can be reused or overwritten with `if_exists`. |
 | Workflow, Projects, and Specs | `list_projects` | Returns the current `.worldbook/project.json` workspace project, or an empty list if no workspace exists. |
 | Workflow, Projects, and Specs | `get_project` | Views project details or a summary. |
-| Workflow, Projects, and Specs | `get_entry_template` | Returns a World Book entry template. |
-| Workflow, Projects, and Specs | `explain_worldbook_config` | Explains configuration fields such as position, constant, order, keys, and recursion. |
 | Workflow, Projects, and Specs | `lint_worldbook_content` | Scans forbidden terms and common writing issues. |
-| Material Input | `ingest_text_source` | Ingests novel excerpts, settings, user notes, and other text. |
-| Material Input | `ingest_web_research` | Ingests web-search summaries organized by AI. |
 | Extraction | `create_extraction_outline` | Creates an extraction template for characters, worldbuilding, items, and events. |
 | Extraction | `submit_extraction_result` | Submits structured facts extracted by the main AI. |
-| World Book Building | `plan_worldbook_entries` | Plans an entry table from extraction results. |
 | World Book Building | `create_worldbook_draft_entry` | Creates one `.worldbook/draft/*.json` slice template. |
 | World Book Building | `create_worldbook_draft_entries` | Creates multiple slice templates. |
 | World Book Building | `update_worldbook_draft_field` | Locates a draft by comment and updates one field. |

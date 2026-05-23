@@ -44,16 +44,6 @@ export const WorldbookDraftEntrySchema = z.object({
   excludeRecursion: z.literal(true).default(true),
 });
 
-export const WorldbookEntryPlanSchema = z.object({
-  comment: z.string().min(1),
-  entryType: EntryTypeSchema,
-  position: PositionNameSchema,
-  order: z.number(),
-  constant: z.boolean(),
-  keys: z.array(z.string()).default([]),
-  reason: z.string(),
-});
-
 export const SimplifiedWorldbookEntryInputSchema = z.object({
   comment: z.string().min(1),
   content: z.string().default(""),
@@ -181,7 +171,6 @@ export const GenerateWorldbookJsonInputSchema = z.object({
 export type EntryType = z.infer<typeof EntryTypeSchema>;
 export type PositionName = z.infer<typeof PositionNameSchema>;
 export type WorldbookDraftEntry = z.infer<typeof WorldbookDraftEntrySchema>;
-export type WorldbookEntryPlan = z.infer<typeof WorldbookEntryPlanSchema>;
 export type CreateWorldbookDraftTemplateInput = z.infer<typeof CreateWorldbookDraftTemplateInputSchema>;
 export type DraftTemplateIfExists = z.infer<typeof DraftTemplateIfExistsSchema>;
 export type WorldbookDraftField = z.infer<typeof WorldbookDraftFieldSchema>;

@@ -1,13 +1,13 @@
 ---
 name: world-book-mcp-skill
-description: Use the world-book-mcp MCP server to author SillyTavern world books, chara_card_v3 character cards, MVU/ZOD variable systems, HTML status-bar beautification, and EJS dynamic content. Invoke this skill whenever the user wants to build, modify, validate, query, import, or export SillyTavern world books or character cards (single, multi, worldbook-only, derivative novel extraction, item/equipment, style profile, chapter outline, content lint), or whenever the user mentions tools like init_project, create_worldbook_draft_entry, update_worldbook_draft_field, confirm_worldbook_draft_complete, upsert_character_profile, ingest_text_source, plan_worldbook_entries, generate_worldbook_json, generate_character_card_json, request_user_decision.
+description: Use the world-book-mcp MCP server to author SillyTavern world books, chara_card_v3 character cards, MVU/ZOD variable systems, HTML status-bar beautification, and EJS dynamic content. Invoke this skill whenever the user wants to build, modify, validate, query, import, or export SillyTavern world books or character cards (single, multi, worldbook-only, derivative novel extraction, item/equipment, style profile, chapter outline, content lint), or whenever the user mentions tools like init_project, create_worldbook_draft_entry, update_worldbook_draft_field, confirm_worldbook_draft_complete, upsert_character_profile, generate_worldbook_json, generate_character_card_json, request_user_decision.
 ---
 
 # world-book-mcp 使用指南
 
 `world-book-mcp` 是一个 MCP 服务器，用于辅助 AI 生成、校验、查询和 patch SillyTavern 世界书 JSON、`chara_card_v3` 角色卡 JSON，以及 MVU/ZOD 变量系统、HTML 状态栏美化和 EJS 动态内容资产。
 
-本 skill 教 AI 如何正确编排这些 MCP 工具完成端到端任务。
+本 skill 教 AI 如何正确编排这些 MCP 工具完成端到端任务。配置规则见 [`references/config-rules.md`](references/config-rules.md)，条目写法与字段规则以本 skill 文档为准。
 
 ## 何时触发
 
@@ -17,7 +17,7 @@ description: Use the world-book-mcp MCP server to author SillyTavern world books
 - 用户希望抽取一段文本或一部小说的设定，输出可导入 SillyTavern 的 JSON。
 - 用户希望生成、修改、校验、合并、查询世界书或角色卡 JSON。
 - 用户希望加 MVU/ZOD 变量系统、HTML 状态栏、EJS 阶段化人设。
-- 用户提到本 skill 工具清单中的任何工具名（`ingest_text_source`、`plan_worldbook_entries`、`generate_worldbook_json`、`generate_character_card_json`、`request_user_decision` 等）。
+- 用户提到本 skill 工具清单中的任何工具名（`init_project`、`create_worldbook_draft_entry`、`update_worldbook_draft_field`、`generate_worldbook_json`、`generate_character_card_json`、`request_user_decision` 等）。
 
 ## 使用思路
 
@@ -28,8 +28,9 @@ description: Use the world-book-mcp MCP server to author SillyTavern world books
    - 卡型、世界观类型、是否启用 MVU/HTML/EJS 不明确时，先向用户确认。
 
 2. **再整理材料**
-   - 用户给出长文本时，先阅读并整理出结构化事实，再提交给项目。
-   - 网页资料先在对话中搜索和整理成摘要、facts、来源 URL，再用 `ingest_web_research` 保存。
+   - 用户给出长文本、本地文件或网页资料时，由宿主 AI 在对话内阅读、搜索、摘要并整理结构化事实。
+   - MCP 只保存 project、draft、角色卡配置和导出产物；不保存原始素材或网页摘要。
+   - 需要持久化的最终成果直接写入 `.worldbook/draft/*.json`。
 
 3. **最后写入与导出**
    - 世界书条目先用 `create_worldbook_draft_entry(s)` 创建分片模板，再用 `update_worldbook_draft_field(s)` 逐字段填充。
@@ -43,7 +44,7 @@ description: Use the world-book-mcp MCP server to author SillyTavern world books
 1. 按 [`references/task-routing.md`](references/task-routing.md) 判断任务类型。
 2. 如果用户目标、卡型、世界观类型、是否启用 MVU/HTML/EJS 不明确，先列出需要确认的问题。
 3. 按 [`references/workflows.md`](references/workflows.md) 选择合适流程，并根据用户目标裁剪步骤。
-4. 字段不确定时先查本工具清单与 [`references/config-rules.md`](references/config-rules.md)；需要模板或配置说明时调用 `get_entry_template` / `explain_worldbook_config`。
+4. 字段不确定时查本工具清单与 [`references/config-rules.md`](references/config-rules.md)，按文档中的字段规则和条目写法生成内容。
 5. 需要记录用户选择时，使用 `request_user_decision` / `record_user_decision`。
 
 详细工作流见 [`references/workflows.md`](references/workflows.md)。
@@ -52,26 +53,18 @@ description: Use the world-book-mcp MCP server to author SillyTavern world books
 
 下列分组覆盖常用工具。日常写入必须先创建 draft 切片模板，再逐字段更新；完整 config 提交仅用于高级场景。
 
-### 参考模板 / 配置说明
-
-- `get_entry_template` — 按 entryType 取条目模板。
-- `explain_worldbook_config` — 解释 position / constant / order / keys / scanDepth / recursion。
-
 任务类型、卡型、世界观类型和能力选择规则见 [`references/task-routing.md`](references/task-routing.md)。
 
-### 项目与素材
+### 项目
 
 - `init_project` — 初始化当前目录的 `.worldbook/project.json` 与 `.worldbook/draft/`；若根目录没有酒馆格式 JSON，会安全创建模板 JSON；若已有世界书/角色卡 JSON，则不创建模板也不覆盖。
-- `list_projects` — 列出本地保存的 MCP project。
+- `list_projects` — 列出当前 `.worldbook/project.json` 工作区项目。
 - `get_project` — 查看 project 状态摘要或全量。
-- `ingest_text_source` — 保存用户文本素材。
-- `ingest_web_research` — 保存已整理好的网页摘要。
 
 ### 提取
 
 - `create_extraction_outline` — 创建结构化提取模板（角色 / 世界 / 物品 / 事件）。
 - `submit_extraction_result` — 提交从素材中抽取的结构化事实。
-- `plan_worldbook_entries` — 把 extraction 转成条目计划。
 - `create_derivative_extraction_template` — 二创长文 outline（章节索引 + 角色 8 维 + 世界 5 维）。
 - `submit_derivative_extraction_outline` — 提交二创 outline，可同步成 extraction。
 - `validate_derivative_extraction_outline` — 单独校验二创 outline。
@@ -94,7 +87,7 @@ description: Use the world-book-mcp MCP server to author SillyTavern world books
 
 ### 世界书规划 / 起草 / 导入导出
 
-- `create_worldbook_entry_plan` — 综合 extraction + 卡型生成完整条目表。
+- `create_worldbook_entry_plan` — 根据显式输入生成一次性条目表；用户需要“规划表/条目表”时使用。
 - `validate_worldbook_entry_plan` — 校验条目表 position / order / keys。
 - `create_worldbook_draft_entry` — 创建单个 `.worldbook/draft/*.json` 切片模板。
 - `create_worldbook_draft_entries` — 批量创建切片模板。
@@ -174,18 +167,17 @@ description: Use the world-book-mcp MCP server to author SillyTavern world books
 
 ## 核心数据流
 
-任务从原文走向最终 JSON 通过 4 个阶段，对应不同工具：
+任务从用户材料走向最终 JSON 通过 4 个阶段，对应不同工具：
 
-```
-原始材料   ─►  ingest_text_source / ingest_web_research
+```text
+用户材料   ─►  宿主 AI 在对话内阅读、搜索、摘要并整理事实
    │
    ▼
 结构化事实 ─►  submit_extraction_result
               （或 submit_derivative_extraction_outline + sync_extraction=true）
    │
    ▼
-MCP draft  ─►  plan_worldbook_entries
-              → create_worldbook_draft_entry(s)
+MCP draft  ─►  create_worldbook_draft_entry(s)
               → update_worldbook_draft_field(s)
               → confirm_worldbook_draft_complete
    │
@@ -199,8 +191,8 @@ MCP draft  ─►  plan_worldbook_entries
 ## 调用习惯
 
 1. 每个新任务先按 `references/task-routing.md` 判断任务类型，并参考本 skill 工作流；空白目录/新项目先 `init_project`，确保 `.worldbook/draft/` 存在，并让它按需创建根目录模板 JSON。
-2. 任何字段拿不准先查本 skill 文档与 `references/config-rules.md`；需要确定性模板时调用 `get_entry_template`，需要配置解释时调用 `explain_worldbook_config`。
-3. 原始材料用 `ingest_*`，结构化事实用 `submit_extraction_result`，**两者绝不混用**。
+2. 任何字段拿不准先查本 skill 文档与 `references/config-rules.md`，按文档字段规则生成。
+3. 原始材料、网页摘要和本地文件内容由宿主 AI 在对话内整理；MCP 只保存结构化事实、draft、配置与导出结果。
 4. 写世界书条目必须先用 `create_worldbook_draft_entry(s)` 创建切片模板，再用 `update_worldbook_draft_field(s)` 逐字段填充；不要一次 tool call 提交完整条目对象。
 5. 世界书 draft 必须先 `confirm_worldbook_draft_complete`，再 `generate_worldbook_json`。
 6. 角色卡生成前应先完成世界书 draft，并用 `upsert_character_profile` 写角色卡字段；当前规范推荐 `description` 为空，角色信息全部进内嵌世界书。
@@ -211,7 +203,7 @@ MCP draft  ─►  plan_worldbook_entries
 
 ## 常见错误与红线
 
-- ❌ 把整篇原文塞进 `submit_extraction_result.characters/world` —— 应该先 `ingest_text_source` 保存原文，再提交结构化事实。
+- ❌ 把整篇原文塞进 `submit_extraction_result.characters/world` —— 应由宿主 AI 先在对话内抽取结构化事实，再提交事实。
 - ❌ 一次 tool call 塞完整世界书条目对象 —— 应先 `create_worldbook_draft_entry` 创建模板，再用 `update_worldbook_draft_field` 逐字段填充。
 - ❌ `constant=false`（绿灯）的条目没填 `keys` —— 绿灯条目必须有触发关键字。
 - ❌ 角色卡 `description` 写大量人设 —— 当前规范要求 `description` 为空，所有人设进内嵌世界书；角色卡字段用 `upsert_character_profile` 更新。
@@ -224,7 +216,7 @@ MCP draft  ─►  plan_worldbook_entries
 按需懒加载，不必一次性读完。
 
 - [`references/task-routing.md`](references/task-routing.md) — 任务类型判断、关键词路由与澄清问题清单。
-- [`references/workflows.md`](references/workflows.md) — 7 类标准工作流的完整调用顺序。
+- [`references/workflows.md`](references/workflows.md) — 标准工作流的完整调用顺序。
 - [`references/config-rules.md`](references/config-rules.md) — position / constant / keys / scanDepth / recursion / order / content 格式 / 角色卡 / MVU / HTML / EJS 字段规则。
 - [`references/decision-loop.md`](references/decision-loop.md) — 用户决策回路设计、`prefer_user_decision`、checklist 闸门。
 - [`references/example-original-character-card.md`](references/example-original-character-card.md) — 端到端示例：原创单角色卡 + MVU + HTML。

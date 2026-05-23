@@ -25,20 +25,11 @@
 - `source_kind = novel`
 - `extraction_focus = ["characters", "world", "items", "events", "style", "chapters"]`
 
-## 2. 素材入库
+## 2. 材料整理
 
-### `ingest_text_source`
+宿主 AI 在对话内读取用户粘贴的原文或本地文件内容，整理章节范围、角色事实、世界观事实、物品与事件。MCP 不保存原始原文；后续只把结构化 outline、draft 和导出结果写入 project。
 
-```json
-{
-  "title": "原作第 1 卷",
-  "content": "<原文文本>",
-  "source_type": "novel",
-  "tags": ["原作"]
-}
-```
-
-返回的 `project_id` 在后续步骤中重复使用。
+先调用 `init_project` 获取 `project_id`，后续步骤重复使用。
 
 ## 3. 二创 outline
 
@@ -239,7 +230,7 @@ AI 填充每章的 key_events / character_state_changes 等。
 ## 关键点
 
 - 二创任务依赖 outline 的 `chapter_index` 与各维度提取结果。
-- `sync_extraction=true` 让 outline 直接成为后续 plan/draft 的输入。
+- `sync_extraction=true` 让 outline 直接成为后续 draft 起草的事实来源。
 - 章节条目应保持绿灯，scanDepth=2。
 - 文风条目保持蓝灯并放置于 `before_an`。
 - 先整理事实，再用工具保存、校验和导出。

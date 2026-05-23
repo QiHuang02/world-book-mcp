@@ -40,8 +40,6 @@ export async function initWorkspaceProject(input: { name: string; projectId?: st
   const project: Project = {
     id: input.projectId ?? createId("project"),
     name: input.name,
-    sources: [],
-    research: [],
     patches: [],
     characterCardPatches: [],
     pendingDecisions: [],

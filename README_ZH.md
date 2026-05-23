@@ -122,17 +122,12 @@ patch 的 `match.uid` 优先匹配从已导入世界书保留的 `sourceUid`，�
 
 | 分类 | Tool | 说明 |
 | --- | --- | --- |
-| 工作流、项目与规范 | `get_entry_template` | 返回世界书条目模板。 |
 | 工作流、项目与规范 | `init_project` | 初始化 `.worldbook/project.json` 与 `.worldbook/draft/`；若根目录没有酒馆格式 JSON，会安全创建模板 JSON；已有项目可用 `if_exists` 控制复用或覆盖。 |
 | 工作流、项目与规范 | `list_projects` | 返回当前 `.worldbook/project.json` 工作区项目；未初始化时返回空列表。 |
 | 工作流、项目与规范 | `get_project` | 查看项目详情或摘要。 |
-| 工作流、项目与规范 | `explain_worldbook_config` | 解释 position、constant、order、keys、递归等配置。 |
 | 工作流、项目与规范 | `lint_worldbook_content` | 扫描禁词和常见写作问题。 |
-| 素材输入 | `ingest_text_source` | 接收小说片段、设定、用户笔记等文本。 |
-| 素材输入 | `ingest_web_research` | 接收 AI 整理后的网页搜索摘要。 |
 | 提取 | `create_extraction_outline` | 创建角色、世界观、物品、事件的提取模板。 |
 | 提取 | `submit_extraction_result` | 提交主 AI 提取好的结构化事实。 |
-| 世界书构建 | `plan_worldbook_entries` | 根据提取结果规划条目表。 |
 | 世界书构建 | `create_worldbook_draft_entry` | 创建单个 `.worldbook/draft/*.json` 切片模板。 |
 | 世界书构建 | `create_worldbook_draft_entries` | 批量创建切片模板。 |
 | 世界书构建 | `update_worldbook_draft_field` | 按 comment 定位并逐字段更新 draft。 |

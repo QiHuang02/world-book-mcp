@@ -2,7 +2,6 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createDerivativeExtractionTemplate, derivativeOutlineToExtraction, validateDerivativeExtractionOutline } from "../core/derivative-outline.js";
 import { createExtractionOutline, type ExtractionFocus } from "../core/extraction-outline.js";
-import { planEntries } from "../core/entry-planner.js";
 import { DerivativeExtractionOutlineSchema, DerivativeFocusSchema, DerivativeSourceKindSchema } from "../schemas/derivative-outline.js";
 import { SubmitExtractionResultInputSchema } from "../schemas/extraction.js";
 import { loadProject, updateProject } from "../storage/project-store.js";
@@ -27,14 +26,6 @@ export function registerExtractionTools(server: McpServer): void {
     };
     await updateProject(parsed.project_id, (project) => ({ ...project, extraction }));
     return toolText({ project_id: parsed.project_id, character_count: extraction.characters.length, world_fact_count: extraction.world.length, item_count: extraction.items.length, event_count: extraction.events.length });
-  });
-
-  server.tool("plan_worldbook_entries", { project_id: z.string() }, async (input) => {
-    const project = await loadProject(input.project_id);
-    if (!project.extraction) throw new Error("项目尚未提交 extraction result");
-    const result = planEntries(project.extraction);
-    await updateProject(input.project_id, (latest) => ({ ...latest, plan: result.entries_plan }));
-    return toolText({ project_id: project.id, ...result });
   });
 
   server.tool("create_derivative_extraction_template", {

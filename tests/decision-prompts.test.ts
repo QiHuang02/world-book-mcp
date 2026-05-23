@@ -6,8 +6,6 @@ function emptyProject(): Project {
   return {
     id: "project_test",
     name: "测试",
-    sources: [],
-    research: [],
     patches: [],
     pendingDecisions: [],
     recordedDecisions: [],

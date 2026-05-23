@@ -1,6 +1,6 @@
 # 世界书与角色卡配置规则
 
-> 何时阅读：当 AI 不确定某个条目应该填什么字段、`position` 怎么选、`constant` 怎么设、`keys` 写不写、MVU/HTML/EJS 各字段含义时翻这里。`explain_worldbook_config` 工具可在线返回这份文档的子集。
+> 何时阅读：当 AI 不确定某个条目应该填什么字段、`position` 怎么选、`constant` 怎么设、`keys` 写不写、MVU/HTML/EJS 各字段含义时翻这里。
 
 ---
 

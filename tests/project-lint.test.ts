@@ -7,8 +7,6 @@ describe("lintProjectContent", () => {
     const project: Project = {
       id: "project_test",
       name: "测试",
-      sources: [],
-      research: [],
       patches: [],
       draft: [{
         comment: "条目",

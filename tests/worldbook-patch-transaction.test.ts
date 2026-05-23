@@ -26,8 +26,6 @@ function project(): Project {
   return {
     id: "project_patch_tx",
     name: "事务世界书",
-    sources: [],
-    research: [],
     patches: [],
     pendingDecisions: [],
     recordedDecisions: [],

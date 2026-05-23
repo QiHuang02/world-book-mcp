@@ -5,13 +5,11 @@ import { registerExtractionTools } from "./extraction-tools.js";
 import { registerLintReviewTools } from "./lint-review-tools.js";
 import { registerMvuHtmlEjsTools } from "./mvu-html-ejs-tools.js";
 import { registerProjectTools } from "./project-tools.js";
-import { registerReferenceTools } from "./reference-tools.js";
 import { registerStyleChapterTools } from "./style-chapter-tools.js";
 import { registerWorldbookTools } from "./worldbook-tools.js";
 import { registerWorldbuildingTools } from "./worldbuilding-tools.js";
 
 export function registerTools(server: McpServer): void {
-  registerReferenceTools(server);
   registerProjectTools(server);
   registerExtractionTools(server);
   registerWorldbuildingTools(server);
