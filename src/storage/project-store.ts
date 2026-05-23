@@ -1,59 +1,25 @@
-import fs from "node:fs/promises";
-import path from "node:path";
 import { ProjectSchema, type Project } from "../schemas/project.js";
 import { createId, nowIso } from "../utils/ids.js";
-import { safeJsonParse, toPrettyJson } from "../utils/json.js";
-import { PROJECTS_DIR } from "./path-policy.js";
-import { isWorkspaceProject, loadWorkspaceProjectIfMatches, writeWorkspaceProject } from "./workspace-store.js";
+import { ensureWorkspaceDirs, initWorkspaceProject, isWorkspaceProject, loadWorkspaceProjectIfExists, loadWorkspaceProjectIfMatches, writeWorkspaceProject } from "./workspace-store.js";
 
 export async function ensureStorage(): Promise<void> {
-  await fs.mkdir(PROJECTS_DIR, { recursive: true });
-}
-
-function projectPath(projectId: string): string {
-  return path.join(PROJECTS_DIR, `${projectId}.json`);
+  await ensureWorkspaceDirs();
 }
 
 export async function createProject(name: string, projectId?: string): Promise<Project> {
-  await ensureStorage();
-  const timestamp = nowIso();
-  const project: Project = {
-    id: projectId ?? createId("project"),
-    name,
-    sources: [],
-    research: [],
-    patches: [],
-    characterCardPatches: [],
-    pendingDecisions: [],
-    recordedDecisions: [],
-    revision: 0,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
-  await writeProject(project);
+  const { project } = await initWorkspaceProject({ name, projectId: projectId ?? createId("project"), ifExists: "return_existing" });
   return project;
 }
 
 export async function loadProject(projectId: string): Promise<Project> {
   const workspaceProject = await loadWorkspaceProjectIfMatches(projectId);
   if (workspaceProject) return workspaceProject;
-  await ensureStorage();
-  const text = await fs.readFile(projectPath(projectId), "utf8");
-  return ProjectSchema.parse(safeJsonParse(text));
+  const error = new Error(`未找到 .worldbook/project.json 或 project_id 不匹配: ${projectId}`) as NodeJS.ErrnoException;
+  error.code = "ENOENT";
+  throw error;
 }
 
 const projectQueues = new Map<string, Promise<unknown>>();
-
-// 保留给完整 Project 替换场景；常规修改请优先使用 updateProject，以获得更明确的 revision 冲突检测语义。
-export async function saveProject(project: Project): Promise<Project> {
-  return enqueueProjectWrite(project.id, async () => {
-    const latest = await loadProjectIfExists(project.id);
-    const updated = { ...project, revision: (latest?.revision ?? project.revision ?? 0) + 1, updatedAt: nowIso() };
-    if (await isWorkspaceProject(project.id)) await writeWorkspaceProject(updated);
-    else await writeProject(updated);
-    return updated;
-  });
-}
 
 export async function updateProject(projectId: string, mutator: (project: Project) => Project | Promise<Project>, options: { expectedRevision?: number } = {}): Promise<Project> {
   return enqueueProjectWrite(projectId, async () => {
@@ -62,25 +28,13 @@ export async function updateProject(projectId: string, mutator: (project: Projec
       throw new Error(`project revision conflict: expected ${options.expectedRevision}, current ${project.revision}`);
     }
     const next = await mutator(project);
-    const updated = { ...next, id: project.id, revision: project.revision + 1, updatedAt: nowIso() };
-    if (await isWorkspaceProject(project.id)) await writeWorkspaceProject(updated);
-    else await writeProject(updated);
+    const updated = ProjectSchema.parse({ ...next, id: project.id, revision: project.revision + 1, updatedAt: nowIso() });
+    if (!await isWorkspaceProject(project.id)) {
+      throw new Error(`project_id 不匹配，当前工作区不是 ${project.id}`);
+    }
+    await writeWorkspaceProject(updated);
     return updated;
   });
-}
-
-async function writeProject(project: Project): Promise<void> {
-  await ensureStorage();
-  await fs.writeFile(projectPath(project.id), toPrettyJson(project), "utf8");
-}
-
-async function loadProjectIfExists(projectId: string): Promise<Project | undefined> {
-  try {
-    return await loadProject(projectId);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-    throw error;
-  }
 }
 
 function enqueueProjectWrite<T>(projectId: string, operation: () => Promise<T>): Promise<T> {
@@ -96,19 +50,15 @@ export async function loadOrCreateProject(projectId: string | undefined, fallbac
   if (projectId) {
     return loadProject(projectId);
   }
+  const existing = await loadWorkspaceProjectIfExists();
+  if (existing) return loadProject(existing.id);
   return createProject(fallbackName);
 }
 
 export async function listProjects(): Promise<Project[]> {
-  await ensureStorage();
-  const files = await fs.readdir(PROJECTS_DIR);
-  const projects: Project[] = [];
-  for (const file of files) {
-    if (!file.endsWith(".json")) continue;
-    const text = await fs.readFile(path.join(PROJECTS_DIR, file), "utf8");
-    projects.push(ProjectSchema.parse(safeJsonParse(text)));
-  }
-  return projects.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const project = await loadWorkspaceProjectIfExists();
+  if (!project) return [];
+  return [await loadProject(project.id)];
 }
 
 export function summarizeProject(project: Project, includeContent = false): unknown {

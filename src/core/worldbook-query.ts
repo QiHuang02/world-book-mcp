@@ -1,6 +1,5 @@
-import fs from "node:fs/promises";
 import { SillyTavernWorldbookSchema, type SillyTavernWorldbookEntry } from "../schemas/sillytavern-worldbook.js";
-import { safeJsonParse } from "../utils/json.js";
+import { readJsonFile } from "../utils/json.js";
 import { resolveReadableWorldbookPath } from "../storage/path-policy.js";
 import { numberToPosition } from "./position-map.js";
 
@@ -8,8 +7,7 @@ export type QueryMode = "brief" | "uid" | "search" | "stats";
 
 export async function queryWorldbook(input: { path: string; mode: QueryMode; uid?: number; query?: string }): Promise<unknown> {
   const resolvedPath = resolveReadableWorldbookPath(input.path);
-  const text = await fs.readFile(resolvedPath, "utf8");
-  const book = SillyTavernWorldbookSchema.parse(safeJsonParse(text));
+  const book = await readJsonFile(resolvedPath, SillyTavernWorldbookSchema);
   const entries = Object.values(book.entries).sort((a, b) => a.uid - b.uid);
 
   switch (input.mode) {

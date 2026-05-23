@@ -3,7 +3,7 @@ import path from "node:path";
 import { ProjectSchema, type Project } from "../schemas/project.js";
 import { WorldbookDraftEntrySchema, type WorldbookDraftEntry } from "../schemas/worldbook-draft.js";
 import { createId, nowIso } from "../utils/ids.js";
-import { safeJsonParse, toPrettyJson } from "../utils/json.js";
+import { readJsonFile, toPrettyJson, writeJsonFile } from "../utils/json.js";
 import { assertInside, ROOT_DIR, sanitizeFilename, writeTextFileSafely } from "./path-policy.js";
 
 export const WORKSPACE_DIR = path.resolve(ROOT_DIR, ".worldbook");
@@ -68,7 +68,7 @@ export async function loadWorkspaceProjectIfMatches(projectId: string): Promise<
 export async function writeWorkspaceProject(project: Project): Promise<void> {
   await ensureWorkspaceDirs();
   const { draft: _draft, ...metadata } = project;
-  await fs.writeFile(WORKSPACE_PROJECT_PATH, toPrettyJson(metadata), "utf8");
+  await writeJsonFile(WORKSPACE_PROJECT_PATH, metadata);
   if (project.draft) await writeWorkspaceDraftEntries(project.draft);
 }
 
@@ -80,8 +80,7 @@ export async function readWorkspaceDraftEntries(): Promise<WorldbookDraftEntry[]
     if (files.length === 0) return undefined;
     const entries: WorldbookDraftEntry[] = [];
     for (const file of files) {
-      const text = await fs.readFile(path.join(WORKSPACE_DRAFT_DIR, file), "utf8");
-      entries.push(WorldbookDraftEntrySchema.parse(safeJsonParse(text)));
+      entries.push(await readJsonFile(path.join(WORKSPACE_DRAFT_DIR, file), WorldbookDraftEntrySchema));
     }
     return entries;
   } catch (error) {
@@ -93,7 +92,7 @@ export async function readWorkspaceDraftEntries(): Promise<WorldbookDraftEntry[]
 export async function writeWorkspaceDraftEntry(entry: WorldbookDraftEntry): Promise<string> {
   await ensureWorkspaceDirs();
   const outputPath = draftEntryPath(entry.comment);
-  await fs.writeFile(outputPath, toPrettyJson(entry), "utf8");
+  await writeJsonFile(outputPath, entry);
   return outputPath;
 }
 
@@ -148,7 +147,7 @@ export async function findRootTavernJsonFiles(): Promise<string[]> {
     if (isCommonProjectJson(file.name)) continue;
     const filePath = path.resolve(ROOT_DIR, file.name);
     try {
-      const parsed = safeJsonParse(await fs.readFile(filePath, "utf8"));
+      const parsed = await readJsonFile(filePath);
       if (isTavernJson(parsed)) result.push(filePath);
     } catch {
       // 忽略无效 JSON 或无法读取的文件
@@ -171,7 +170,7 @@ export interface WorkspacePaths {
   draft_dir: string;
 }
 
-async function ensureWorkspaceDirs(): Promise<void> {
+export async function ensureWorkspaceDirs(): Promise<void> {
   await fs.mkdir(WORKSPACE_DRAFT_DIR, { recursive: true });
 }
 
@@ -179,10 +178,9 @@ async function clearWorkspaceDraftEntries(): Promise<void> {
   await fs.rm(WORKSPACE_DRAFT_DIR, { recursive: true, force: true });
 }
 
-async function loadWorkspaceProjectIfExists(): Promise<Project | undefined> {
+export async function loadWorkspaceProjectIfExists(): Promise<Project | undefined> {
   try {
-    const text = await fs.readFile(WORKSPACE_PROJECT_PATH, "utf8");
-    return ProjectSchema.parse(safeJsonParse(text));
+    return await readJsonFile(WORKSPACE_PROJECT_PATH, ProjectSchema);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     throw error;

@@ -1,7 +1,6 @@
-import fs from "node:fs/promises";
 import { CharacterCardConfigSchema, type CharacterCardConfig } from "../schemas/character-card.js";
 import type { WorldbookDraftEntry } from "../schemas/worldbook-draft.js";
-import { safeJsonParse } from "../utils/json.js";
+import { readJsonFile } from "../utils/json.js";
 
 interface ImportedCharacterCardJson {
   name?: string;
@@ -62,8 +61,7 @@ interface ImportedCharacterBookEntry {
 }
 
 export async function importCharacterCardFromFile(filePath: string): Promise<{ card: ImportedCharacterCardJson; config: CharacterCardConfig; draft: WorldbookDraftEntry[] }> {
-  const text = await fs.readFile(filePath, "utf8");
-  return characterCardToProjectData(safeJsonParse<ImportedCharacterCardJson>(text));
+  return characterCardToProjectData(await readJsonFile<ImportedCharacterCardJson>(filePath));
 }
 
 export function characterCardToProjectData(card: ImportedCharacterCardJson): { card: ImportedCharacterCardJson; config: CharacterCardConfig; draft: WorldbookDraftEntry[] } {

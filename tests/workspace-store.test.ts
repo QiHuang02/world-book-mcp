@@ -3,13 +3,14 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { initWorkspaceProject, loadWorkspaceProjectIfMatches, WORKSPACE_DRAFT_DIR, WORKSPACE_PROJECT_PATH, writeWorkspaceDraftEntry } from "../src/storage/workspace-store.js";
-import { updateProject } from "../src/storage/project-store.js";
+import { createProject, ensureStorage, listProjects, loadOrCreateProject, loadProject, updateProject } from "../src/storage/project-store.js";
 import { upsertWorldbookDraftEntry } from "../src/core/worldbook-entry-factory.js";
 import { validateWorldbookDraft } from "../src/core/worldbook-validator.js";
 import { buildWorldbookJson } from "../src/core/worldbook-builder.js";
 
 async function cleanupWorkspace(): Promise<void> {
   await fs.rm(path.dirname(WORKSPACE_PROJECT_PATH), { recursive: true, force: true, maxRetries: 3, retryDelay: 10 });
+  await fs.rm(path.resolve(path.dirname(WORKSPACE_PROJECT_PATH), "..", "output"), { recursive: true, force: true, maxRetries: 3, retryDelay: 10 });
 }
 
 function uniqueName(prefix: string): string {
@@ -17,6 +18,49 @@ function uniqueName(prefix: string): string {
 }
 
 describe("workspace store", () => {
+  it("ensureStorage only creates .worldbook workspace directories", async () => {
+    await cleanupWorkspace();
+
+    await ensureStorage();
+
+    await expect(fs.access(path.dirname(WORKSPACE_PROJECT_PATH))).resolves.toBeUndefined();
+    await expect(fs.access(path.resolve(path.dirname(WORKSPACE_PROJECT_PATH), "..", "output"))).rejects.toMatchObject({ code: "ENOENT" });
+    await cleanupWorkspace();
+  });
+
+  it("loadOrCreateProject creates the workspace project instead of output/projects", async () => {
+    await cleanupWorkspace();
+
+    const project = await loadOrCreateProject(undefined, "自动项目");
+
+    expect(project.name).toBe("自动项目");
+    await expect(fs.access(WORKSPACE_PROJECT_PATH)).resolves.toBeUndefined();
+    await expect(fs.access(path.resolve(path.dirname(WORKSPACE_PROJECT_PATH), "..", "output", "projects"))).rejects.toMatchObject({ code: "ENOENT" });
+    await cleanupWorkspace();
+  });
+
+  it("loadProject only accepts the current workspace project id", async () => {
+    await cleanupWorkspace();
+    const project = await createProject("当前项目");
+
+    await expect(loadProject(project.id)).resolves.toMatchObject({ id: project.id });
+    await expect(loadProject("missing_project")).rejects.toMatchObject({ code: "ENOENT" });
+    await cleanupWorkspace();
+  });
+
+  it("listProjects returns only the current workspace project", async () => {
+    await cleanupWorkspace();
+    const project = await createProject("列表项目");
+    await updateProject(project.id, (latest) => ({ ...latest, sources: [] }));
+
+    const projects = await listProjects();
+
+    expect(projects).toHaveLength(1);
+    expect(projects[0].id).toBe(project.id);
+    expect(projects[0].revision).toBe(1);
+    await cleanupWorkspace();
+  });
+
   it("creates .worldbook project and draft directory", async () => {
     await cleanupWorkspace();
     const { project, created, workspace } = await initWorkspaceProject({ name: uniqueName("测试项目"), ifExists: "overwrite" });

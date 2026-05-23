@@ -2,8 +2,6 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 export const ROOT_DIR = process.cwd();
-export const OUTPUT_DIR = path.resolve(ROOT_DIR, "output");
-export const PROJECTS_DIR = path.resolve(OUTPUT_DIR, "projects");
 export const EXPORTS_DIR = path.resolve(ROOT_DIR);
 export const BACKUPS_DIR = path.resolve(ROOT_DIR, ".worldbook", "backups");
 export const CARDS_DIR = path.resolve(ROOT_DIR);

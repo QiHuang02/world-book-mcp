@@ -73,7 +73,7 @@ Not supported yet:
 
 ## `.worldbook/` Workspace
 
-The primary role of `init_project` is to create or reuse the dedicated MCP workspace in the current project directory, especially ensuring `.worldbook/draft/` exists:
+The primary role of `init_project` is to create or reuse the single MCP workspace project in the current project directory. Project metadata is stored only in `.worldbook/project.json`, and split draft entries are stored in `.worldbook/draft/`; the old `output/projects` storage path is no longer created or read:
 
 ```text
 .
@@ -123,7 +123,7 @@ Patch `match.uid` first matches the `sourceUid` preserved from an imported World
 | Workflow, Projects, and Specs | `get_worldbook_workflow` | Returns the recommended tool flow for a task type. When `wants_character_card=true`, the character card flow is appended automatically. |
 | Workflow, Projects, and Specs | `get_tool_usage_guide` | Queries a tool's purpose, when to call it, required fields, sample input, common mistakes, and next steps. |
 | Workflow, Projects, and Specs | `init_project` | Initializes `.worldbook/project.json` and `.worldbook/draft/`; safely creates a root template JSON when no Tavern-format JSON exists; existing projects can be reused or overwritten with `if_exists`. |
-| Workflow, Projects, and Specs | `list_projects` | Lists locally saved MCP projects. |
+| Workflow, Projects, and Specs | `list_projects` | Returns the current `.worldbook/project.json` workspace project, or an empty list if no workspace exists. |
 | Workflow, Projects, and Specs | `get_project` | Views project details or a summary. |
 | Workflow, Projects, and Specs | `get_entry_template` | Returns a World Book entry template. |
 | Workflow, Projects, and Specs | `explain_worldbook_config` | Explains configuration fields such as position, constant, order, keys, and recursion. |

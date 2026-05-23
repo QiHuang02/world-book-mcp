@@ -1,12 +1,10 @@
-import fs from "node:fs/promises";
 import { SillyTavernWorldbookSchema, type SillyTavernWorldbook, type SillyTavernWorldbookEntry } from "../schemas/sillytavern-worldbook.js";
 import type { EntryType, WorldbookDraftEntry } from "../schemas/worldbook-draft.js";
-import { safeJsonParse } from "../utils/json.js";
+import { readJsonFile } from "../utils/json.js";
 import { numberToPosition } from "./position-map.js";
 
 export async function importWorldbookFromFile(path: string): Promise<{ book: SillyTavernWorldbook; draft: WorldbookDraftEntry[] }> {
-  const text = await fs.readFile(path, "utf8");
-  const book = SillyTavernWorldbookSchema.parse(safeJsonParse(text));
+  const book = await readJsonFile(path, SillyTavernWorldbookSchema);
   return { book, draft: worldbookToDraft(book) };
 }
 

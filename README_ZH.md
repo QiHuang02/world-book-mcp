@@ -73,7 +73,7 @@ args = ["-y", "@qihuang02/world-book-mcp"]
 
 ## `.worldbook/` 工作目录
 
-`init_project` 的主作用是在当前项目目录创建/复用 MCP 专用工作区，尤其是确保 `.worldbook/draft/` 可用：
+`init_project` 的主作用是在当前项目目录创建/复用单一 MCP 工作区 project。project 元信息只保存在 `.worldbook/project.json`，草稿分片保存在 `.worldbook/draft/`；旧的 `output/projects` 路径不再创建也不再读取：
 
 ```text
 .
@@ -123,7 +123,7 @@ patch 的 `match.uid` 优先匹配从已导入世界书保留的 `sourceUid`，�
 | 工作流、项目与规范 | `get_worldbook_workflow` | 根据任务类型返回推荐 tool 流程。`wants_character_card=true` 时会自动追加角色卡流程。 |
 | 工作流、项目与规范 | `get_tool_usage_guide` | 查询某个 tool 的用途、调用时机、必填字段、示例输入、常见错误和下一步。 |
 | 工作流、项目与规范 | `init_project` | 初始化 `.worldbook/project.json` 与 `.worldbook/draft/`；若根目录没有酒馆格式 JSON，会安全创建模板 JSON；已有项目可用 `if_exists` 控制复用或覆盖。 |
-| 工作流、项目与规范 | `list_projects` | 列出本地保存的 MCP 项目。 |
+| 工作流、项目与规范 | `list_projects` | 返回当前 `.worldbook/project.json` 工作区项目；未初始化时返回空列表。 |
 | 工作流、项目与规范 | `get_project` | 查看项目详情或摘要。 |
 | 工作流、项目与规范 | `get_entry_template` | 返回世界书条目模板。 |
 | 工作流、项目与规范 | `explain_worldbook_config` | 解释 position、constant、order、keys、递归等配置。 |
