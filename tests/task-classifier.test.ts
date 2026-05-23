@@ -5,7 +5,6 @@ describe("classifyWorldbookTask", () => {
   it("detects html beautify tasks", () => {
     const result = classifyWorldbookTask({ request: "给角色卡加 HTML 状态栏美化" });
     expect(result.task_type).toBe("html_beautify");
-    expect(result.required_workflow).toBe("html_beautify");
   });
 
   it("detects derivative extraction tasks", () => {

@@ -34,6 +34,23 @@ export const SubmitEjsConfigInputSchema = z.object({
   ejs: EjsConfigSchema,
 });
 
+export const UpsertEjsEntryInputSchema = z.object({
+  project_id: z.string(),
+  name: z.string().min(1),
+  role: z.enum(["controller", "stage", "inline", "helper"]).optional(),
+  content: z.string().optional(),
+  keys: z.array(z.string()).optional(),
+  constant: z.boolean().optional(),
+  position: PositionNameSchema.optional(),
+  order: z.number().optional(),
+  enabled: z.boolean().optional(),
+  depth: z.number().int().optional(),
+  scanDepth: z.number().int().optional(),
+  template_type: z.enum(["phase_profile", "palette", "custom"]).optional(),
+  variable_paths: z.array(z.string()).optional(),
+  expected_revision: z.number().int().nonnegative().optional(),
+});
+
 export const ValidateEjsConfigInputSchema = z.object({
   project_id: z.string(),
   ejs: EjsConfigSchema.optional(),

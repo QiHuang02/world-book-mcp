@@ -1,5 +1,3 @@
-import type { WorkflowTaskType } from "./workflow.js";
-
 export type WorldbookTaskClass =
   | "original_character_card"
   | "derivative_extraction"
@@ -25,7 +23,6 @@ export interface TaskClassificationInput {
 export interface TaskClassificationResult {
   task_type: WorldbookTaskClass;
   original_or_derivative: "original" | "derivative" | "existing_asset" | "technical" | "unknown";
-  required_workflow: WorkflowTaskType;
   required_guides: string[];
   notes: string[];
 }
@@ -48,11 +45,9 @@ const GUIDE_MAP: Record<WorldbookTaskClass, string[]> = {
 export function classifyWorldbookTask(input: TaskClassificationInput): TaskClassificationResult {
   const request = input.request.toLowerCase();
   const task_type = detectTaskType(input.request, request, input);
-  const required_workflow = workflowFor(task_type, request);
   return {
     task_type,
     original_or_derivative: originFor(task_type, request),
-    required_workflow,
     required_guides: GUIDE_MAP[task_type],
     notes: notesFor(task_type, input),
   };
@@ -71,35 +66,6 @@ function detectTaskType(raw: string, request: string, input: TaskClassificationI
   if (/世界观|世界设定|世界书|势力|地理|历史|社会结构/.test(request) && /原创|设计|创建|生成|设定/.test(request)) return "worldbuilding_only";
   if (/二创|原作|同人|提取|根据.*(?:文本|资料|网页|小说|作品)|从.*(?:文本|资料|网页|小说|作品)/.test(raw)) return "derivative_extraction";
   return input.wants_character_card || /角色卡|character card|开场白|first_mes|alternate/.test(request) ? "original_character_card" : "worldbuilding_only";
-}
-
-function workflowFor(taskType: WorldbookTaskClass, request: string): WorkflowTaskType {
-  switch (taskType) {
-    case "derivative_extraction":
-      return /网页|网址|web|搜索|research/.test(request) ? "from_web_research" : "from_text";
-    case "modify_existing":
-      return "modify_existing";
-    case "query_existing":
-      return "query_existing";
-    case "content_lint":
-      return "content_lint";
-    case "mvu_zod":
-      return "mvu_zod";
-    case "ejs_dynamic":
-      return "ejs_dynamic";
-    case "html_beautify":
-      return "html_beautify";
-    case "style_extraction":
-      return "style_extraction";
-    case "chapter_extraction":
-      return "chapter_extraction";
-    case "item_ability_equipment":
-      return "item_ability_equipment";
-    case "worldbuilding_only":
-      return "worldbuilding_only";
-    case "original_character_card":
-      return "original_character_card";
-  }
 }
 
 function originFor(taskType: WorldbookTaskClass, request: string): TaskClassificationResult["original_or_derivative"] {

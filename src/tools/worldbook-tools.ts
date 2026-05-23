@@ -2,8 +2,6 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createCharacterBasicEntryTemplate, createCharacterPersonalityEntryTemplate, validateCharacterAppearanceDistinctiveness, validateCharacterEntryStructure } from "../core/character-templates.js";
 import { createDeliveryChecklist } from "../core/delivery-checklist.js";
-import { createDraftTemplate } from "../core/draft-template.js";
-import { updateDraftEntries } from "../core/draft-update.js";
 import { validateItemEntry } from "../core/item-entry-validator.js";
 import { applyPatchToDraft, createPatch, previewPatch } from "../core/worldbook-patch.js";
 import { importWorldbookFromFile } from "../core/worldbook-importer.js";
@@ -12,11 +10,11 @@ import { upsertWorldbookDraftEntry } from "../core/worldbook-entry-factory.js";
 import { queryWorldbook } from "../core/worldbook-query.js";
 import { validateWorldbookDraft } from "../core/worldbook-validator.js";
 import { createWorldbookEntryPlan, validateWorldbookEntryPlan } from "../core/worldbook-planning.js";
-import { CreateWorldbookDraftTemplateInputSchema, EntryTypeSchema, GenerateWorldbookJsonInputSchema, UpdateWorldbookDraftEntriesInputSchema, UpsertWorldbookEntriesInputSchema, UpsertWorldbookEntryInputSchema, ValidateWorldbookDraftInputSchema } from "../schemas/worldbook-draft.js";
+import { DeleteWorldbookDraftEntryInputSchema, EntryTypeSchema, GenerateWorldbookJsonInputSchema, GetWorldbookDraftEntryInputSchema, ListWorldbookDraftEntriesInputSchema, UpsertWorldbookEntriesInputSchema, UpsertWorldbookEntryInputSchema, ValidateWorldbookDraftInputSchema } from "../schemas/worldbook-draft.js";
 import { ApplyWorldbookPatchInputSchema, CreateWorldbookPatchInputSchema, ImportWorldbookJsonInputSchema, PreviewWorldbookPatchInputSchema } from "../schemas/worldbook-patch.js";
 import { resolveExportPath, resolveReadableWorldbookPath, writeTempThenCommit, writeTextFileSafely } from "../storage/path-policy.js";
 import { loadProject, updateProject } from "../storage/project-store.js";
-import { initWorkspaceProject } from "../storage/workspace-store.js";
+import { deleteWorkspaceDraftEntry, draftEntryPath, initWorkspaceProject } from "../storage/workspace-store.js";
 import { toPrettyJson } from "../utils/json.js";
 import { toolText } from "./helpers.js";
 
@@ -53,17 +51,6 @@ export function registerWorldbookTools(server: McpServer): void {
 
   server.tool("validate_worldbook_entry_plan", { card_type: z.enum(["single_character_card", "multi_character_card", "worldbook_only"]), plan: z.array(z.object({ comment: z.string(), entryType: EntryTypeSchema, position: z.enum(["before_char", "after_char", "before_an", "after_an", "at_depth", "before_em", "after_em", "outlet"]), order: z.number(), constant: z.boolean(), keys: z.array(z.string()).default([]), reason: z.string() })) }, async (input) => toolText(validateWorldbookEntryPlan(input)));
 
-  server.tool("create_worldbook_draft_template", CreateWorldbookDraftTemplateInputSchema.shape, async (input) => {
-    const parsed = CreateWorldbookDraftTemplateInputSchema.parse(input);
-    const project = await loadProject(parsed.project_id);
-    if (!project.plan) throw new Error("项目尚未生成 entries plan");
-    const template = createDraftTemplate(project.plan);
-    if (parsed.save) {
-      await updateProject(parsed.project_id, (latest) => ({ ...latest, draft: template }));
-    }
-    return toolText({ project_id: parsed.project_id, saved: parsed.save, entries: template });
-  });
-
   server.tool("upsert_worldbook_entry", UpsertWorldbookEntryInputSchema.shape, async (input) => {
     const parsed = UpsertWorldbookEntryInputSchema.parse(input);
     const { project_id, expected_revision, match_by_keys, ...entryInput } = parsed;
@@ -73,7 +60,7 @@ export function registerWorldbookTools(server: McpServer): void {
       return { ...project, draft: upserted.entries };
     }, { expectedRevision: expected_revision });
     const validation = validateWorldbookDraft(result.draft ?? []);
-    return toolText({ project_id, revision: result.revision, created: upserted?.created, index: upserted?.index, entry: upserted?.entry, validation });
+    return toolText({ project_id, revision: result.revision, created: upserted?.created, index: upserted?.index, entry: upserted?.entry, draft_path: upserted?.entry ? draftEntryPath(upserted.entry.comment) : undefined, total_entry_count: result.draft?.length ?? 0, validation });
   });
 
   server.tool("upsert_worldbook_entries", UpsertWorldbookEntriesInputSchema.shape, async (input) => {
@@ -86,19 +73,55 @@ export function registerWorldbookTools(server: McpServer): void {
       return { ...project, draft };
     }, { expectedRevision: parsed.expected_revision });
     const validation = validateWorldbookDraft(result.draft ?? []);
-    return toolText({ project_id: parsed.project_id, revision: result.revision, saved_entry_count: parsed.entries.length, total_entry_count: result.draft?.length ?? 0, validation });
+    const comments = new Set(parsed.entries.map((entry) => entry.comment.trim()));
+    const draftPaths = (result.draft ?? []).filter((entry) => comments.has(entry.comment)).map((entry) => ({ comment: entry.comment, path: draftEntryPath(entry.comment) }));
+    return toolText({ project_id: parsed.project_id, revision: result.revision, saved_entry_count: parsed.entries.length, total_entry_count: result.draft?.length ?? 0, draft_paths: draftPaths, validation });
   });
 
-  server.tool("update_worldbook_draft_entries", UpdateWorldbookDraftEntriesInputSchema.shape, async (input) => {
-    const parsed = UpdateWorldbookDraftEntriesInputSchema.parse(input);
-    let draft = undefined as ReturnType<typeof updateDraftEntries> | undefined;
-    await updateProject(parsed.project_id, (project) => {
-      if (!project.draft) throw new Error("项目尚未保存 worldbook draft");
-      draft = updateDraftEntries(project.draft, parsed.patches);
-      return { ...project, draft };
+  server.tool("list_worldbook_draft_entries", ListWorldbookDraftEntriesInputSchema.shape, async (input) => {
+    const parsed = ListWorldbookDraftEntriesInputSchema.parse(input);
+    const project = await loadProject(parsed.project_id);
+    const entries = project.draft ?? [];
+    return toolText({
+      project_id: project.id,
+      entry_count: entries.length,
+      entries: entries.map((entry) => ({
+        comment: entry.comment,
+        entryType: entry.entryType,
+        keys: entry.keys,
+        secondaryKeys: entry.secondaryKeys,
+        constant: entry.constant,
+        position: entry.position,
+        order: entry.order,
+        enabled: entry.enabled,
+        characterName: entry.characterName,
+        draft_path: draftEntryPath(entry.comment),
+        content_length: entry.content.length,
+        ...(parsed.include_content ? { content: entry.content } : {}),
+      })),
     });
-    const validation = parsed.validate ? validateWorldbookDraft(draft ?? []) : undefined;
-    return toolText({ project_id: parsed.project_id, updated_entry_count: parsed.patches.length, validation });
+  });
+
+  server.tool("get_worldbook_draft_entry", GetWorldbookDraftEntryInputSchema.shape, async (input) => {
+    const parsed = GetWorldbookDraftEntryInputSchema.parse(input);
+    const project = await loadProject(parsed.project_id);
+    const entry = project.draft?.find((item) => item.comment === parsed.comment);
+    if (!entry) throw new Error(`未找到 comment=${parsed.comment} 的草稿条目`);
+    return toolText({ project_id: project.id, draft_path: draftEntryPath(entry.comment), entry });
+  });
+
+  server.tool("delete_worldbook_draft_entry", DeleteWorldbookDraftEntryInputSchema.shape, async (input) => {
+    const parsed = DeleteWorldbookDraftEntryInputSchema.parse(input);
+    let deletedPath: string | undefined;
+    const result = await updateProject(parsed.project_id, async (project) => {
+      const draft = project.draft ?? [];
+      const next = draft.filter((entry) => entry.comment !== parsed.comment);
+      if (next.length === draft.length) throw new Error(`未找到 comment=${parsed.comment} 的草稿条目`);
+      deletedPath = await deleteWorkspaceDraftEntry(parsed.comment);
+      return { ...project, draft: next };
+    }, { expectedRevision: parsed.expected_revision });
+    const validation = validateWorldbookDraft(result.draft ?? []);
+    return toolText({ project_id: result.id, revision: result.revision, deleted: true, deleted_path: deletedPath, total_entry_count: result.draft?.length ?? 0, validation });
   });
 
   server.tool("validate_worldbook_draft", ValidateWorldbookDraftInputSchema.shape, async (input) => {

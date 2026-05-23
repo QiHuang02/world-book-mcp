@@ -86,41 +86,25 @@ export const UpsertWorldbookEntriesInputSchema = z.object({
   match_by_keys: z.boolean().default(false),
 });
 
-export const DraftWorldbookEntriesInputSchema = z.object({
+export const ListWorldbookDraftEntriesInputSchema = z.object({
   project_id: z.string(),
-  entries: z.array(WorldbookDraftEntrySchema).min(1),
+  include_content: z.boolean().default(false),
+});
+
+export const GetWorldbookDraftEntryInputSchema = z.object({
+  project_id: z.string(),
+  comment: z.string().min(1),
+});
+
+export const DeleteWorldbookDraftEntryInputSchema = z.object({
+  project_id: z.string(),
+  comment: z.string().min(1),
+  expected_revision: z.number().int().nonnegative().optional(),
 });
 
 export const ValidateWorldbookDraftInputSchema = z.object({
   project_id: z.string().optional(),
   entries: z.array(WorldbookDraftEntrySchema).optional(),
-});
-
-export const CreateWorldbookDraftTemplateInputSchema = z.object({
-  project_id: z.string(),
-  save: z.boolean().default(false),
-});
-
-export const DraftEntryPatchSchema = z.object({
-  index: z.number().int().min(0).optional(),
-  comment: z.string().optional(),
-  content: z.string().optional(),
-  keys: z.array(z.string()).optional(),
-  secondaryKeys: z.array(z.string()).optional(),
-  constant: z.boolean().optional(),
-  position: PositionNameSchema.optional(),
-  order: z.number().optional(),
-  enabled: z.boolean().optional(),
-  depth: z.number().int().min(0).optional(),
-  scanDepth: z.number().int().min(0).nullable().optional(),
-}).refine((value) => value.index !== undefined || value.comment, {
-  message: "必须提供 index 或 comment 用于定位条目",
-});
-
-export const UpdateWorldbookDraftEntriesInputSchema = z.object({
-  project_id: z.string(),
-  patches: z.array(DraftEntryPatchSchema).min(1),
-  validate: z.boolean().default(true),
 });
 
 export const GenerateWorldbookJsonInputSchema = z.object({

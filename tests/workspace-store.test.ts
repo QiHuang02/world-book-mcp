@@ -169,17 +169,17 @@ describe("workspace store", () => {
     await cleanupWorkspace();
   });
 
-  it("falls back to legacy project.draft when split draft directory is empty", async () => {
+  it("ignores legacy project.draft when split draft directory is empty", async () => {
     await cleanupWorkspace();
-    const { project } = await initWorkspaceProject({ name: "旧草稿兼容", ifExists: "error" });
+    const { project } = await initWorkspaceProject({ name: "旧草稿不兼容", ifExists: "error" });
     const legacyProject = {
       ...project,
       draft: [{
-        comment: "兼容条目",
+        comment: "旧全量草稿",
         entryType: "world_summary",
-        keys: ["兼容"],
+        keys: ["旧"],
         secondaryKeys: [],
-        content: "<entry>兼容</entry>",
+        content: "<entry>旧</entry>",
         constant: true,
         position: "before_char",
         order: 1,
@@ -192,7 +192,7 @@ describe("workspace store", () => {
     await fs.rm(WORKSPACE_DRAFT_DIR, { recursive: true, force: true });
 
     const loaded = await loadWorkspaceProjectIfMatches(project.id);
-    expect(loaded?.draft?.[0].comment).toBe("兼容条目");
+    expect(loaded?.draft).toBeUndefined();
     await cleanupWorkspace();
   });
 });

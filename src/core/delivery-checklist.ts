@@ -34,7 +34,7 @@ export function createDeliveryChecklist(input: { project: Project; export_target
   if (!input.project.draft || input.project.draft.length === 0) {
     items.push({ section: "worldbook_draft", status: input.export_target === "worldbook" ? "blocking" : "warning", message: "项目尚未保存世界书 draft", related_tools: ["upsert_worldbook_entry", "upsert_worldbook_entries"] });
   } else {
-    items.push({ section: "worldbook_draft", status: review.sections.worldbook?.ok ? "ok" : "blocking", message: review.sections.worldbook?.ok ? "世界书 draft 校验通过" : "世界书 draft 存在阻塞性错误", related_tools: ["validate_worldbook_draft", "update_worldbook_draft_entries"] });
+    items.push({ section: "worldbook_draft", status: review.sections.worldbook?.ok ? "ok" : "blocking", message: review.sections.worldbook?.ok ? "世界书 draft 校验通过" : "世界书 draft 存在阻塞性错误", related_tools: ["validate_worldbook_draft", "list_worldbook_draft_entries", "upsert_worldbook_entry"] });
   }
 
   // 角色卡

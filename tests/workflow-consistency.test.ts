@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getCapabilityMatrix } from "../src/core/capability-matrix.js";
 import { getToolUsageGuide } from "../src/core/tool-usage-guide.js";
-import { getWorkflow } from "../src/core/workflow.js";
 
 const IMPLEMENTED_NOT_MISSING = [
   "create_character_basic_entry_template",
@@ -22,14 +21,12 @@ const IMPLEMENTED_NOT_MISSING = [
 ];
 
 describe("workflow and capability consistency", () => {
-  it("does not reference removed workflow tool names", () => {
-    const style = getWorkflow({ task_type: "style_extraction" }).workflow;
-    const chapter = getWorkflow({ task_type: "chapter_extraction" }).workflow;
-
-    expect(style).toContain("create_style_extraction_template");
-    expect(style).not.toContain("create_style_extraction_outline");
-    expect(chapter).toContain("create_chapter_extraction_template");
-    expect(chapter).not.toContain("create_chapter_extraction_outline");
+  it("does not expose removed workflow and full-draft guides", () => {
+    for (const tool of ["get_worldbook_workflow", "create_worldbook_draft_template", "update_worldbook_draft_entries"]) {
+      const guide = getToolUsageGuide(tool);
+      expect(guide).toHaveProperty("available_tools");
+      expect("available_tools" in guide && guide.available_tools).not.toContain(tool);
+    }
   });
 
   it("does not list implemented tools as missing", () => {

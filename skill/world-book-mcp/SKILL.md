@@ -1,6 +1,6 @@
 ---
 name: world-book-mcp
-description: Use the world-book-mcp MCP server to author SillyTavern world books, chara_card_v3 character cards, MVU/ZOD variable systems, HTML status-bar beautification, and EJS dynamic content. Invoke this skill whenever the user wants to build, modify, validate, query, import, or export SillyTavern world books or character cards (single, multi, worldbook-only, derivative novel extraction, item/equipment, style profile, chapter outline, content lint), or whenever the user mentions tools like init_project, upsert_worldbook_entry, upsert_worldbook_entries, upsert_character_profile, get_worldbook_workflow, ingest_text_source, plan_worldbook_entries, generate_worldbook_json, generate_character_card_json, request_user_decision.
+description: Use the world-book-mcp MCP server to author SillyTavern world books, chara_card_v3 character cards, MVU/ZOD variable systems, HTML status-bar beautification, and EJS dynamic content. Invoke this skill whenever the user wants to build, modify, validate, query, import, or export SillyTavern world books or character cards (single, multi, worldbook-only, derivative novel extraction, item/equipment, style profile, chapter outline, content lint), or whenever the user mentions tools like init_project, upsert_worldbook_entry, upsert_worldbook_entries, upsert_character_profile, ingest_text_source, plan_worldbook_entries, generate_worldbook_json, generate_character_card_json, request_user_decision.
 ---
 
 # world-book-mcp 使用指南
@@ -17,7 +17,7 @@ description: Use the world-book-mcp MCP server to author SillyTavern world books
 - 用户希望抽取一段文本或一部小说的设定，输出可导入 SillyTavern 的 JSON。
 - 用户希望生成、修改、校验、合并、查询世界书或角色卡 JSON。
 - 用户希望加 MVU/ZOD 变量系统、HTML 状态栏、EJS 阶段化人设。
-- 用户提到本 skill 工具清单中的任何工具名（`get_worldbook_workflow`、`ingest_text_source`、`plan_worldbook_entries`、`generate_worldbook_json`、`generate_character_card_json`、`request_user_decision` 等）。
+- 用户提到本 skill 工具清单中的任何工具名（`ingest_text_source`、`plan_worldbook_entries`、`generate_worldbook_json`、`generate_character_card_json`、`request_user_decision` 等）。
 
 ## 角色边界
 
@@ -48,7 +48,7 @@ description: Use the world-book-mcp MCP server to author SillyTavern world books
 拿到任意需求请按下面顺序起手，不要直接跳到具体工具：
 
 1. **`classify_worldbook_task`** — 把用户的自然语言请求归类为 15 种 task_type 之一，并返回 `suggested_decisions`。如果对用户意图存在多重歧义，调用时设 `prefer_user_decision: true`，强制走决策回路。
-2. **`get_worldbook_workflow`** — 用上一步得到的 `task_type` 查询参考流程；按需打开 `wants_character_card` / `wants_mvu` / `wants_html` / `wants_ejs` 追加相关能力。最终编排由主 AI 按用户目标决定，而不是依赖 MCP 返回固定下一步。
+2. 参考本 skill 的 `references/workflows.md` 编排流程；MCP 不再提供固定 workflow tool，流程由 skill 文档和主 AI 判断负责。
 3. **`get_tool_usage_guide`** — 任何工具的字段不确定时调它，返回用途、必填字段、示例输入和下一步推荐。
 4. **`get_worldbook_capability_matrix`** — 想确认某 task_type 下有哪些能力可用时调用，每条能力会标 `decision_hint`（`auto` / `prefer_clarification`）。
 
@@ -60,7 +60,6 @@ description: Use the world-book-mcp MCP server to author SillyTavern world books
 
 ### 元能力 / 路由
 
-- `get_worldbook_workflow` — 按 task_type 返回推荐流程。
 - `classify_worldbook_task` — 把自然语言请求分类为 task_type。
 - `propose_clarification_questions` — 主动列出歧义点。
 - `get_worldbook_capability_matrix` — 按 task_type 列出可用能力。
@@ -109,7 +108,9 @@ description: Use the world-book-mcp MCP server to author SillyTavern world books
 - `validate_worldbook_entry_plan` — 校验条目表 position / order / keys。
 - `upsert_worldbook_entry` — 用简化输入新增/更新单个世界书条目，MCP 自动补全完整配置并写入 `.worldbook/draft/*.json`；默认按 `comment` 更新，必要时可设 `match_by_keys=true`。
 - `upsert_worldbook_entries` — 用简化输入批量新增/更新世界书条目，同样默认按 `comment` 匹配。
-- `update_worldbook_draft_entries` — 按 index 或 comment 局部更新 draft。
+- `list_worldbook_draft_entries` — 列出 `.worldbook/draft/*.json` 分片草稿。
+- `get_worldbook_draft_entry` — 按 comment 读取单个分片草稿。
+- `delete_worldbook_draft_entry` — 按 comment 删除单个分片草稿。
 - `validate_worldbook_draft` — 校验 draft 配置和内容。
 - `generate_worldbook_json` — 导出独立 SillyTavern 世界书 JSON。
 - `import_worldbook_json` — 把当前工作目录内已有 JSON 导入为 project draft。
@@ -198,7 +199,7 @@ MCP draft  ─►  plan_worldbook_entries
 
 ## 调用习惯
 
-1. 每个新任务先 `classify_worldbook_task` + `get_worldbook_workflow`；空白目录/新项目先 `init_project`，确保 `.worldbook/draft/` 存在，并让它按需创建根目录模板 JSON。
+1. 每个新任务先 `classify_worldbook_task` 并参考本 skill 工作流；空白目录/新项目先 `init_project`，确保 `.worldbook/draft/` 存在，并让它按需创建根目录模板 JSON。
 2. 任何字段拿不准就 `get_tool_usage_guide`，不要靠猜。
 3. 原始材料用 `ingest_*`，结构化事实用 `submit_extraction_result`，**两者绝不混用**。
 4. 写世界书条目优先用 `upsert_worldbook_entry` / `upsert_worldbook_entries`，不要手写完整 SillyTavern entry JSON。

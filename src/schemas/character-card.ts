@@ -27,13 +27,6 @@ export const CharacterCardConfigSchema = z.object({
   worldbook: CharacterCardWorldbookConfigSchema.default({ source: "project_draft" }),
 });
 
-export const CreateCharacterCardTemplateInputSchema = z.object({
-  project_id: z.string().optional(),
-  name: z.string().min(1),
-  include_worldbook: z.boolean().default(true),
-  greeting_count: z.number().int().min(0).max(10).default(3),
-});
-
 export const UpsertCharacterProfileInputSchema = z.object({
   project_id: z.string(),
   name: z.string().min(1),
@@ -52,11 +45,6 @@ export const UpsertCharacterProfileInputSchema = z.object({
   include_worldbook: z.boolean().optional(),
   worldbook_name: z.string().optional(),
   expected_revision: z.number().int().nonnegative().optional(),
-});
-
-export const SubmitCharacterCardConfigInputSchema = z.object({
-  project_id: z.string(),
-  config: CharacterCardConfigSchema,
 });
 
 export const ValidateCharacterCardConfigInputSchema = z.object({

@@ -91,7 +91,7 @@
 ## 1. 从文本生成世界书
 
 ```text
-get_worldbook_workflow（task_type=from_text）
+classify_worldbook_task（request=用户需求）
 → init_project（已有 project_id 可跳过）   # 空白目录/新项目起手
 → ingest_text_source                      # 保存原文
 → create_extraction_outline               # 拿提取模板
@@ -101,7 +101,7 @@ get_worldbook_workflow（task_type=from_text）
 → 主 AI 编写条目正文
 → upsert_worldbook_entry / upsert_worldbook_entries  # 简化输入保存 draft
 → validate_worldbook_draft                # 校验
-→ 如有问题：update_worldbook_draft_entries  # 局部修复
+→ 如有问题：upsert_worldbook_entry / upsert_worldbook_entries  # 局部修复
 → generate_worldbook_json                 # 导出
 → query_worldbook                         # 抽查
 ```
@@ -109,7 +109,7 @@ get_worldbook_workflow（task_type=from_text）
 ## 2. 从网页摘要生成世界书
 
 ```text
-get_worldbook_workflow（task_type=from_web_research）
+classify_worldbook_task（request=用户需求）
 → init_project（已有 project_id 可跳过）   # 空白目录/新项目起手
 → 主 AI 在外部完成网页搜索（MCP 不联网）
 → 主 AI 整理搜索摘要 + facts

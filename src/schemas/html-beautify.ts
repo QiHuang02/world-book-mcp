@@ -36,6 +36,16 @@ export const SubmitHtmlBeautifyConfigInputSchema = z.object({
   html: HtmlBeautifyConfigSchema,
 });
 
+export const UpsertHtmlStatusbarInputSchema = z.object({
+  project_id: z.string(),
+  html: z.string().optional(),
+  theme: z.enum(["minimal", "dark", "light", "custom"]).optional(),
+  target: z.enum(["statusbar", "both"]).optional(),
+  enabled: z.boolean().optional(),
+  hide_regex: z.boolean().optional(),
+  expected_revision: z.number().int().nonnegative().optional(),
+});
+
 export const ValidateHtmlBeautifyConfigInputSchema = z.object({
   project_id: z.string(),
   html: HtmlBeautifyConfigSchema.optional(),

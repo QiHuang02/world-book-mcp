@@ -2,6 +2,7 @@ import type { Project } from "../schemas/project.js";
 import type { PatchMatch, WorldbookPatch, WorldbookPatchOperation } from "../schemas/worldbook-patch.js";
 import type { WorldbookDraftEntry } from "../schemas/worldbook-draft.js";
 import { createId, nowIso } from "../utils/ids.js";
+import { normalizeWorldbookEntry, upsertWorldbookDraftEntry } from "./worldbook-entry-factory.js";
 import { validateWorldbookDraft } from "./worldbook-validator.js";
 
 export interface PatchDiffItem {
@@ -33,19 +34,35 @@ export function applyPatchToDraft(entries: WorldbookDraftEntry[], operations: Wo
   for (const operation of operations) {
     switch (operation.op) {
       case "add_entry": {
-        const entry = normalizeEntry(operation.entry);
+        const entry = normalizeWorldbookEntry(operation.entry);
         next.push(entry);
         diff.push({ op: operation.op, target: `index=${next.length - 1}`, after: entry });
+        break;
+      }
+      case "add_or_update_entry": {
+        const applied = upsertWorldbookDraftEntry(next, operation.entry, { matchByKeys: operation.match_by_keys });
+        const before = applied.created ? undefined : cloneEntry(next[applied.index]);
+        next.splice(0, next.length, ...applied.entries);
+        diff.push({ op: operation.op, target: targetLabel(applied.entry, applied.index), before, after: applied.entry });
         break;
       }
       case "update_entry": {
         const index = resolveIndex(next, operation.match);
         const before = cloneEntry(next[index]);
-        next[index] = normalizeEntry({
-          ...next[index],
-          ...operation.changes,
-          scanDepth: operation.changes.scanDepth === null ? undefined : operation.changes.scanDepth ?? next[index].scanDepth,
-        });
+        next[index] = normalizeWorldbookEntry({
+          comment: operation.changes.comment ?? next[index].comment,
+          content: operation.changes.content ?? next[index].content,
+          keys: operation.changes.keys ?? next[index].keys,
+          secondaryKeys: operation.changes.secondaryKeys ?? operation.changes.secondary_keys ?? next[index].secondaryKeys,
+          entryType: operation.changes.entryType ?? operation.changes.entry_type ?? next[index].entryType,
+          characterName: operation.changes.characterName ?? operation.changes.character_name ?? next[index].characterName,
+          constant: operation.changes.constant ?? next[index].constant,
+          position: operation.changes.position ?? next[index].position,
+          order: operation.changes.order ?? next[index].order,
+          enabled: operation.changes.enabled ?? next[index].enabled,
+          depth: operation.changes.depth ?? next[index].depth,
+          scanDepth: operation.changes.scanDepth === null || operation.changes.scan_depth === null ? null : operation.changes.scanDepth ?? operation.changes.scan_depth ?? next[index].scanDepth,
+        }, next[index]);
         diff.push({ op: operation.op, target: targetLabel(next[index], index), before, after: next[index] });
         break;
       }
@@ -58,14 +75,14 @@ export function applyPatchToDraft(entries: WorldbookDraftEntry[], operations: Wo
       case "reorder_entry": {
         const index = resolveIndex(next, operation.match);
         const before = cloneEntry(next[index]);
-        next[index] = normalizeEntry({ ...next[index], order: operation.order });
+        next[index] = normalizeWorldbookEntry({ ...next[index], order: operation.order });
         diff.push({ op: operation.op, target: targetLabel(next[index], index), before, after: next[index] });
         break;
       }
       case "toggle_entry": {
         const index = resolveIndex(next, operation.match);
         const before = cloneEntry(next[index]);
-        next[index] = normalizeEntry({ ...next[index], enabled: operation.enabled });
+        next[index] = normalizeWorldbookEntry({ ...next[index], enabled: operation.enabled });
         diff.push({ op: operation.op, target: targetLabel(next[index], index), before, after: next[index] });
         break;
       }
@@ -91,24 +108,11 @@ function resolveIndex(entries: WorldbookDraftEntry[], match: PatchMatch): number
     if (sourceUidIndex >= 0) return sourceUidIndex;
     const hasSourceUid = entries.some((entry) => entry.sourceUid !== undefined);
     if (hasSourceUid) throw new Error(`未找到 sourceUid=${match.uid} 的条目`);
-    // 兼容旧项目：历史版本将 uid 当作 draft 数组下标处理。新项目应优先使用 sourceUid 或显式 index/comment。
-    if (!entries[match.uid]) throw new Error(`未找到 uid=${match.uid} 的条目`);
-    return match.uid;
+    throw new Error(`未找到 sourceUid=${match.uid} 的条目`);
   }
   const index = entries.findIndex((entry) => entry.comment === match.comment);
   if (index === -1) throw new Error(`未找到 comment=${match.comment} 的条目`);
   return index;
-}
-
-function normalizeEntry(entry: WorldbookDraftEntry): WorldbookDraftEntry {
-  return {
-    ...entry,
-    keys: entry.keys ?? [],
-    secondaryKeys: entry.secondaryKeys ?? [],
-    enabled: entry.enabled ?? true,
-    preventRecursion: true,
-    excludeRecursion: true,
-  };
 }
 
 function cloneEntry(entry: WorldbookDraftEntry): WorldbookDraftEntry {

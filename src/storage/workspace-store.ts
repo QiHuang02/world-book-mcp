@@ -28,7 +28,7 @@ export async function initWorkspaceProject(input: { name: string; projectId?: st
   }
   if (existing && ifExists === "return_existing") {
     await ensureWorkspaceDirs();
-    return { project: await withWorkspaceDraft(existing), created: false, workspace: workspacePaths() };
+    return { project: await attachWorkspaceDraft(existing), created: false, workspace: workspacePaths() };
   }
 
   if (existing && ifExists === "overwrite") {
@@ -62,7 +62,7 @@ export async function isWorkspaceProject(projectId: string): Promise<boolean> {
 export async function loadWorkspaceProjectIfMatches(projectId: string): Promise<Project | undefined> {
   const project = await loadWorkspaceProjectIfExists();
   if (!project || project.id !== projectId) return undefined;
-  return withWorkspaceDraft(project);
+  return attachWorkspaceDraft(project);
 }
 
 export async function writeWorkspaceProject(project: Project): Promise<void> {
@@ -93,6 +93,12 @@ export async function writeWorkspaceDraftEntry(entry: WorldbookDraftEntry): Prom
   await ensureWorkspaceDirs();
   const outputPath = draftEntryPath(entry.comment);
   await writeJsonFile(outputPath, entry);
+  return outputPath;
+}
+
+export async function deleteWorkspaceDraftEntry(comment: string): Promise<string> {
+  const outputPath = draftEntryPath(comment);
+  await fs.unlink(outputPath);
   return outputPath;
 }
 
@@ -187,9 +193,10 @@ export async function loadWorkspaceProjectIfExists(): Promise<Project | undefine
   }
 }
 
-async function withWorkspaceDraft(project: Project): Promise<Project> {
+async function attachWorkspaceDraft(project: Project): Promise<Project> {
   const draft = await readWorkspaceDraftEntries();
-  return draft ? { ...project, draft } : project;
+  const { draft: _ignoredLegacyDraft, ...metadata } = project;
+  return draft ? { ...metadata, draft } : metadata;
 }
 
 async function nextAvailableRootTemplateFilename(name: string): Promise<string> {

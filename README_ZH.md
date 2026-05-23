@@ -120,7 +120,6 @@ patch 的 `match.uid` 优先匹配从已导入世界书保留的 `sourceUid`，�
 
 | 分类 | Tool | 说明 |
 | --- | --- | --- |
-| 工作流、项目与规范 | `get_worldbook_workflow` | 根据任务类型返回推荐 tool 流程。`wants_character_card=true` 时会自动追加角色卡流程。 |
 | 工作流、项目与规范 | `get_tool_usage_guide` | 查询某个 tool 的用途、调用时机、必填字段、示例输入、常见错误和下一步。 |
 | 工作流、项目与规范 | `init_project` | 初始化 `.worldbook/project.json` 与 `.worldbook/draft/`；若根目录没有酒馆格式 JSON，会安全创建模板 JSON；已有项目可用 `if_exists` 控制复用或覆盖。 |
 | 工作流、项目与规范 | `list_projects` | 返回当前 `.worldbook/project.json` 工作区项目；未初始化时返回空列表。 |
@@ -135,7 +134,9 @@ patch 的 `match.uid` 优先匹配从已导入世界书保留的 `sourceUid`，�
 | 世界书构建 | `plan_worldbook_entries` | 根据提取结果规划条目表。 |
 | 世界书构建 | `upsert_worldbook_entry` | 用简化输入新增/更新单个条目，MCP 自动补全完整配置。 |
 | 世界书构建 | `upsert_worldbook_entries` | 用简化输入批量新增/更新多个条目。 |
-| 世界书构建 | `update_worldbook_draft_entries` | 按 index 或 comment 局部更新草稿条目。 |
+| 世界书构建 | `list_worldbook_draft_entries` | 列出 `.worldbook/draft/*.json` 分片草稿。 |
+| 世界书构建 | `get_worldbook_draft_entry` | 按 comment 读取单个分片草稿。 |
+| 世界书构建 | `delete_worldbook_draft_entry` | 按 comment 删除单个分片草稿。 |
 | 世界书构建 | `validate_worldbook_draft` | 校验草稿配置和内容问题。 |
 | 世界书构建 | `generate_worldbook_json` | 导出 SillyTavern 世界书 JSON。 |
 | 角色卡 | `import_character_card_json` | 导入当前目录内已有 `chara_card_v3` 角色卡 JSON，提取 profile 与内嵌世界书 draft。 |
@@ -147,15 +148,19 @@ patch 的 `match.uid` 优先匹配从已导入世界书保留的 `sourceUid`，�
 | 角色卡 | `apply_character_card_patch` | 应用角色卡 patch，安全导出 JSON 并更新 project。 |
 | 角色卡 | `query_character_card` | 查询角色卡概要、开场白或内嵌世界书条目。 |
 | MVU / ZOD | `create_mvu_schema_template` | 创建 MVU/ZOD 变量系统配置模板。 |
-| MVU / ZOD | `submit_mvu_config` | 保存 MVU 配置。 |
+| MVU / ZOD | `upsert_mvu_schema` | 局部更新 MVU schema 与变量路径。 |
+| MVU / ZOD | `upsert_mvu_update_rules` | 局部更新 MVU initvar 与 update_rules。 |
+| MVU / ZOD | `submit_mvu_config` | 高级入口：保存完整 MVU 配置。 |
 | MVU / ZOD | `validate_mvu_config` | 校验 ZOD schema、initvar、update_rules 与开场白占位符。 |
 | MVU / ZOD | `build_mvu_assets` | 预览将合并进角色卡的世界书条目、正则脚本和 Tavern Helper 脚本。 |
 | HTML 美化 | `create_html_beautify_template` | 创建状态栏或全局 HTML 美化配置模板。 |
-| HTML 美化 | `submit_html_beautify_config` | 保存 HTML 美化配置。 |
+| HTML 美化 | `upsert_html_statusbar` | 局部更新状态栏 HTML、主题和开关。 |
+| HTML 美化 | `submit_html_beautify_config` | 高级入口：保存完整 HTML 美化配置。 |
 | HTML 美化 | `validate_html_beautify_config` | 校验 HTML、CSS 作用域、regex 配置和开场白占位符。 |
 | HTML 美化 | `build_html_beautify_assets` | 预览将合并进角色卡的 regex scripts。 |
 | EJS 动态内容 | `create_ejs_template` | 创建阶段人设、调色盘或自定义 EJS 模板。 |
-| EJS 动态内容 | `submit_ejs_config` | 保存 EJS 配置。 |
+| EJS 动态内容 | `upsert_ejs_entry` | 按 name 局部新增/更新单个 EJS entry。 |
+| EJS 动态内容 | `submit_ejs_config` | 高级入口：保存完整 EJS 配置。 |
 | EJS 动态内容 | `validate_ejs_config` | 校验 MVU 依赖、变量路径、EJS 标签、getwi 引用和条目状态。 |
 | EJS 动态内容 | `build_ejs_entries` | 预览将合并进角色卡内嵌世界书的 EJS entries。 |
 | 查询与 Patch | `query_worldbook` | 查询已有世界书 JSON，支持 `brief`、`uid`、`search`、`stats`。 |

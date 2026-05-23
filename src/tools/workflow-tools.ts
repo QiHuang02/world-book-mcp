@@ -7,25 +7,12 @@ import { getEntryTemplate } from "../core/entry-templates.js";
 import { getToolUsageGuide } from "../core/tool-usage-guide.js";
 import { classifyWorldbuildingType } from "../core/worldbuilding.js";
 import { classifyWorldbookCardType } from "../core/worldbook-planning.js";
-import { getWorkflow, type WorkflowTaskType } from "../core/workflow.js";
 import { EntryTypeSchema } from "../schemas/worldbook-draft.js";
 import { toolText } from "./helpers.js";
 
 const TASK_CLASS_ENUM = z.enum(["original_character_card", "derivative_extraction", "worldbuilding_only", "item_ability_equipment", "style_extraction", "chapter_extraction", "modify_existing", "query_existing", "mvu_zod", "ejs_dynamic", "html_beautify", "content_lint"]);
 
 export function registerWorkflowTools(server: McpServer): void {
-  server.tool(
-    "get_worldbook_workflow",
-    {
-      task_type: z.enum(["from_text", "from_web_research", "original_world", "original_character_card", "derivative_extraction", "worldbuilding_only", "item_ability_equipment", "style_extraction", "chapter_extraction", "modify_existing", "query_existing", "mvu_zod", "ejs_dynamic", "html_beautify", "content_lint"]),
-      wants_character_card: z.boolean().optional(),
-      wants_mvu: z.boolean().optional(),
-      wants_html: z.boolean().optional(),
-      wants_ejs: z.boolean().optional(),
-    },
-    async (input) => toolText(getWorkflow({ ...input, task_type: input.task_type as WorkflowTaskType })),
-  );
-
   server.tool("classify_worldbook_task", {
     request: z.string().min(1),
     wants_character_card: z.boolean().optional(),

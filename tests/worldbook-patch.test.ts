@@ -21,7 +21,7 @@ function entry(comment = "条目A"): WorldbookDraftEntry {
 
 describe("applyPatchToDraft", () => {
   it("adds entries", () => {
-    const result = applyPatchToDraft([entry()], [{ op: "add_entry", entry: entry("条目B") }]);
+    const result = applyPatchToDraft([entry()], [{ op: "add_entry", entry: { comment: "条目B", content: "<entry>B</entry>", keys: ["条目B"] } }]);
     expect(result.entries).toHaveLength(2);
     expect(result.entries[1].comment).toBe("条目B");
   });
@@ -57,8 +57,13 @@ describe("applyPatchToDraft", () => {
     expect(result.entries[1].content).toContain("uid matched");
   });
 
-  it("falls back to legacy uid-as-index only when no sourceUid exists", () => {
-    const result = applyPatchToDraft([entry("旧A"), entry("旧B")], [{ op: "toggle_entry", match: { uid: 1 }, enabled: false }]);
-    expect(result.entries[1].enabled).toBe(false);
+  it("does not treat uid as draft index", () => {
+    expect(() => applyPatchToDraft([entry("旧A"), entry("旧B")], [{ op: "toggle_entry", match: { uid: 1 }, enabled: false }])).toThrow("sourceUid=1");
+  });
+
+  it("adds or updates entries with simplified input", () => {
+    const result = applyPatchToDraft([entry("条目A")], [{ op: "add_or_update_entry", entry: { comment: "条目A", content: "<entry>简化更新</entry>", keys: ["条目A"] } }]);
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0].content).toContain("简化更新");
   });
 });

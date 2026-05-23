@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { WorldbookDraftEntrySchema, PositionNameSchema } from "./worldbook-draft.js";
+import { SimplifiedWorldbookEntryInputSchema, PositionNameSchema } from "./worldbook-draft.js";
 
 export const PatchMatchSchema = z.object({
   uid: z.number().int().min(0).optional(),
@@ -14,17 +14,29 @@ export const PatchChangesSchema = z.object({
   content: z.string().optional(),
   keys: z.array(z.string()).optional(),
   secondaryKeys: z.array(z.string()).optional(),
+  secondary_keys: z.array(z.string()).optional(),
+  entryType: SimplifiedWorldbookEntryInputSchema.shape.entryType,
+  entry_type: SimplifiedWorldbookEntryInputSchema.shape.entry_type,
+  characterName: z.string().optional(),
+  character_name: z.string().optional(),
   constant: z.boolean().optional(),
   position: PositionNameSchema.optional(),
   order: z.number().optional(),
   enabled: z.boolean().optional(),
   depth: z.number().int().min(0).optional(),
   scanDepth: z.number().int().min(0).nullable().optional(),
+  scan_depth: z.number().int().min(0).nullable().optional(),
 });
 
 export const AddEntryOperationSchema = z.object({
   op: z.literal("add_entry"),
-  entry: WorldbookDraftEntrySchema,
+  entry: SimplifiedWorldbookEntryInputSchema,
+});
+
+export const AddOrUpdateEntryOperationSchema = z.object({
+  op: z.literal("add_or_update_entry"),
+  entry: SimplifiedWorldbookEntryInputSchema,
+  match_by_keys: z.boolean().default(false),
 });
 
 export const UpdateEntryOperationSchema = z.object({
@@ -52,6 +64,7 @@ export const ToggleEntryOperationSchema = z.object({
 
 export const WorldbookPatchOperationSchema = z.discriminatedUnion("op", [
   AddEntryOperationSchema,
+  AddOrUpdateEntryOperationSchema,
   UpdateEntryOperationSchema,
   DeleteEntryOperationSchema,
   ReorderEntryOperationSchema,

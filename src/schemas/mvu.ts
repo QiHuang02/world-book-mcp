@@ -23,6 +23,26 @@ export const SubmitMvuConfigInputSchema = z.object({
   mvu: MvuConfigSchema,
 });
 
+export const UpsertMvuSchemaInputSchema = z.object({
+  project_id: z.string(),
+  character_names: z.array(z.string().min(1)).optional(),
+  variable_list_path: z.union([z.string().min(1), z.literal(false)]).optional(),
+  schema_script: z.string().optional(),
+  output_format: z.string().optional(),
+  enabled: z.boolean().optional(),
+  expected_revision: z.number().int().nonnegative().optional(),
+});
+
+export const UpsertMvuUpdateRulesInputSchema = z.object({
+  project_id: z.string(),
+  initvar: z.string().optional(),
+  update_rules: z.string().optional(),
+  hide_regex: z.boolean().optional(),
+  beautify_regex: z.boolean().optional(),
+  enabled: z.boolean().optional(),
+  expected_revision: z.number().int().nonnegative().optional(),
+});
+
 export const ValidateMvuConfigInputSchema = z.object({
   project_id: z.string(),
   mvu: MvuConfigSchema.optional(),

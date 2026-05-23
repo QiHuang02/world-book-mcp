@@ -120,7 +120,6 @@ Patch `match.uid` first matches the `sourceUid` preserved from an imported World
 
 | Category | Tool | Description |
 | --- | --- | --- |
-| Workflow, Projects, and Specs | `get_worldbook_workflow` | Returns the recommended tool flow for a task type. When `wants_character_card=true`, the character card flow is appended automatically. |
 | Workflow, Projects, and Specs | `get_tool_usage_guide` | Queries a tool's purpose, when to call it, required fields, sample input, common mistakes, and next steps. |
 | Workflow, Projects, and Specs | `init_project` | Initializes `.worldbook/project.json` and `.worldbook/draft/`; safely creates a root template JSON when no Tavern-format JSON exists; existing projects can be reused or overwritten with `if_exists`. |
 | Workflow, Projects, and Specs | `list_projects` | Returns the current `.worldbook/project.json` workspace project, or an empty list if no workspace exists. |
@@ -135,7 +134,9 @@ Patch `match.uid` first matches the `sourceUid` preserved from an imported World
 | World Book Building | `plan_worldbook_entries` | Plans an entry table from extraction results. |
 | World Book Building | `upsert_worldbook_entry` | Adds or updates a single entry through simplified input; MCP automatically completes the full configuration. |
 | World Book Building | `upsert_worldbook_entries` | Adds or updates multiple entries through simplified input. |
-| World Book Building | `update_worldbook_draft_entries` | Partially updates draft entries by index or comment. |
+| World Book Building | `list_worldbook_draft_entries` | Lists `.worldbook/draft/*.json` split draft entries. |
+| World Book Building | `get_worldbook_draft_entry` | Reads one split draft entry by comment. |
+| World Book Building | `delete_worldbook_draft_entry` | Deletes one split draft entry by comment. |
 | World Book Building | `validate_worldbook_draft` | Validates draft configuration and content issues. |
 | World Book Building | `generate_worldbook_json` | Exports SillyTavern World Book JSON. |
 | Character Card | `import_character_card_json` | Imports an existing `chara_card_v3` JSON in the current directory and extracts profile plus embedded World Book draft. |
@@ -147,15 +148,19 @@ Patch `match.uid` first matches the `sourceUid` preserved from an imported World
 | Character Card | `apply_character_card_patch` | Applies a character card patch, safely exports JSON, and updates the project. |
 | Character Card | `query_character_card` | Queries the character card summary, greetings, or embedded World Book entries. |
 | MVU / ZOD | `create_mvu_schema_template` | Creates an MVU/ZOD variable system configuration template. |
-| MVU / ZOD | `submit_mvu_config` | Saves MVU configuration. |
+| MVU / ZOD | `upsert_mvu_schema` | Partially updates MVU schema and variable path. |
+| MVU / ZOD | `upsert_mvu_update_rules` | Partially updates MVU initvar and update rules. |
+| MVU / ZOD | `submit_mvu_config` | Advanced entry: saves the full MVU configuration. |
 | MVU / ZOD | `validate_mvu_config` | Validates ZOD schema, initvar, update_rules, and greeting placeholders. |
 | MVU / ZOD | `build_mvu_assets` | Previews World Book entries, regex scripts, and Tavern Helper scripts that will be merged into the character card. |
 | HTML Beautification | `create_html_beautify_template` | Creates a status-bar or global HTML beautification configuration template. |
-| HTML Beautification | `submit_html_beautify_config` | Saves HTML beautification configuration. |
+| HTML Beautification | `upsert_html_statusbar` | Partially updates statusbar HTML, theme, and switches. |
+| HTML Beautification | `submit_html_beautify_config` | Advanced entry: saves the full HTML beautification configuration. |
 | HTML Beautification | `validate_html_beautify_config` | Validates HTML, CSS scope, regex configuration, and greeting placeholders. |
 | HTML Beautification | `build_html_beautify_assets` | Previews regex scripts that will be merged into the character card. |
 | EJS Dynamic Content | `create_ejs_template` | Creates a staged character profile, palette, or custom EJS template. |
-| EJS Dynamic Content | `submit_ejs_config` | Saves EJS configuration. |
+| EJS Dynamic Content | `upsert_ejs_entry` | Partially adds or updates one EJS entry by name. |
+| EJS Dynamic Content | `submit_ejs_config` | Advanced entry: saves the full EJS configuration. |
 | EJS Dynamic Content | `validate_ejs_config` | Validates MVU dependencies, variable paths, EJS tags, getwi references, and entry status. |
 | EJS Dynamic Content | `build_ejs_entries` | Previews EJS entries that will be merged into the embedded World Book of a character card. |
 | Query and Patch | `query_worldbook` | Queries existing World Book JSON, supporting `brief`, `uid`, `search`, and `stats`. |
