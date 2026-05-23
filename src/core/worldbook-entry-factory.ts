@@ -1,4 +1,6 @@
 import type { EntryType, PositionName, WorldbookDraftEntry } from "../schemas/worldbook-draft.js";
+import { uniqueStrings } from "../utils/strings.js";
+import { defaultOrderForEntryType } from "./worldbook-entry-defaults.js";
 
 export interface SimplifiedWorldbookEntryInput {
   comment: string;
@@ -71,36 +73,4 @@ function findEntryIndex(entries: WorldbookDraftEntry[], input: SimplifiedWorldbo
   const keys = new Set((input.keys ?? []).map((key) => key.trim()).filter(Boolean));
   if (keys.size === 0) return -1;
   return entries.findIndex((entry) => entry.keys.some((key) => keys.has(key)));
-}
-
-function defaultOrderForEntryType(entryType: EntryType): number {
-  switch (entryType) {
-    case "world_summary":
-      return 1;
-    case "background":
-      return 10;
-    case "character_overview":
-      return 20;
-    case "character_basic":
-      return 30;
-    case "character_personality":
-      return 31;
-    case "faction":
-      return 40;
-    case "item":
-    case "ability":
-      return 50;
-    case "scene":
-    case "event":
-      return 60;
-    case "npc":
-      return 70;
-    case "other":
-    default:
-      return 100;
-  }
-}
-
-function uniqueStrings(values: string[]): string[] {
-  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
 }

@@ -1,11 +1,9 @@
 import type { Project } from "../schemas/project.js";
 import { buildCharacterCardJson, type CharacterCardJson } from "./character-card-builder.js";
 import { validateCharacterCardConfig } from "./character-card-validator.js";
-import { buildEjsEntries } from "./ejs-entries.js";
 import { validateEjsConfig } from "./ejs-validator.js";
-import { buildHtmlBeautifyAssets } from "./html-beautify-assets.js";
 import { validateHtmlBeautifyConfig } from "./html-beautify-validator.js";
-import { buildMvuAssets } from "./mvu-assets.js";
+import { buildProjectAssets } from "./project-assets.js";
 import { validateMvuConfig } from "./mvu-validator.js";
 
 export type CharacterCardProjectValidation = ReturnType<typeof validateCharacterCardConfig> | ReturnType<typeof validateMvuConfig> | ReturnType<typeof validateHtmlBeautifyConfig> | ReturnType<typeof validateEjsConfig>;
@@ -23,22 +21,20 @@ export function validateCharacterCardProject(project: Project): CharacterCardPro
   return validation;
 }
 
-export function buildCharacterCardJsonFromProject(project: Project): { card: CharacterCardJson; validation: CharacterCardProjectValidation } {
+export function buildCharacterCardJsonFromProject(project: Project, extraRegexScripts: import("./mvu-assets.js").RegexScriptAsset[] = []): { card: CharacterCardJson; validation: CharacterCardProjectValidation } {
   if (!project.characterCardConfig) throw new Error("项目尚未保存 character card config");
   const validation = validateCharacterCardProject(project);
   if (!validation.valid) return { card: undefined as never, validation };
-  const mvuAssets = project.mvuConfig?.enabled ? buildMvuAssets(project.mvuConfig) : undefined;
-  const htmlAssets = project.htmlBeautifyConfig?.enabled ? buildHtmlBeautifyAssets(project.htmlBeautifyConfig) : undefined;
-  const ejsEntries = project.ejsConfig?.enabled ? buildEjsEntries(project.ejsConfig).worldbookEntries : undefined;
+  const assets = buildProjectAssets(project, "all", extraRegexScripts);
   return {
     validation,
     card: buildCharacterCardJson({
       config: project.characterCardConfig,
       worldbookEntries: project.draft,
       worldbookName: project.characterCardConfig.worldbook.name ?? project.name,
-      mvuAssets,
-      htmlAssets,
-      ejsEntries,
+      mvuAssets: { worldbookEntries: assets.worldbook_entries, regexScripts: assets.regex_scripts, tavernHelperScripts: assets.tavern_helper_scripts },
+      htmlAssets: { regexScripts: [] },
+      ejsEntries: assets.ejs_entries,
     }),
   };
 }

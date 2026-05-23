@@ -1,7 +1,10 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { listProjects, loadProject, summarizeProject } from "../storage/project-store.js";
+import { importExistingTavernJsonFiles } from "../core/project-initializer.js";
+import { aggregateProjectDraft, projectWithAggregate } from "../core/project-draft-aggregate.js";
+import { listProjects, loadProject, summarizeProject, updateProject } from "../storage/project-store.js";
 import { ensureRootTemplateJson, initWorkspaceProject } from "../storage/workspace-store.js";
+import { logToolCall } from "../storage/tool-log.js";
 import { toolText } from "./helpers.js";
 
 export function registerProjectTools(server: McpServer): void {
@@ -10,20 +13,38 @@ export function registerProjectTools(server: McpServer): void {
     kind: z.enum(["worldbook", "character_card", "mixed"]).default("worldbook"),
     project_id: z.string().optional(),
     if_exists: z.enum(["error", "return_existing", "overwrite"]).default("error"),
-  }, async (input) => {
+    scan_existing: z.boolean().default(true),
+    import_strategy: z.enum(["auto", "ask", "none"]).default("auto"),
+  }, async (input) => toolText(await logToolCall("init_project", input, async () => {
     const { project, created, workspace } = await initWorkspaceProject({ name: input.name, projectId: input.project_id, ifExists: input.if_exists });
     const rootTemplate = await ensureRootTemplateJson({ name: input.name, kind: input.kind });
-    return toolText({
-      project_id: project.id,
-      name: project.name,
+    let imports: Awaited<ReturnType<typeof importExistingTavernJsonFiles>> | undefined;
+    if (input.scan_existing && input.import_strategy === "auto") {
+      imports = await importExistingTavernJsonFiles();
+      if (imports.records.length > 0) {
+        await updateProject(project.id, (latest) => ({ ...latest, imports: imports!.records }));
+      }
+    }
+    const latest = await loadProject(project.id);
+    const aggregate = await aggregateProjectDraft(latest);
+    const summarized = projectWithAggregate(latest, aggregate);
+    return {
+      project_id: latest.id,
+      name: latest.name,
       kind: input.kind,
-      revision: project.revision,
+      revision: latest.revision,
       created,
       workspace,
       root_template: rootTemplate,
-      project: summarizeProject(project, false),
-    });
-  });
+      imports: imports?.summaries ?? [],
+      project: summarizeProject(summarized, false),
+      next_actions: [
+        "向用户确认任务类型、输出目标、MVU/HTML/EJS、文风与导出文件名",
+        "调用 update_plan 写入 .worldbook/plan.md",
+        "调用 create_draft_slice / update_draft_field 继续创建和填写 draft",
+      ],
+    };
+  })));
 
   server.tool("list_projects", {}, async () => {
     const projects = await listProjects();

@@ -1,74 +1,77 @@
 # 任务路由与澄清规则
 
-> 何时阅读：拿到世界书 / 角色卡 / MVU / HTML / EJS / JSON 修改需求时，先用本页判断任务类型与需要确认的问题。
+## 固定原则
 
-## 任务类型
+完整创作、修改、导出任务的第二步永远是 `init_project`。只有纯咨询、纯模板示例、纯内容建议可以不初始化。
 
-- `original_character_card`：原创角色卡，包含人设、开场白、可选 MVU/HTML/EJS。
-- `derivative_extraction`：基于原作文本、小说、游戏、wiki、网页摘要等提取设定。
-- `worldbuilding_only`：纯世界观设计或世界书导出。
-- `item_ability_equipment`：物品、能力、装备、武器、服装条目。
-- `style_extraction`：文风、行文规则、叙事风格提取。
-- `chapter_extraction`：章节、剧情、事件线、角色状态变化提取。
-- `modify_existing`：导入并修改已有世界书或角色卡 JSON。
-- `query_existing`：查询、搜索、统计已有 JSON。
-- `mvu_zod`：MVU/ZOD 变量系统。
-- `ejs_dynamic`：EJS 动态条目、阶段人设、getwi/getvar。
-- `html_beautify`：HTML 状态栏、CSS、正则脚本、前端美化。
-- `content_lint`：禁词、自查、润色、写作优化报告。
+```text
+用户提出需求
+→ init_project
+→ 根据扫描/切片结果追问
+→ update_plan
+→ draft update
+→ validate_draft
+→ generate_json
+```
 
-## 关键词路由
+## 任务阶段
 
-按优先级判断：
+- `create`：原创或根据材料创建角色卡/世界书。
+- `modify`：修改已有角色卡/世界书/条目/MVU/HTML/EJS。
+- `query`：查询导出的 JSON 或当前 draft。
+- `evaluate`：审查、lint、交付检查。
 
-1. 出现 `EJS`、`动态条目`、`阶段条目`、`getwi`、`getvar` → `ejs_dynamic`。
-2. 出现 `HTML`、`状态栏`、`美化`、`CSS`、`正则脚本`、`前端` → `html_beautify`。
-3. 出现 `MVU`、`ZOD`、`变量`、`状态变量`、`initvar`、`状态栏占位符` → `mvu_zod`。
-4. 出现 `禁词`、`润色`、`优化`、`扫描`、`自查`、`lint`、`违禁词` → `content_lint`。
-5. 出现 `修改`、`更新`、`patch`、`补丁`、`删除条目`、`已有世界书`、`导入世界书` → `modify_existing`。
-6. 出现 `查询`、`查看`、`搜索`、`统计`、`brief`、`uid` → `query_existing`。
-7. 出现 `文风`、`风格提取`、`行文`、`叙事风格` → `style_extraction`。
-8. 出现 `章节`、`章回`、`剧情提取`、`故事提取`、`剧情总结` → `chapter_extraction`。
-9. 出现 `物品`、`道具`、`装备`、`服装`、`衣服`、`能力`、`技能`、`法术`、`武器` → `item_ability_equipment`。
-10. 出现 `二创`、`原作`、`同人`、`提取`、`根据文本/资料/网页/小说/作品` → `derivative_extraction`。
-11. 出现 `角色卡`、`character card`、`开场白`、`first_mes`、`alternate greeting` → `original_character_card`。
-12. 否则默认为 `worldbuilding_only`。
+## 来源类型
 
-## 原创 / 二创判断
+- `original`：原创、自创、从零设计。
+- `derivative`：根据小说/文本/wiki/游戏/网页资料提取。
+- `mixed`：原创与参考资料混合。
+- `modify_existing`：当前目录已有 SillyTavern JSON，或用户要求修改已有 JSON。
 
-- 明确说“原创 / 自创 / 设计 / 从零生成” → 原创。
-- 明确说“二创 / 同人 / 原作 / 根据小说 / 根据文本 / 根据网页资料” → 二创。
-- 同时存在原创和原作参考 → 先问用户是否为“原创为主、二创为主、混合”。
+## 输出目标
 
-## 模糊时优先询问
+必须确认并写入 `.worldbook/plan.md`：
 
-可用 `request_user_decision` 把问题写入 project 的 pending decisions。
+- `worldbook`
+- `character_card`
+- `both`
 
-### 通用
+## 修改已有 JSON
 
-- 这次任务是原创、二创，还是混合？
-- 最终目标是世界书、角色卡，还是两者都要？
+命中关键词：修改、更新、已有角色卡、已有世界书、导入、第三方角色卡、别人做的卡、patch、补丁。
 
-### 角色卡 / 世界书
+新流程：
 
-- 卡型：单角色卡 / 多角色卡 / 纯世界书？
-- 世界观类型：A 真实背景 / B 小世界 / C 大世界？
-- 是否启用 MVU？是否启用 HTML 状态栏？是否启用 EJS？
+```text
+init_project(scan_existing=true, import_strategy="auto")
+→ MCP 自动切片已有 JSON，包括世界书、profile、greetings、MVU、HTML、EJS、regex
+→ AI 查看切片摘要并询问修改目标
+→ update_plan 记录修改计划
+→ update_draft_field(s)
+→ validate_draft
+→ generate_json
+```
 
-增强资产默认不主动追加：只有用户明确提到 MVU、HTML、EJS、状态栏、变量或动态条目时才进入对应流程。用户要求 EJS 时，必须先确认或配置 MVU。
+不要再引导使用旧 patch 工具。
 
-### 二创提取
+## 需要追问的问题
 
-- 素材类型：小说 / 游戏 / wiki / web research / mixed？
-- 提取维度：角色 / 世界观 / 物品能力 / 事件 / 文风 / 章节？
+在 `init_project` 后，根据扫描结果精简提问：
 
-### 修改已有 JSON
+- 最终导出世界书、角色卡还是 both？
+- 是覆盖原文件还是输出新文件？
+- 是否启用/保留已有 MVU？
+- 是否启用/保留已有 HTML 状态栏？
+- 是否启用/保留已有 EJS 动态条目？
+- 是否需要保留第三方 regex scripts？
+- 文风、角色关系、世界观是否有额外要求？
 
-- 修改类型：新增条目 / 更新条目 / 删除条目 / 调整顺序 / 启用禁用？
-- 目标文件路径是什么？是世界书 JSON 还是角色卡 JSON？
+## 增强资产判断
 
-## 使用方式
+用户未要求时不要主动新增 MVU/HTML/EJS；但如果 `init_project` 从第三方角色卡中识别到已有资产，应询问是否保留、修改或禁用。
 
-- 判断出任务类型后，去 [`workflows.md`](workflows.md) 选择对应流程。
-- 如果判断不唯一，先按“模糊时优先询问”列出问题。
-- 用户确认后，用 `request_user_decision` / `record_user_decision` 保存选择，再继续写入、校验和导出。
+关键词：
+
+- MVU/ZOD/schema/initvar/变量更新 → `mvu_schema` + `mvu_update_rules`
+- HTML/状态栏/StatusPlaceHolderImpl/regex/美化 → `html_statusbar` + `html_regex`
+- EJS/getwi/getvar/阶段/条件渲染 → `ejs_entry`

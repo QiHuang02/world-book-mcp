@@ -3,6 +3,7 @@ import type { CharacterCardConfig } from "../schemas/character-card.js";
 import type { HtmlBeautifyAssets } from "./html-beautify-assets.js";
 import type { MvuAssets } from "./mvu-assets.js";
 import type { WorldbookDraftEntry } from "../schemas/worldbook-draft.js";
+import { uniqueStrings } from "../utils/strings.js";
 import { positionToNumber } from "./position-map.js";
 
 export interface CharacterCardJson {
@@ -202,10 +203,6 @@ function labelCharacterContent(content: string, label: string): string {
 
 function hasSingleXmlWrapper(content: string): boolean {
   return /^<([a-zA-Z_][\w-]*)>[\s\S]*<\/\1>$/.test(content.trim());
-}
-
-function uniqueStrings(values: string[]): string[] {
-  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
 }
 
 export function draftEntriesToCharacterBookEntries(entries: WorldbookDraftEntry[]): CharacterBookEntry[] {

@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { EntryTypeSchema, PositionNameSchema, type CreateWorldbookDraftTemplateInput, type WorldbookDraftEntry, type WorldbookDraftField } from "../schemas/worldbook-draft.js";
+import { uniqueStrings } from "../utils/strings.js";
+import { defaultOrderForEntryType } from "./worldbook-entry-defaults.js";
 import { validateWorldbookDraft, type ValidationIssue } from "./worldbook-validator.js";
 
 export interface DraftCompletenessIssue {
@@ -9,7 +11,7 @@ export interface DraftCompletenessIssue {
 }
 
 export interface DraftNextAction {
-  tool: "create_worldbook_draft_entry" | "update_worldbook_draft_field";
+  tool: "create_draft_slice" | "update_draft_field";
   comment?: string;
   field?: WorldbookDraftField;
 }
@@ -140,14 +142,14 @@ export function confirmWorldbookDraftComplete(entries: WorldbookDraftEntry[] | u
 
   if (draft.length === 0) {
     missing.push({ field: "draft", message: "尚未创建任何 .worldbook/draft/*.json 切片模板" });
-    nextActions.push({ tool: "create_worldbook_draft_entry" });
+    nextActions.push({ tool: "create_draft_slice" });
   }
 
   const seen = new Set<string>();
   for (const entry of draft) {
     if (!entry.comment.trim()) {
       missing.push({ comment: entry.comment, field: "comment", message: "comment 不能为空" });
-      nextActions.push({ tool: "update_worldbook_draft_field", comment: entry.comment, field: "comment" });
+      nextActions.push({ tool: "update_draft_field", comment: entry.comment, field: "comment" });
     } else if (seen.has(entry.comment)) {
       missing.push({ comment: entry.comment, field: "comment", message: `comment 重复：${entry.comment}` });
     }
@@ -155,15 +157,15 @@ export function confirmWorldbookDraftComplete(entries: WorldbookDraftEntry[] | u
 
     if (!entry.content.trim()) {
       missing.push({ comment: entry.comment, field: "content", message: "content 为空，不能合并导出" });
-      nextActions.push({ tool: "update_worldbook_draft_field", comment: entry.comment, field: "content" });
+      nextActions.push({ tool: "update_draft_field", comment: entry.comment, field: "content" });
     }
     if (!entry.constant && entry.keys.length === 0) {
       missing.push({ comment: entry.comment, field: "keys", message: "constant=false 的绿灯条目必须有 keys" });
-      nextActions.push({ tool: "update_worldbook_draft_field", comment: entry.comment, field: "keys" });
+      nextActions.push({ tool: "update_draft_field", comment: entry.comment, field: "keys" });
     }
     if ((entry.entryType === "character_basic" || entry.entryType === "character_personality") && !entry.characterName?.trim() && !inferCharacterNameFromComment(entry.comment)) {
       missing.push({ comment: entry.comment, field: "character_name", message: "角色类条目建议填写 character_name，或使用“角色名-基础设定/性格”格式的 comment" });
-      nextActions.push({ tool: "update_worldbook_draft_field", comment: entry.comment, field: "character_name" });
+      nextActions.push({ tool: "update_draft_field", comment: entry.comment, field: "character_name" });
     }
   }
 
@@ -188,34 +190,6 @@ export function confirmWorldbookDraftComplete(entries: WorldbookDraftEntry[] | u
   };
 }
 
-function defaultOrderForEntryType(entryType: WorldbookDraftEntry["entryType"]): number {
-  switch (entryType) {
-    case "world_summary":
-      return 1;
-    case "background":
-      return 2;
-    case "character_overview":
-      return 4;
-    case "character_basic":
-      return 30;
-    case "character_personality":
-      return 31;
-    case "faction":
-      return 40;
-    case "item":
-    case "ability":
-      return 50;
-    case "scene":
-    case "event":
-      return 60;
-    case "npc":
-      return 70;
-    case "other":
-    default:
-      return 100;
-  }
-}
-
 function inferCharacterNameFromComment(comment: string): string | undefined {
   const match = comment.match(/^(.+?)[-_](基础设定|基础|性格设定|性格|人格)$/);
   return match?.[1]?.trim() || undefined;
@@ -227,10 +201,6 @@ function cloneEntry(entry: WorldbookDraftEntry): WorldbookDraftEntry {
     keys: [...entry.keys],
     secondaryKeys: [...entry.secondaryKeys],
   };
-}
-
-function uniqueStrings(values: string[]): string[] {
-  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
 }
 
 function dedupeNextActions(actions: DraftNextAction[]): DraftNextAction[] {

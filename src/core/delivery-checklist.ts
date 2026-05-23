@@ -32,31 +32,31 @@ export function createDeliveryChecklist(input: { project: Project; export_target
 
   // 世界书 draft
   if (!input.project.draft || input.project.draft.length === 0) {
-    items.push({ section: "worldbook_draft", status: input.export_target === "worldbook" ? "blocking" : "warning", message: "项目尚未保存世界书 draft", related_tools: ["create_worldbook_draft_entry", "create_worldbook_draft_entries"] });
+    items.push({ section: "worldbook_draft", status: input.export_target === "worldbook" ? "blocking" : "warning", message: "项目尚未保存世界书 draft", related_tools: ["create_draft_slice"] });
   } else {
-    items.push({ section: "worldbook_draft", status: review.sections.worldbook?.ok ? "ok" : "blocking", message: review.sections.worldbook?.ok ? "世界书 draft 校验通过" : "世界书 draft 存在阻塞性错误", related_tools: ["confirm_worldbook_draft_complete", "validate_worldbook_draft", "list_worldbook_draft_entries", "update_worldbook_draft_field"] });
+    items.push({ section: "worldbook_draft", status: review.sections.worldbook?.ok ? "ok" : "blocking", message: review.sections.worldbook?.ok ? "世界书 draft 校验通过" : "世界书 draft 存在阻塞性错误", related_tools: ["validate_draft", "list_draft_slices", "update_draft_field"] });
   }
 
   // 角色卡
   if (input.export_target === "character_card") {
     if (!input.project.characterCardConfig) {
-      items.push({ section: "character_card", status: "blocking", message: "项目尚未保存角色卡配置", related_tools: ["upsert_character_profile"] });
+      items.push({ section: "character_card", status: "blocking", message: "项目尚未保存角色卡配置", related_tools: ["create_draft_slice", "update_draft_field"] });
     } else {
-      items.push({ section: "character_card", status: review.sections.character_card?.ok ? "ok" : "blocking", message: review.sections.character_card?.ok ? "角色卡配置通过校验" : "角色卡配置存在错误", related_tools: ["validate_character_card_config", "validate_greetings"] });
+      items.push({ section: "character_card", status: review.sections.character_card?.ok ? "ok" : "blocking", message: review.sections.character_card?.ok ? "角色卡配置通过校验" : "角色卡配置存在错误", related_tools: ["validate_draft", "update_draft_field"] });
     }
   } else if (input.project.characterCardConfig) {
-    items.push({ section: "character_card", status: review.sections.character_card?.ok ? "ok" : "warning", message: "导出目标为世界书，角色卡配置仅供参考", related_tools: ["validate_character_card_config"] });
+    items.push({ section: "character_card", status: review.sections.character_card?.ok ? "ok" : "warning", message: "导出目标为世界书，角色卡配置仅供参考", related_tools: ["validate_draft"] });
   }
 
   // MVU / EJS / HTML 仅在启用时检查
   if (input.project.mvuConfig?.enabled) {
-    items.push({ section: "mvu", status: review.sections.mvu?.ok ? "ok" : "blocking", message: review.sections.mvu?.ok ? "MVU 配置通过" : "MVU 配置存在错误", related_tools: ["validate_mvu_config", "build_mvu_assets"] });
+    items.push({ section: "mvu", status: review.sections.mvu?.ok ? "ok" : "blocking", message: review.sections.mvu?.ok ? "MVU 配置通过" : "MVU 配置存在错误", related_tools: ["validate_draft", "build_assets"] });
   }
   if (input.project.htmlBeautifyConfig?.enabled) {
-    items.push({ section: "html_beautify", status: review.sections.html_beautify?.ok ? "ok" : "blocking", message: review.sections.html_beautify?.ok ? "HTML 美化通过" : "HTML 美化存在错误", related_tools: ["validate_html_beautify_config", "build_html_beautify_assets"] });
+    items.push({ section: "html_beautify", status: review.sections.html_beautify?.ok ? "ok" : "blocking", message: review.sections.html_beautify?.ok ? "HTML 美化通过" : "HTML 美化存在错误", related_tools: ["validate_draft", "build_assets"] });
   }
   if (input.project.ejsConfig?.enabled) {
-    items.push({ section: "ejs", status: review.sections.ejs?.ok ? "ok" : "blocking", message: review.sections.ejs?.ok ? "EJS 配置通过" : "EJS 配置存在错误", related_tools: ["validate_ejs_config", "build_ejs_entries"] });
+    items.push({ section: "ejs", status: review.sections.ejs?.ok ? "ok" : "blocking", message: review.sections.ejs?.ok ? "EJS 配置通过" : "EJS 配置存在错误", related_tools: ["validate_draft", "build_assets"] });
   }
 
   // 写作优化

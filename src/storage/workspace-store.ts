@@ -1,10 +1,12 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { ProjectSchema, type Project } from "../schemas/project.js";
-import { WorldbookDraftEntrySchema, type WorldbookDraftEntry } from "../schemas/worldbook-draft.js";
 import { createId, nowIso } from "../utils/ids.js";
 import { readJsonFile, toPrettyJson, writeJsonFile } from "../utils/json.js";
 import { assertInside, ROOT_DIR, sanitizeFilename, writeTextFileSafely } from "./path-policy.js";
+import { ensureDraftDirs } from "./draft-store.js";
+import { ensureLogDir, LATEST_LOG_PATH, currentSessionId } from "./tool-log.js";
+import { ensurePlanFile, PLAN_PATH } from "./plan-store.js";
 
 export const WORKSPACE_DIR = path.resolve(ROOT_DIR, ".worldbook");
 export const WORKSPACE_PROJECT_PATH = path.resolve(WORKSPACE_DIR, "project.json");
@@ -28,7 +30,7 @@ export async function initWorkspaceProject(input: { name: string; projectId?: st
   }
   if (existing && ifExists === "return_existing") {
     await ensureWorkspaceDirs();
-    return { project: await attachWorkspaceDraft(existing), created: false, workspace: workspacePaths() };
+    return { project: existing, created: false, workspace: workspacePaths() };
   }
 
   if (existing && ifExists === "overwrite") {
@@ -40,11 +42,12 @@ export async function initWorkspaceProject(input: { name: string; projectId?: st
   const project: Project = {
     id: input.projectId ?? createId("project"),
     name: input.name,
-    patches: [],
-    characterCardPatches: [],
     pendingDecisions: [],
     recordedDecisions: [],
     revision: 0,
+    plan: { enabled_assets: {} },
+    imports: [],
+    logs: { session_id: currentSessionId(), latest_log_path: LATEST_LOG_PATH },
     createdAt: existing?.createdAt ?? timestamp,
     updatedAt: timestamp,
   };
@@ -60,64 +63,13 @@ export async function isWorkspaceProject(projectId: string): Promise<boolean> {
 export async function loadWorkspaceProjectIfMatches(projectId: string): Promise<Project | undefined> {
   const project = await loadWorkspaceProjectIfExists();
   if (!project || project.id !== projectId) return undefined;
-  return attachWorkspaceDraft(project);
+  return project;
 }
 
 export async function writeWorkspaceProject(project: Project): Promise<void> {
   await ensureWorkspaceDirs();
   const { draft: _draft, ...metadata } = project;
   await writeJsonFile(WORKSPACE_PROJECT_PATH, metadata);
-  if (project.draft) await writeWorkspaceDraftEntries(project.draft);
-}
-
-export async function readWorkspaceDraftEntries(): Promise<WorldbookDraftEntry[] | undefined> {
-  try {
-    const files = (await fs.readdir(WORKSPACE_DRAFT_DIR))
-      .filter((file) => file.endsWith(".json"))
-      .sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
-    if (files.length === 0) return undefined;
-    const entries: WorldbookDraftEntry[] = [];
-    for (const file of files) {
-      entries.push(await readJsonFile(path.join(WORKSPACE_DRAFT_DIR, file), WorldbookDraftEntrySchema));
-    }
-    return entries;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-    throw error;
-  }
-}
-
-export async function writeWorkspaceDraftEntry(entry: WorldbookDraftEntry): Promise<string> {
-  await ensureWorkspaceDirs();
-  const outputPath = draftEntryPath(entry.comment);
-  await writeJsonFile(outputPath, entry);
-  return outputPath;
-}
-
-export async function deleteWorkspaceDraftEntry(comment: string): Promise<string> {
-  const outputPath = draftEntryPath(comment);
-  await fs.unlink(outputPath);
-  return outputPath;
-}
-
-export async function writeWorkspaceDraftEntries(entries: WorldbookDraftEntry[]): Promise<void> {
-  await ensureWorkspaceDirs();
-  const keep = new Set<string>();
-  for (const entry of entries) {
-    const outputPath = await writeWorkspaceDraftEntry(entry);
-    keep.add(path.basename(outputPath));
-  }
-  const files = await fs.readdir(WORKSPACE_DRAFT_DIR).catch(() => [] as string[]);
-  for (const file of files) {
-    if (file.endsWith(".json") && !keep.has(file)) {
-      await fs.unlink(path.join(WORKSPACE_DRAFT_DIR, file));
-    }
-  }
-}
-
-export function draftEntryPath(comment: string): string {
-  const filename = `${sanitizeFilename(comment)}.json`;
-  return assertInside(WORKSPACE_DRAFT_DIR, path.resolve(WORKSPACE_DRAFT_DIR, filename));
 }
 
 export async function ensureRootTemplateJson(input: { name: string; kind?: InitProjectKind }): Promise<RootTemplateResult> {
@@ -165,6 +117,9 @@ export function workspacePaths(): WorkspacePaths {
     workspace_dir: WORKSPACE_DIR,
     project_json: WORKSPACE_PROJECT_PATH,
     draft_dir: WORKSPACE_DRAFT_DIR,
+    plan_md: PLAN_PATH,
+    logs_dir: path.dirname(LATEST_LOG_PATH),
+    latest_log: LATEST_LOG_PATH,
   };
 }
 
@@ -172,29 +127,32 @@ export interface WorkspacePaths {
   workspace_dir: string;
   project_json: string;
   draft_dir: string;
+  plan_md: string;
+  logs_dir: string;
+  latest_log: string;
 }
 
 export async function ensureWorkspaceDirs(): Promise<void> {
   await fs.mkdir(WORKSPACE_DRAFT_DIR, { recursive: true });
+  await ensureDraftDirs();
+  await ensurePlanFile();
+  await ensureLogDir();
 }
 
 async function clearWorkspaceDraftEntries(): Promise<void> {
   await fs.rm(WORKSPACE_DRAFT_DIR, { recursive: true, force: true });
+  await ensureDraftDirs();
 }
 
 export async function loadWorkspaceProjectIfExists(): Promise<Project | undefined> {
   try {
-    return await readJsonFile(WORKSPACE_PROJECT_PATH, ProjectSchema);
+    const project = await readJsonFile(WORKSPACE_PROJECT_PATH, ProjectSchema);
+    const { draft: _legacyDraft, ...metadata } = project;
+    return metadata;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     throw error;
   }
-}
-
-async function attachWorkspaceDraft(project: Project): Promise<Project> {
-  const draft = await readWorkspaceDraftEntries();
-  const { draft: _ignoredLegacyDraft, ...metadata } = project;
-  return draft ? { ...metadata, draft } : metadata;
 }
 
 async function nextAvailableRootTemplateFilename(name: string): Promise<string> {
