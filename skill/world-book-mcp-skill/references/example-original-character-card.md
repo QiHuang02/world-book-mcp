@@ -137,40 +137,29 @@ AI 已通过用户决策确定 `card_type=single_character_card`。
 
 AI 根据模板填充内容，最后调用：
 
-### `upsert_worldbook_entries`
+### `create_worldbook_draft_entries` → `update_worldbook_draft_field`
 
-只提交核心字段即可；工具会补齐 `constant`、`position`、`order`、递归保护等完整 draft 配置：
+先创建切片模板，不在一次调用中提交完整内容：
 
 ```json
 {
   "project_id": "project_xxx",
   "entries": [
-    {
-      "comment": "世界观总纲",
-      "entry_type": "world_summary",
-      "keys": ["私立星见学园", "星见学园"],
-      "content": "封闭校园，故事围绕高二 A 班的日常与音乐部活动展开。",
-      "position": "before_char",
-      "order": 1
-    },
-    {
-      "comment": "亚丝娜_基础设定",
-      "entry_type": "character_basic",
-      "keys": ["亚丝娜"],
-      "content": "<character>\nname: 亚丝娜\nidentity: 高二 A 班学生，音乐部吉他手\n</character>",
-      "position": "after_char",
-      "order": 10
-    },
-    {
-      "comment": "亚丝娜_性格",
-      "entry_type": "character_personality",
-      "keys": ["亚丝娜"],
-      "content": "<personality>\nname: 亚丝娜\ncore: 表面冷静，遇到音乐相关话题会明显投入\n</personality>",
-      "position": "after_char",
-      "order": 30
-    }
+    { "comment": "世界观总纲", "entry_type": "world_summary" },
+    { "comment": "亚丝娜_基础设定", "entry_type": "character_basic", "character_name": "亚丝娜" },
+    { "comment": "亚丝娜_性格", "entry_type": "character_personality", "character_name": "亚丝娜" }
   ]
 }
+```
+
+然后逐字段填充，例如：
+
+```json
+{ "project_id": "project_xxx", "comment": "亚丝娜_基础设定", "field": "keys", "value": ["亚丝娜"] }
+```
+
+```json
+{ "project_id": "project_xxx", "comment": "亚丝娜_基础设定", "field": "content", "value": "<character>\nname: 亚丝娜\nidentity: 高二 A 班学生，音乐部吉他手\n</character>" }
 ```
 
 导出角色卡时，`亚丝娜_基础设定` 与 `亚丝娜_性格` 会聚合成同一个内嵌世界书条目。

@@ -58,15 +58,15 @@ args = ["-y", "@qihuang02/world-book-mcp"]
 - 解释 SillyTavern 世界书配置字段。
 - 扫描禁词与常见写作问题。
 - 显式初始化 project，适合空白目录首次使用。
-- 通过简化输入保存、更新、校验世界书草稿：AI 只需提交 `comment`、`keys`、`content` 等核心字段，MCP 自动补全完整结构。
+- 先创建 `.worldbook/draft/*.json` 切片模板，再逐字段更新、确认完整并合并导出，避免 AI 一次提交完整条目对象。
 - 导出独立 SillyTavern 世界书 JSON。
-- 导入已有世界书 JSON 并进行安全 patch。
+- 导入已有世界书 JSON，先切片为 `.worldbook/draft/*.json`，再进行安全 patch / 合并导出。
 - 基础角色卡 JSON 生成，可嵌入项目世界书 draft；导出角色卡时同一角色的基础设定和性格设定会聚合为同一个内嵌世界书条目。
 - MVU/ZOD 配置模板、校验、资产构建，并可自动合并进角色卡 JSON。
 - HTML 美化配置模板、校验、资产构建，并可自动合并进角色卡 JSON。
 - EJS 动态内容配置模板、校验、entries 构建，并可自动合并进角色卡内嵌世界书。
 - 查询导出的世界书 JSON 和角色卡 JSON。
-- 导入已有角色卡 JSON，并通过 patch 修改角色卡字段或内嵌世界书条目。
+- 导入已有角色卡 JSON，将内嵌世界书切片为 draft，并通过 patch 修改角色卡字段或内嵌世界书条目。
 
 暂不支持：
 - 内置网页搜索。
@@ -86,7 +86,7 @@ args = ["-y", "@qihuang02/world-book-mcp"]
 └─ <导出的世界书或角色卡>.json
 ```
 
-`upsert_worldbook_entry` / `upsert_worldbook_entries` 会把每条草稿写为 `.worldbook/draft/<safe-comment>.json`。分片文件保存的是 MCP draft entry，而不是最终 SillyTavern entry：
+`create_worldbook_draft_entry` / `create_worldbook_draft_entries` 会先把每个切片模板写为 `.worldbook/draft/<safe-comment>.json`；随后使用 `update_worldbook_draft_field` / `update_worldbook_draft_fields` 逐字段填充。分片文件保存的是 MCP draft entry，而不是最终 SillyTavern entry：
 
 ```json
 {
@@ -104,7 +104,7 @@ args = ["-y", "@qihuang02/world-book-mcp"]
 }
 ```
 
-校验、审查、lint、世界书导出和角色卡导出会优先合并读取 `.worldbook/draft/*.json`；若没有分片 draft，则兼容读取旧的 `project.draft`。默认导出路径是当前工作目录的 `<名称>.json`，相对路径和绝对路径都必须位于当前工作目录内，越界写入会失败。
+校验、审查、lint、世界书导出和角色卡导出会优先合并读取 `.worldbook/draft/*.json`；若没有分片 draft，则兼容读取旧的 `project.draft`。`.worldbook/draft/` 是长期工作区：`generate_worldbook_json` / `generate_character_card_json` 导出后不会清空草稿，`apply_worldbook_patch` / `apply_character_card_patch` 合并导出后也会保留更新后的分片草稿，供下次继续修改。默认导出路径是当前工作目录的 `<名称>.json`，相对路径和绝对路径都必须位于当前工作目录内，越界写入会失败。
 
 此外，`init_project` 会扫描当前工作目录根目录的一层 `*.json`：如果没有发现酒馆格式世界书或 `chara_card_v3` 角色卡 JSON，会自动创建一个根目录模板 JSON；如果已经存在酒馆格式 JSON，则不会额外创建模板，也不会覆盖已有 JSON。返回值中的 `root_template` 会说明模板是否创建、路径或已有文件列表。`kind=worldbook` 会创建独立世界书模板；`kind=character_card` 和 `kind=mixed` 会创建 `chara_card_v3` 模板，其中 `mixed` 明确表示角色卡 + 内嵌空世界书的一体化模板。
 
@@ -112,13 +112,13 @@ args = ["-y", "@qihuang02/world-book-mcp"]
 
 同一 `project_id` 的写入会在 MCP 进程内串行化，并在返回值中递增 `revision`。支持 `expected_revision` 的写入工具可用它做并发冲突检测：如果调用方基于旧 revision 写入，会返回 `project revision conflict`。
 
-`apply_worldbook_patch` / `apply_character_card_patch` 会同时写导出的 JSON 文件并更新 project 状态。实现会先写临时文件并替换目标文件，再更新 project；如果 project 更新失败，会尽力恢复旧导出文件或删除新写入文件。返回 `ok=false` 或抛出冲突错误时，调用方应重新读取 project 后再重试。
+`apply_worldbook_patch` / `apply_character_card_patch` 会以当前 project draft 为输入，同时写导出的 JSON 文件并更新 project 状态；成功后保留更新后的 `.worldbook/draft/*.json`。实现会先写临时文件并替换目标文件，再更新 project；如果 project 更新失败，会尽力恢复旧导出文件或删除新写入文件。返回 `ok=false` 或抛出冲突错误时，调用方应重新读取 project 后再重试。
 
 patch 的 `match.uid` 优先匹配从已导入世界书保留的 `sourceUid`，用于定位原始 SillyTavern 条目 uid。对新建草稿或没有 `sourceUid` 的旧项目，建议使用 `index` 或唯一 `comment` 定位，避免把 uid 误当作导出后的连续下标。
 
 ## Tools 一览
 
-任务分类、工作流选择和澄清策略由随包 `skill/world-book-mcp/` 文档指导，不再作为 MCP tools 暴露。
+任务分类、工作流选择和澄清策略由随包 `skill/world-book-mcp-skill/` 文档指导，不再作为 MCP tools 暴露。
 
 | 分类 | Tool | 说明 |
 | --- | --- | --- |
@@ -133,8 +133,11 @@ patch 的 `match.uid` 优先匹配从已导入世界书保留的 `sourceUid`，�
 | 提取 | `create_extraction_outline` | 创建角色、世界观、物品、事件的提取模板。 |
 | 提取 | `submit_extraction_result` | 提交主 AI 提取好的结构化事实。 |
 | 世界书构建 | `plan_worldbook_entries` | 根据提取结果规划条目表。 |
-| 世界书构建 | `upsert_worldbook_entry` | 用简化输入新增/更新单个条目，MCP 自动补全完整配置。 |
-| 世界书构建 | `upsert_worldbook_entries` | 用简化输入批量新增/更新多个条目。 |
+| 世界书构建 | `create_worldbook_draft_entry` | 创建单个 `.worldbook/draft/*.json` 切片模板。 |
+| 世界书构建 | `create_worldbook_draft_entries` | 批量创建切片模板。 |
+| 世界书构建 | `update_worldbook_draft_field` | 按 comment 定位并逐字段更新 draft。 |
+| 世界书构建 | `update_worldbook_draft_fields` | 一次更新少量 draft 字段。 |
+| 世界书构建 | `confirm_worldbook_draft_complete` | 确认所有 draft 完整且可合并导出。 |
 | 世界书构建 | `list_worldbook_draft_entries` | 列出 `.worldbook/draft/*.json` 分片草稿。 |
 | 世界书构建 | `get_worldbook_draft_entry` | 按 comment 读取单个分片草稿。 |
 | 世界书构建 | `delete_worldbook_draft_entry` | 按 comment 删除单个分片草稿。 |
@@ -143,6 +146,7 @@ patch 的 `match.uid` 优先匹配从已导入世界书保留的 `sourceUid`，�
 | 角色卡 | `import_character_card_json` | 导入当前目录内已有 `chara_card_v3` 角色卡 JSON，提取 profile 与内嵌世界书 draft。 |
 | 角色卡 | `upsert_character_profile` | 用简化字段创建/更新角色卡人设配置，MCP 自动补齐 `chara_card_v3` 默认字段。 |
 | 角色卡 | `validate_character_card_config` | 校验角色卡配置和嵌入世界书。 |
+| 角色卡 | `confirm_character_card_draft_complete` | 确认角色卡 profile、内嵌世界书 draft 与资产可合并导出。 |
 | 角色卡 | `generate_character_card_json` | 导出 `chara_card_v3` 角色卡 JSON；同一角色的 `character_basic` 与 `character_personality` 会合并为同一个内嵌世界书条目。 |
 | 角色卡 | `create_character_card_patch` | 为已有角色卡 project 创建 profile / worldbook config / 内嵌世界书修改计划。 |
 | 角色卡 | `preview_character_card_patch` | 预览角色卡 patch diff 与校验结果。 |
@@ -172,7 +176,7 @@ patch 的 `match.uid` 优先匹配从已导入世界书保留的 `sourceUid`，�
 
 ## Skill
 
-仓库自带一个标准 Claude Code Skill，位于 [`skill/world-book-mcp/`](skill/world-book-mcp/)。它是一个 `SKILL.md` + `references/` 的目录包，用于指导 AI 在用户提出世界书 / 角色卡相关需求时，正确编排本 MCP 服务器的全部工具。
+仓库自带一个名为 `world-book-mcp-skill` 的标准 Claude Code Skill，位于 [`skill/world-book-mcp-skill/`](skill/world-book-mcp-skill/)。它是一个 `SKILL.md` + `references/` 的目录包，用于指导 AI 在用户提出世界书 / 角色卡相关需求时，正确编排本 MCP 服务器的全部工具。skill 名称刻意区别于 MCP server 名称 `world-book-mcp`，避免在 Agent 工具中混淆。
 
 ## 未来能力扩展
 

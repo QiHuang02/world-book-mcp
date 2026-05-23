@@ -49,7 +49,7 @@
 
 ## recursion
 
-通过 `upsert_worldbook_entry` / `upsert_worldbook_entries` 写入时，MCP 会自动开启双递归保护。底层 draft 中的完整结构必须满足：
+通过 `create_worldbook_draft_entry(s)` 创建切片模板时，MCP 会自动开启双递归保护。底层 draft 中的完整结构必须满足：
 
 ```json
 {
@@ -91,23 +91,39 @@
 | 物品 / 能力 / 场景 / 事件 | 50-98 |
 | NPC / 其他 | 99-100 |
 
-## 简化条目输入
+## draft 切片模板与逐字段更新
 
-推荐 agent 用 `upsert_worldbook_entry` / `upsert_worldbook_entries` 写条目，只提交核心字段：
+推荐 agent 先创建切片模板，再逐字段填充，不要一次 tool call 提交完整条目对象：
 
 ```json
 {
   "project_id": "project_xxx",
   "comment": "原初异质",
-  "keys": ["原初异质", "异质", "根源力量"],
-  "content": "原初异质，没有人知道它从何而来……",
-  "entry_type": "world_summary",
-  "position": "before_char",
-  "order": 1
+  "entry_type": "world_summary"
 }
 ```
 
-通过 upsert 工具写入时，会自动补全 enabled、constant 默认值、递归保护、角色卡内嵌世界书 extensions 等字段，并把 draft 条目拆分保存到 `.worldbook/draft/*.json`。默认按 `comment` 更新，避免多个角色条目共享同一个角色名 key 时被误合并；需要按关键词匹配旧条目时显式传 `match_by_keys: true`。不要手写完整 SillyTavern entry JSON。
+然后逐字段更新：
+
+```json
+{
+  "project_id": "project_xxx",
+  "comment": "原初异质",
+  "field": "keys",
+  "value": ["原初异质", "异质", "根源力量"]
+}
+```
+
+```json
+{
+  "project_id": "project_xxx",
+  "comment": "原初异质",
+  "field": "content",
+  "value": "原初异质，没有人知道它从何而来……"
+}
+```
+
+`create_worldbook_draft_entry(s)` 会自动补全 enabled、constant 默认值、递归保护等字段，并把 draft 条目拆分保存到 `.worldbook/draft/*.json`。`update_worldbook_draft_field(s)` 按 `comment` 定位并更新字段；导出前必须调用 `confirm_worldbook_draft_complete` 确认完整。
 
 ## content 格式
 

@@ -2,7 +2,7 @@ import type { Project } from "../schemas/project.js";
 import type { PatchMatch, WorldbookPatch, WorldbookPatchOperation } from "../schemas/worldbook-patch.js";
 import type { WorldbookDraftEntry } from "../schemas/worldbook-draft.js";
 import { createId, nowIso } from "../utils/ids.js";
-import { normalizeWorldbookEntry, upsertWorldbookDraftEntry } from "./worldbook-entry-factory.js";
+import { applyAddOrUpdateDraftEntry, normalizeWorldbookEntry } from "./worldbook-entry-factory.js";
 import { validateWorldbookDraft } from "./worldbook-validator.js";
 
 export interface PatchDiffItem {
@@ -40,8 +40,8 @@ export function applyPatchToDraft(entries: WorldbookDraftEntry[], operations: Wo
         break;
       }
       case "add_or_update_entry": {
-        const applied = upsertWorldbookDraftEntry(next, operation.entry, { matchByKeys: operation.match_by_keys });
-        const before = applied.created ? undefined : cloneEntry(next[applied.index]);
+        const applied = applyAddOrUpdateDraftEntry(next, operation.entry, { matchByKeys: operation.match_by_keys });
+        const before = applied.action === "created" ? undefined : cloneEntry(next[applied.index]);
         next.splice(0, next.length, ...applied.entries);
         diff.push({ op: operation.op, target: targetLabel(applied.entry, applied.index), before, after: applied.entry });
         break;

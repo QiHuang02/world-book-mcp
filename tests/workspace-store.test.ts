@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { initWorkspaceProject, loadWorkspaceProjectIfMatches, WORKSPACE_DRAFT_DIR, WORKSPACE_PROJECT_PATH, writeWorkspaceDraftEntry } from "../src/storage/workspace-store.js";
 import { createProject, ensureStorage, listProjects, loadOrCreateProject, loadProject, updateProject } from "../src/storage/project-store.js";
-import { upsertWorldbookDraftEntry } from "../src/core/worldbook-entry-factory.js";
+import { createWorldbookDraftTemplate, updateWorldbookDraftField, updateWorldbookDraftFields } from "../src/core/worldbook-draft-editor.js";
 import { validateWorldbookDraft } from "../src/core/worldbook-validator.js";
 import { buildWorldbookJson } from "../src/core/worldbook-builder.js";
 
@@ -150,8 +150,10 @@ describe("workspace store", () => {
     await cleanupWorkspace();
     const { project } = await initWorkspaceProject({ name: "分片写入项目", ifExists: "error" });
     await updateProject(project.id, (latest) => {
-      let draft = upsertWorldbookDraftEntry(latest.draft, { comment: "新墟城", entry_type: "world_summary", keys: ["新墟"], content: "<entry>新墟城</entry>" }).entries;
-      draft = upsertWorldbookDraftEntry(draft, { comment: "角色B_基础设定", entry_type: "character_basic", character_name: "角色B", keys: ["角色B"], content: "<character>\nname: 角色B\n</character>" }).entries;
+      const draft = [
+        updateWorldbookDraftFields(createWorldbookDraftTemplate({ comment: "新墟城", entry_type: "world_summary" }), { keys: ["新墟"], content: "<entry>新墟城</entry>" }),
+        updateWorldbookDraftField(createWorldbookDraftTemplate({ comment: "角色B_基础设定", entry_type: "character_basic", character_name: "角色B" }), "content", "<character>\nname: 角色B\n</character>"),
+      ];
       return { ...latest, draft };
     });
 
@@ -166,6 +168,49 @@ describe("workspace store", () => {
     expect(validateWorldbookDraft(loaded!.draft!).valid).toBe(true);
     const book = buildWorldbookJson({ name: "导出", entries: loaded!.draft! });
     expect(Object.keys(book.entries)).toHaveLength(2);
+    await cleanupWorkspace();
+  });
+
+  it("retains split draft files after export-style project updates", async () => {
+    await cleanupWorkspace();
+    const { project } = await initWorkspaceProject({ name: "导出保留草稿", ifExists: "error" });
+    await updateProject(project.id, (latest) => {
+      const draft = [updateWorldbookDraftFields(createWorldbookDraftTemplate({ comment: "保留条目", entry_type: "world_summary" }), { keys: ["保留"], content: "<entry>初版</entry>" })];
+      return { ...latest, draft };
+    });
+
+    const loadedBeforeExport = await loadWorkspaceProjectIfMatches(project.id);
+    const book = buildWorldbookJson({ name: "导出", entries: loadedBeforeExport!.draft! });
+    expect(Object.keys(book.entries)).toHaveLength(1);
+    await updateProject(project.id, (latest) => ({ ...latest, importedWorldbookPath: path.resolve(path.dirname(WORKSPACE_PROJECT_PATH), "..", "导出.json") }));
+
+    const draftFile = path.join(WORKSPACE_DRAFT_DIR, "保留条目.json");
+    const savedEntry = JSON.parse(await fs.readFile(draftFile, "utf8"));
+    expect(savedEntry.content).toBe("<entry>初版</entry>");
+    const loadedAfterExport = await loadWorkspaceProjectIfMatches(project.id);
+    expect(loadedAfterExport?.draft).toHaveLength(1);
+    expect(loadedAfterExport?.draft?.[0].comment).toBe("保留条目");
+    await cleanupWorkspace();
+  });
+
+  it("reflects merged patch results in split draft files without clearing them", async () => {
+    await cleanupWorkspace();
+    const { project } = await initWorkspaceProject({ name: "patch保留草稿", ifExists: "error" });
+    await updateProject(project.id, (latest) => {
+      const draft = [updateWorldbookDraftFields(createWorldbookDraftTemplate({ comment: "可改条目", entry_type: "other" }), { keys: ["可改"], content: "<entry>旧</entry>" })];
+      return { ...latest, draft };
+    });
+    await updateProject(project.id, (latest) => {
+      const draft = latest.draft ? [updateWorldbookDraftField(latest.draft[0], "content", "<entry>新</entry>")] : [];
+      return { ...latest, draft, importedWorldbookPath: path.resolve(path.dirname(WORKSPACE_PROJECT_PATH), "..", "patch导出.json") };
+    });
+
+    const draftFile = path.join(WORKSPACE_DRAFT_DIR, "可改条目.json");
+    const savedEntry = JSON.parse(await fs.readFile(draftFile, "utf8"));
+    expect(savedEntry.content).toBe("<entry>新</entry>");
+    const loaded = await loadWorkspaceProjectIfMatches(project.id);
+    expect(loaded?.draft).toHaveLength(1);
+    expect(loaded?.draft?.[0].content).toBe("<entry>新</entry>");
     await cleanupWorkspace();
   });
 

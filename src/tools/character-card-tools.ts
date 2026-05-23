@@ -7,10 +7,12 @@ import { queryCharacterCard } from "../core/character-card-query.js";
 import { validateCharacterCardConfig } from "../core/character-card-validator.js";
 import { createDeliveryChecklist } from "../core/delivery-checklist.js";
 import { validateGreetings } from "../core/greeting-validator.js";
+import { confirmWorldbookDraftComplete } from "../core/worldbook-draft-editor.js";
 import { ApplyCharacterCardPatchInputSchema, CharacterCardConfigSchema, CreateCharacterCardPatchInputSchema, GenerateCharacterCardJsonInputSchema, ImportCharacterCardJsonInputSchema, PreviewCharacterCardPatchInputSchema, QueryCharacterCardInputSchema, UpsertCharacterProfileInputSchema, ValidateCharacterCardConfigInputSchema } from "../schemas/character-card.js";
+import type { Project } from "../schemas/project.js";
 import { resolveCardExportPath, resolveReadableCardPath, writeTempThenCommit, writeTextFileSafely } from "../storage/path-policy.js";
 import { loadProject, updateProject } from "../storage/project-store.js";
-import { initWorkspaceProject } from "../storage/workspace-store.js";
+import { draftEntryPath, initWorkspaceProject } from "../storage/workspace-store.js";
 import { toPrettyJson } from "../utils/json.js";
 import { toolText } from "./helpers.js";
 
@@ -31,7 +33,18 @@ export function registerCharacterCardTools(server: McpServer): void {
       draft,
       importedCharacterCardPath: sourcePath,
     }));
-    return toolText({ ok: true, project_id: saved.id, revision: saved.revision, name: config.card.name, worldbook_entry_count: draft.length, validation });
+    const draftPaths = (saved.draft ?? []).map((entry) => ({ comment: entry.comment, path: draftEntryPath(entry.comment) }));
+    return toolText({
+      ok: true,
+      project_id: saved.id,
+      revision: saved.revision,
+      name: config.card.name,
+      worldbook_entry_count: draft.length,
+      draft_paths: draftPaths,
+      draft_retained: true,
+      workflow: "已将角色卡内嵌世界书切片为 .worldbook/draft/*.json；后续请修改 draft 后再合并导出角色卡。",
+      validation,
+    });
   });
 
   server.tool("upsert_character_profile", UpsertCharacterProfileInputSchema.shape, async (input) => {
@@ -81,15 +94,22 @@ export function registerCharacterCardTools(server: McpServer): void {
     return toolText(validateGreetings({ config, mvu_enabled: input.mvu_enabled ?? project.mvuConfig?.enabled }));
   });
 
+  server.tool("confirm_character_card_draft_complete", { project_id: z.string() }, async (input) => {
+    const project = await loadProject(input.project_id);
+    return toolText(confirmCharacterCardDraftComplete(project));
+  });
+
   server.tool("generate_character_card_json", GenerateCharacterCardJsonInputSchema.shape, async (input) => {
     const parsed = GenerateCharacterCardJsonInputSchema.parse(input);
     const project = await loadProject(parsed.project_id);
+    const completeness = confirmCharacterCardDraftComplete(project);
+    if (!completeness.ready_to_merge) return toolText({ ok: false, completeness });
     if (!project.characterCardConfig) throw new Error("项目尚未保存 character card config");
     const { card, validation } = buildCharacterCardJsonFromProject(project);
-    if (!validation.valid) return toolText({ ok: false, validation });
+    if (!validation.valid) return toolText({ ok: false, completeness, validation });
     if (parsed.strict_review) {
       const checklist = createDeliveryChecklist({ project, export_target: "character_card" });
-      if (!checklist.ready_to_export) return toolText({ ok: false, error: "strict_review 未通过", checklist });
+      if (!checklist.ready_to_export) return toolText({ ok: false, error: "strict_review 未通过", completeness, checklist });
     }
     const outputPath = resolveCardExportPath(parsed.output_path, project.characterCardConfig.card.name);
     try {
@@ -155,11 +175,79 @@ export function registerCharacterCardTools(server: McpServer): void {
       throw error;
     }
     const saved = await loadProject(parsed.project_id);
-    return toolText({ ok: true, project_id: saved.id, revision: saved.revision, patch_id: patch.id, path: outputPath, backupPath, diff: applied.diff, worldbook_entry_count: card.data.character_book.entries.length });
+    const draftPaths = (saved.draft ?? []).map((entry) => ({ comment: entry.comment, path: draftEntryPath(entry.comment) }));
+    return toolText({ ok: true, project_id: saved.id, revision: saved.revision, patch_id: patch.id, path: outputPath, backupPath, diff: applied.diff, worldbook_entry_count: card.data.character_book.entries.length, draft_paths: draftPaths, draft_retained: true });
   });
 
   server.tool("query_character_card", QueryCharacterCardInputSchema.shape, async (input) => {
     const parsed = QueryCharacterCardInputSchema.parse(input);
     return toolText(await queryCharacterCard(parsed));
+  });
+}
+
+interface CharacterCardCompletenessIssue {
+  field: string;
+  message: string;
+  comment?: string;
+}
+
+type CharacterCardNextAction = { tool: "upsert_character_profile" | "create_worldbook_draft_entry" | "update_worldbook_draft_field"; comment?: string; field?: string };
+
+function confirmCharacterCardDraftComplete(project: Project): {
+  ok: boolean;
+  ready_to_merge: boolean;
+  profile_ready: boolean;
+  worldbook_ready: boolean;
+  asset_ready: true;
+  missing_fields: CharacterCardCompletenessIssue[];
+  next_actions: CharacterCardNextAction[];
+  validation?: ReturnType<typeof validateCharacterCardConfig>;
+  worldbook?: ReturnType<typeof confirmWorldbookDraftComplete>;
+} {
+  if (!project.characterCardConfig) {
+    return {
+      ok: false,
+      ready_to_merge: false,
+      profile_ready: false,
+      worldbook_ready: true,
+      asset_ready: true,
+      missing_fields: [{ field: "characterCardConfig", message: "项目尚未保存 character card config" }],
+      next_actions: [{ tool: "upsert_character_profile" }],
+    };
+  }
+
+  const validation = validateCharacterCardConfig({ config: project.characterCardConfig, draft: project.draft, mvuEnabled: project.mvuConfig?.enabled });
+  const worldbook = project.characterCardConfig.worldbook.source === "project_draft" ? confirmWorldbookDraftComplete(project.draft) : undefined;
+  const missingFields: CharacterCardCompletenessIssue[] = [];
+  const nextActions: CharacterCardNextAction[] = [];
+  const addMissing = (issue: CharacterCardCompletenessIssue) => {
+    const exists = missingFields.some((current) => current.field === issue.field && current.comment === issue.comment);
+    if (!exists) missingFields.push(issue);
+  };
+
+  if (!project.characterCardConfig.card.first_mes.trim()) {
+    addMissing({ field: "first_mes", message: "first_mes 为空，角色卡不能合并导出" });
+    nextActions.push({ tool: "upsert_character_profile", field: "first_mes" });
+  }
+  for (const issue of validation.errors) {
+    addMissing({ field: issue.field ?? "validation", message: issue.message, comment: issue.entry });
+  }
+  if (worldbook && !worldbook.ready_to_merge) {
+    for (const issue of worldbook.missing_fields) addMissing({ ...issue, field: `worldbook.${issue.field}` });
+    nextActions.push(...worldbook.next_actions.map((action) => ({ ...action, field: action.field, tool: action.tool })));
+  }
+
+  const profileReady = validation.valid && project.characterCardConfig.card.first_mes.trim().length > 0;
+  const ready = validation.valid && missingFields.length === 0;
+  return { ok: ready, ready_to_merge: ready, profile_ready: profileReady, worldbook_ready: worldbook?.ready_to_merge ?? true, asset_ready: true, missing_fields: missingFields, next_actions: dedupeNextActions(nextActions), validation, worldbook };
+}
+
+function dedupeNextActions<T extends { tool: string; comment?: string; field?: string }>(actions: T[]): T[] {
+  const seen = new Set<string>();
+  return actions.filter((action) => {
+    const key = `${action.tool}:${action.comment ?? ""}:${action.field ?? ""}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
   });
 }

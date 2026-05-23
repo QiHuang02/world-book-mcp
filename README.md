@@ -58,15 +58,15 @@ The current version supports:
 - Explaining SillyTavern World Book configuration fields.
 - Scanning forbidden terms and common writing issues.
 - Explicitly initializing a project, suitable for first-time use in an empty directory.
-- Saving, updating, and validating World Book drafts through simplified input: AI only needs to submit core fields such as `comment`, `keys`, and `content`; MCP automatically completes the full structure.
+- Creating `.worldbook/draft/*.json` slice templates first, then updating them field by field, confirming completeness, and merging them into exported JSON.
 - Exporting standalone SillyTavern World Book JSON.
-- Importing existing World Book JSON and applying safe patches.
+- Importing existing World Book JSON by slicing it into `.worldbook/draft/*.json`, then applying safe patches / merged exports.
 - Generating basic character card JSON that can embed the project World Book draft; when exporting a character card, the basic settings and personality settings of the same character are merged into the same embedded World Book entry.
 - MVU/ZOD configuration templates, validation, and asset building, with automatic merging into character card JSON.
 - HTML beautification configuration templates, validation, and asset building, with automatic merging into character card JSON.
 - EJS dynamic content configuration templates, validation, and entry building, with automatic merging into the embedded World Book of a character card.
 - Querying exported World Book JSON and character card JSON.
-- Importing existing character card JSON and applying patches to profile fields or embedded World Book entries.
+- Importing existing character card JSON, slicing the embedded World Book into draft entries, and applying patches to profile fields or embedded World Book entries.
 
 Not supported yet:
 - Built-in web search.
@@ -86,7 +86,7 @@ The primary role of `init_project` is to create or reuse the single MCP workspac
 └─ <exported world book or character card>.json
 ```
 
-`upsert_worldbook_entry` / `upsert_worldbook_entries` write each draft entry to `.worldbook/draft/<safe-comment>.json`. Split files store MCP draft entries, not final SillyTavern entries:
+`create_worldbook_draft_entry` / `create_worldbook_draft_entries` first create slice templates at `.worldbook/draft/<safe-comment>.json`; then `update_worldbook_draft_field` / `update_worldbook_draft_fields` fill them field by field. Split files store MCP draft entries, not final SillyTavern entries:
 
 ```json
 {
@@ -104,7 +104,7 @@ The primary role of `init_project` is to create or reuse the single MCP workspac
 }
 ```
 
-Validation, review, lint, World Book export, and character card export preferentially merge `.worldbook/draft/*.json`; if no split draft exists, they fall back to legacy `project.draft`. By default, exports are written to `<name>.json` in the current working directory. Relative and absolute output paths must stay inside the current working directory; out-of-bound writes are rejected.
+Validation, review, lint, World Book export, and character card export preferentially merge `.worldbook/draft/*.json`; if no split draft exists, they fall back to legacy `project.draft`. `.worldbook/draft/` is the long-lived workspace: `generate_worldbook_json` / `generate_character_card_json` do not clear drafts after export, and `apply_worldbook_patch` / `apply_character_card_patch` retain the updated split draft entries after merging into exported JSON. By default, exports are written to `<name>.json` in the current working directory. Relative and absolute output paths must stay inside the current working directory; out-of-bound writes are rejected.
 
 `init_project` also scans one level of `*.json` files in the current working directory. If no SillyTavern World Book or `chara_card_v3` JSON exists, it safely creates a root template JSON. If a Tavern-format JSON already exists, it does not create another template and never overwrites existing JSON files. The returned `root_template` field reports whether a template was created, its path, or the existing files that caused creation to be skipped. `kind=worldbook` creates a standalone World Book template; `kind=character_card` and `kind=mixed` create a `chara_card_v3` template, with `mixed` explicitly meaning a character card plus an empty embedded World Book.
 
@@ -112,13 +112,13 @@ Validation, review, lint, World Book export, and character card export preferent
 
 Writes for the same `project_id` are serialized inside the MCP process and return an incremented `revision`. Tools that accept `expected_revision` can use it for concurrency control: if a caller writes based on a stale revision, the tool returns a `project revision conflict` error.
 
-`apply_worldbook_patch` / `apply_character_card_patch` write the exported JSON file and update project state together. The implementation writes a temp file, replaces the target file, then updates the project; if the project update fails, it best-effort restores the previous exported file or removes the newly written target. When a patch returns `ok=false` or throws a revision conflict, reload the project before retrying.
+`apply_worldbook_patch` / `apply_character_card_patch` use the current project draft as input, write the exported JSON file, and update project state together; on success, the updated `.worldbook/draft/*.json` files are retained. The implementation writes a temp file, replaces the target file, then updates the project; if the project update fails, it best-effort restores the previous exported file or removes the newly written target. When a patch returns `ok=false` or throws a revision conflict, reload the project before retrying.
 
 Patch `match.uid` first matches the `sourceUid` preserved from an imported World Book, so it targets the original SillyTavern entry uid. For newly created drafts or legacy projects without `sourceUid`, prefer `index` or a unique `comment` to avoid confusing uid with the regenerated contiguous export index.
 
 ## Tools Overview
 
-Task routing, workflow choice, and clarification strategy are handled by the bundled `skill/world-book-mcp/` documentation rather than MCP tools.
+Task routing, workflow choice, and clarification strategy are handled by the bundled `skill/world-book-mcp-skill/` documentation rather than MCP tools.
 
 | Category | Tool | Description |
 | --- | --- | --- |
@@ -133,8 +133,11 @@ Task routing, workflow choice, and clarification strategy are handled by the bun
 | Extraction | `create_extraction_outline` | Creates an extraction template for characters, worldbuilding, items, and events. |
 | Extraction | `submit_extraction_result` | Submits structured facts extracted by the main AI. |
 | World Book Building | `plan_worldbook_entries` | Plans an entry table from extraction results. |
-| World Book Building | `upsert_worldbook_entry` | Adds or updates a single entry through simplified input; MCP automatically completes the full configuration. |
-| World Book Building | `upsert_worldbook_entries` | Adds or updates multiple entries through simplified input. |
+| World Book Building | `create_worldbook_draft_entry` | Creates one `.worldbook/draft/*.json` slice template. |
+| World Book Building | `create_worldbook_draft_entries` | Creates multiple slice templates. |
+| World Book Building | `update_worldbook_draft_field` | Locates a draft by comment and updates one field. |
+| World Book Building | `update_worldbook_draft_fields` | Updates a small set of draft fields at once. |
+| World Book Building | `confirm_worldbook_draft_complete` | Confirms all drafts are complete and ready to merge/export. |
 | World Book Building | `list_worldbook_draft_entries` | Lists `.worldbook/draft/*.json` split draft entries. |
 | World Book Building | `get_worldbook_draft_entry` | Reads one split draft entry by comment. |
 | World Book Building | `delete_worldbook_draft_entry` | Deletes one split draft entry by comment. |
@@ -143,6 +146,7 @@ Task routing, workflow choice, and clarification strategy are handled by the bun
 | Character Card | `import_character_card_json` | Imports an existing `chara_card_v3` JSON in the current directory and extracts profile plus embedded World Book draft. |
 | Character Card | `upsert_character_profile` | Creates or updates character card profile configuration through simplified fields; MCP automatically fills default `chara_card_v3` fields. |
 | Character Card | `validate_character_card_config` | Validates character card configuration and the embedded World Book. |
+| Character Card | `confirm_character_card_draft_complete` | Confirms character-card profile, embedded World Book drafts, and assets are ready to merge/export. |
 | Character Card | `generate_character_card_json` | Exports `chara_card_v3` character card JSON; `character_basic` and `character_personality` for the same character are merged into the same embedded World Book entry. |
 | Character Card | `create_character_card_patch` | Creates a patch plan for profile, worldbook config, or embedded World Book entries. |
 | Character Card | `preview_character_card_patch` | Previews character card patch diffs and validation. |
@@ -172,7 +176,7 @@ Task routing, workflow choice, and clarification strategy are handled by the bun
 
 ## Skill
 
-This repository includes a standard Claude Code Skill at [`skill/world-book-mcp/`](skill/world-book-mcp/). It is a directory package containing `SKILL.md` and `references/`, used to guide AI in correctly orchestrating all tools of this MCP server when users request World Book or character card related tasks.
+This repository includes a standard Claude Code Skill named `world-book-mcp-skill` at [`skill/world-book-mcp-skill/`](skill/world-book-mcp-skill/). It is a directory package containing `SKILL.md` and `references/`, used to guide AI in correctly orchestrating all tools of this MCP server when users request World Book or character card related tasks. The skill name is intentionally distinct from the MCP server name `world-book-mcp` to avoid confusion in agent tooling.
 
 ## Future Capability Extensions
 

@@ -11,7 +11,7 @@
 先判断用户真正要做什么：
 
 - **新建**：从零生成世界书 / 角色卡 / 资产。通常 `init_project` 起手；它会创建 `.worldbook/draft/`，并在根目录没有酒馆格式 JSON 时创建模板 JSON。
-- **修改已有**：已有世界书 JSON 走 `import_worldbook_json → create_worldbook_patch → preview_worldbook_patch → apply_worldbook_patch`。
+- **修改已有**：已有世界书 JSON 走 `import_worldbook_json → create_worldbook_patch → preview_worldbook_patch → apply_worldbook_patch`；导入会先切片为 `.worldbook/draft/*.json`，修改作用于 draft，合并导出后 draft 继续保留。
 - **查询**：已有世界书用 `query_worldbook`；已有角色卡用 `query_character_card`。
 - **审查 / lint**：单段内容用 `lint_worldbook_content`；项目级用 `lint_project_content`、`create_final_review_report`、`create_delivery_checklist`。
 - **导出**：已有 draft/config 时直接 `validate_* → generate_worldbook_json` 或 `generate_character_card_json`。
@@ -35,8 +35,8 @@
 
 根据用户要交付的东西选择路径：
 
-- **纯世界书**：`upsert_worldbook_entry(s) → validate_worldbook_draft → generate_worldbook_json`。
-- **单人角色卡**：`upsert_worldbook_entry(s) → upsert_character_profile → validate_character_card_config → generate_character_card_json`。
+- **纯世界书**：`create_worldbook_draft_entry(s) → update_worldbook_draft_field(s) → confirm_worldbook_draft_complete → generate_worldbook_json`。
+- **单人角色卡**：`create_worldbook_draft_entry(s) → update_worldbook_draft_field(s) → upsert_character_profile → confirm_character_card_draft_complete → generate_character_card_json`。
 - **多人角色卡**：角色条目独立分片，导出角色卡时按 `characterName/name/comment` 聚合。
 - **世界书 + 角色卡**：先导出/校验世界书 draft，再生成角色卡；必要时分别 `generate_worldbook_json` 与 `generate_character_card_json`。
 - **资产-only**：MVU/HTML/EJS 可先 `create_*_template → submit_*_config → build_*_assets` 预览，不一定导出角色卡。
@@ -54,7 +54,7 @@
 
 - 角色：`create_extraction_outline` 或 `create_derivative_extraction_template`。
 - 世界观：`create_worldbuilding_outline` / `create_worldbuilding_design_template`。
-- 物品 / 装备 / 能力：`validate_item_entry`，再 `upsert_worldbook_entry`。
+- 物品 / 装备 / 能力：`validate_item_entry`，再 `create_worldbook_draft_entry` 创建模板并用 `update_worldbook_draft_field` 填充字段。
 - 事件 / 场景 / 规则：作为 `event` / `scene` / `other` entry 写入。
 - 文风：`create_style_extraction_template → submit_style_profile → build_style_worldbook_entries`。
 - 章节 / 故事线：`create_chapter_extraction_template → build_chapter_worldbook_entries`；二创长文也可用 `submit_derivative_extraction_outline` 的 `chapter_index`。
@@ -71,8 +71,8 @@
 
 ### 第 6 层：导入 / 修改已有 JSON
 
-- **世界书 JSON**：`import_worldbook_json → create_worldbook_patch → preview_worldbook_patch → apply_worldbook_patch`。导入和导出路径必须位于当前工作目录内，patch 备份写入 `.worldbook/backups/`。
-- **角色卡 JSON**：`import_character_card_json → create_character_card_patch → preview_character_card_patch → apply_character_card_patch`。patch 可修改角色卡 profile、worldbook config 或内嵌世界书 draft，导出路径限制在当前工作目录内，备份写入 `.worldbook/backups/`。
+- **世界书 JSON**：`import_worldbook_json → create_worldbook_patch → preview_worldbook_patch → apply_worldbook_patch`。导入和导出路径必须位于当前工作目录内，导入会切片到 `.worldbook/draft/*.json`，patch 备份写入 `.worldbook/backups/`，合并导出后 draft 保留。
+- **角色卡 JSON**：`import_character_card_json → create_character_card_patch → preview_character_card_patch → apply_character_card_patch`。导入会提取 profile 并将内嵌世界书切片到 `.worldbook/draft/*.json`；patch 可修改角色卡 profile、worldbook config 或内嵌世界书 draft，导出路径限制在当前工作目录内，备份写入 `.worldbook/backups/`，合并导出后 draft 保留。
 
 ---
 
@@ -98,11 +98,12 @@
 → 对话助手 阅读原文，按模板抽取结构化事实
 → submit_extraction_result                # 提交事实
 → plan_worldbook_entries                  # 规划条目
+→ create_worldbook_draft_entry(s)          # 创建切片模板
 → 对话助手 编写条目正文
-→ upsert_worldbook_entry / upsert_worldbook_entries  # 简化输入保存 draft
-→ validate_worldbook_draft                # 校验
-→ 如有问题：upsert_worldbook_entry / upsert_worldbook_entries  # 局部修复
-→ generate_worldbook_json                 # 导出
+→ update_worldbook_draft_field(s)          # 逐字段填充 entry_type / keys / content 等
+→ confirm_worldbook_draft_complete         # 确认可合并
+→ 如有问题：update_worldbook_draft_field(s) # 局部修复
+→ generate_worldbook_json                 # 合并导出
 → query_worldbook                         # 抽查
 ```
 
@@ -118,9 +119,10 @@
 → 对话助手 从摘要中抽取结构化事实
 → submit_extraction_result
 → plan_worldbook_entries
+→ create_worldbook_draft_entry(s)
 → 对话助手 编写条目正文
-→ upsert_worldbook_entry / upsert_worldbook_entries
-→ validate_worldbook_draft
+→ update_worldbook_draft_field(s)
+→ confirm_worldbook_draft_complete
 → generate_worldbook_json
 → query_worldbook
 ```
@@ -210,7 +212,7 @@ EJS 规则：
 → query_worldbook
 ```
 
-`apply_worldbook_patch` 默认会在目标文件存在时备份到 `.worldbook/backups/`，覆盖前要求 `overwrite=true`。校验失败时不会写文件。
+`apply_worldbook_patch` 默认会在目标文件存在时备份到 `.worldbook/backups/`，覆盖前要求 `overwrite=true`。校验失败时不会写文件；成功后 `.worldbook/draft/*.json` 保留并反映 patch 后内容。
 
 ## 8. 修改已有角色卡
 
@@ -223,7 +225,7 @@ EJS 规则：
 → query_character_card
 ```
 
-`apply_character_card_patch` 覆盖前同样要求 `overwrite=true`，并在目标文件存在时备份到 `.worldbook/backups/`。
+`apply_character_card_patch` 覆盖前同样要求 `overwrite=true`，并在目标文件存在时备份到 `.worldbook/backups/`；成功后 `.worldbook/draft/*.json` 保留并反映内嵌世界书修改结果。
 
 ## 输出位置
 

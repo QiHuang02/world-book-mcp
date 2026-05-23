@@ -73,17 +73,80 @@ export const SimplifiedWorldbookEntryInputSchema = z.object({
   scanDepth: z.number().int().min(0).nullable().optional(),
 });
 
-export const UpsertWorldbookEntryInputSchema = SimplifiedWorldbookEntryInputSchema.extend({
-  project_id: z.string(),
-  expected_revision: z.number().int().nonnegative().optional(),
-  match_by_keys: z.boolean().default(false),
+export const DraftTemplateIfExistsSchema = z.enum(["error", "return_existing", "overwrite"]);
+
+export const CreateWorldbookDraftTemplateInputSchema = z.object({
+  comment: z.string().min(1),
+  entry_type: EntryTypeSchema.optional(),
+  entryType: EntryTypeSchema.optional(),
+  character_name: z.string().optional(),
+  characterName: z.string().optional(),
+  position: PositionNameSchema.optional(),
+  order: z.number().optional(),
+  constant: z.boolean().optional(),
+  enabled: z.boolean().optional(),
 });
 
-export const UpsertWorldbookEntriesInputSchema = z.object({
+export const CreateWorldbookDraftEntryInputSchema = CreateWorldbookDraftTemplateInputSchema.extend({
   project_id: z.string(),
-  entries: z.array(SimplifiedWorldbookEntryInputSchema).min(1),
   expected_revision: z.number().int().nonnegative().optional(),
-  match_by_keys: z.boolean().default(false),
+  if_exists: DraftTemplateIfExistsSchema.default("error"),
+});
+
+export const CreateWorldbookDraftEntriesInputSchema = z.object({
+  project_id: z.string(),
+  entries: z.array(CreateWorldbookDraftTemplateInputSchema).min(1),
+  expected_revision: z.number().int().nonnegative().optional(),
+  if_exists: DraftTemplateIfExistsSchema.default("error"),
+}).superRefine((value, context) => {
+  const seen = new Map<string, number>();
+  value.entries.forEach((entry, index) => {
+    const comment = entry.comment.trim();
+    const previous = seen.get(comment);
+    if (previous !== undefined) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["entries", index, "comment"],
+        message: `同一次 create_worldbook_draft_entries 调用中 comment 重复：${comment}；第 ${previous + 1} 项和第 ${index + 1} 项重复，请改用唯一 comment`,
+      });
+      return;
+    }
+    seen.set(comment, index);
+  });
+});
+
+export const WorldbookDraftFieldSchema = z.enum([
+  "comment",
+  "entry_type",
+  "keys",
+  "secondary_keys",
+  "content",
+  "character_name",
+  "constant",
+  "position",
+  "order",
+  "enabled",
+  "depth",
+  "scan_depth",
+]);
+
+export const UpdateWorldbookDraftFieldInputSchema = z.object({
+  project_id: z.string(),
+  comment: z.string().min(1),
+  field: WorldbookDraftFieldSchema,
+  value: z.unknown(),
+  expected_revision: z.number().int().nonnegative().optional(),
+});
+
+export const UpdateWorldbookDraftFieldsInputSchema = z.object({
+  project_id: z.string(),
+  comment: z.string().min(1),
+  changes: z.record(WorldbookDraftFieldSchema, z.unknown()).refine((value) => Object.keys(value).length > 0, { message: "changes 至少需要一个字段" }),
+  expected_revision: z.number().int().nonnegative().optional(),
+});
+
+export const ConfirmWorldbookDraftCompleteInputSchema = z.object({
+  project_id: z.string(),
 });
 
 export const ListWorldbookDraftEntriesInputSchema = z.object({
@@ -119,3 +182,6 @@ export type EntryType = z.infer<typeof EntryTypeSchema>;
 export type PositionName = z.infer<typeof PositionNameSchema>;
 export type WorldbookDraftEntry = z.infer<typeof WorldbookDraftEntrySchema>;
 export type WorldbookEntryPlan = z.infer<typeof WorldbookEntryPlanSchema>;
+export type CreateWorldbookDraftTemplateInput = z.infer<typeof CreateWorldbookDraftTemplateInputSchema>;
+export type DraftTemplateIfExists = z.infer<typeof DraftTemplateIfExistsSchema>;
+export type WorldbookDraftField = z.infer<typeof WorldbookDraftFieldSchema>;

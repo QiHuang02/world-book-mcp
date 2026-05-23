@@ -48,18 +48,18 @@ export function normalizeWorldbookEntry(input: SimplifiedWorldbookEntryInput, ex
   };
 }
 
-export function upsertWorldbookDraftEntry(entries: WorldbookDraftEntry[] | undefined, input: SimplifiedWorldbookEntryInput, options: { matchByKeys?: boolean } = {}): { entries: WorldbookDraftEntry[]; created: boolean; index: number; entry: WorldbookDraftEntry } {
+export function applyAddOrUpdateDraftEntry(entries: WorldbookDraftEntry[] | undefined, input: SimplifiedWorldbookEntryInput, options: { matchByKeys?: boolean } = {}): { entries: WorldbookDraftEntry[]; action: "created" | "updated"; index: number; entry: WorldbookDraftEntry } {
   const current = entries ? [...entries] : [];
   const index = findEntryIndex(current, input, options);
   if (index >= 0) {
     const entry = normalizeWorldbookEntry(input, current[index]);
     current[index] = entry;
-    return { entries: current, created: false, index, entry };
+    return { entries: current, action: "updated", index, entry };
   }
 
   const entry = normalizeWorldbookEntry(input);
   current.push(entry);
-  return { entries: current, created: true, index: current.length - 1, entry };
+  return { entries: current, action: "created", index: current.length - 1, entry };
 }
 
 function findEntryIndex(entries: WorldbookDraftEntry[], input: SimplifiedWorldbookEntryInput, options: { matchByKeys?: boolean }): number {
