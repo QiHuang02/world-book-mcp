@@ -12,7 +12,7 @@ import { buildWorldbookJson } from "../core/worldbook-builder.js";
 import { confirmWorldbookDraftComplete } from "../core/worldbook-draft-editor.js";
 import { queryWorldbook } from "../core/worldbook-query.js";
 import { BuildAssetsInputSchema, GenerateJsonInputSchema, QueryJsonInputSchema, ValidateDraftInputSchema } from "../schemas/draft-slice.js";
-import { resolveCardExportPath, resolveExportPath, writeTextFileSafely } from "../storage/path-policy.js";
+import { assertInside, CARDS_DIR, EXPORTS_DIR, resolveCardExportPath, resolveExportPath, writeTextFileSafely } from "../storage/path-policy.js";
 import { loadProject } from "../storage/project-store.js";
 import { logToolCall } from "../storage/tool-log.js";
 import { toPrettyJson } from "../utils/json.js";
@@ -49,8 +49,8 @@ export function registerExportTools(server: McpServer): void {
         if (!checklist.ready_to_export) return { ok: false, error: "strict_review 未通过", checklist };
       }
       const book = buildWorldbookJson({ name, entries: project.draft ?? [] });
-      const outputPath = resolveExportPath(target === "both" ? undefined : parsed.output_path, name);
-      await writeTextFileSafely(outputPath, toPrettyJson(book), { overwrite: parsed.overwrite });
+      const outputPath = resolveWorldbookOutputPath({ explicitPath: target === "both" ? undefined : parsed.output_path, importedPath: project.importedWorldbookPath, fallbackName: name });
+      await writeTextFileSafely(outputPath, toPrettyJson(book), { overwrite: parsed.overwrite || outputPath === project.importedWorldbookPath });
       outputs.push({ target: "worldbook", path: outputPath, name, entry_count: Object.keys(book.entries).length });
     }
     if (target === "character_card" || target === "both") {
@@ -61,8 +61,8 @@ export function registerExportTools(server: McpServer): void {
       }
       const { card, validation: cardValidation } = buildCharacterCardJsonFromProject(project, extraRegexScripts);
       if (!cardValidation.valid) return { ok: false, validation: cardValidation };
-      const outputPath = resolveCardExportPath(target === "both" ? undefined : parsed.output_path, project.characterCardConfig.card.name);
-      await writeTextFileSafely(outputPath, toPrettyJson(card), { overwrite: parsed.overwrite });
+      const outputPath = resolveCharacterCardOutputPath({ explicitPath: target === "both" ? undefined : parsed.output_path, importedPath: project.importedCharacterCardPath, fallbackName: project.characterCardConfig.card.name });
+      await writeTextFileSafely(outputPath, toPrettyJson(card), { overwrite: parsed.overwrite || outputPath === project.importedCharacterCardPath });
       outputs.push({ target: "character_card", path: outputPath, name: card.name, entry_count: card.data.character_book.entries.length });
     }
     return { ok: true, project_id: parsed.project_id, outputs };
@@ -73,6 +73,18 @@ export function registerExportTools(server: McpServer): void {
     if (parsed.mode === "summary" || parsed.mode === "worldbook_entries" || parsed.mode === "greetings") return queryCharacterCard({ path: parsed.path, mode: parsed.mode });
     return queryWorldbook({ path: parsed.path, mode: parsed.mode, query: parsed.query, uid: parsed.uid });
   })));
+}
+
+export function resolveWorldbookOutputPath(input: { explicitPath?: string; importedPath?: string; fallbackName: string }): string {
+  if (input.explicitPath?.trim()) return resolveExportPath(input.explicitPath, input.fallbackName);
+  if (input.importedPath) return assertInside(EXPORTS_DIR, input.importedPath);
+  return resolveExportPath(undefined, input.fallbackName);
+}
+
+export function resolveCharacterCardOutputPath(input: { explicitPath?: string; importedPath?: string; fallbackName: string }): string {
+  if (input.explicitPath?.trim()) return resolveCardExportPath(input.explicitPath, input.fallbackName);
+  if (input.importedPath) return assertInside(CARDS_DIR, input.importedPath);
+  return resolveCardExportPath(undefined, input.fallbackName);
 }
 
 function validateHydratedProject(project: Awaited<ReturnType<typeof loadProject>>, scope: "all" | "worldbook" | "character_card" | "mvu" | "html" | "ejs" | "style" | "chapter") {

@@ -5,6 +5,7 @@ import { aggregateProjectDraft, projectWithAggregate } from "../core/project-dra
 import { listProjects, loadProject, summarizeProject, updateProject } from "../storage/project-store.js";
 import { ensureRootTemplateJson, initWorkspaceProject } from "../storage/workspace-store.js";
 import { logToolCall } from "../storage/tool-log.js";
+import type { ProjectImportRecord } from "../schemas/project.js";
 import { toolText } from "./helpers.js";
 
 export function registerProjectTools(server: McpServer): void {
@@ -22,7 +23,11 @@ export function registerProjectTools(server: McpServer): void {
     if (input.scan_existing && input.import_strategy === "auto") {
       imports = await importExistingTavernJsonFiles();
       if (imports.records.length > 0) {
-        await updateProject(project.id, (latest) => ({ ...latest, imports: imports!.records }));
+        await updateProject(project.id, (latest) => ({
+          ...latest,
+          imports: imports!.records,
+          ...rootTemplateImportPaths(rootTemplate.path, imports!.records),
+        }));
       }
     }
     const latest = await loadProject(project.id);
@@ -55,4 +60,12 @@ export function registerProjectTools(server: McpServer): void {
     const project = await loadProject(input.project_id);
     return toolText(summarizeProject(project, input.include_content));
   });
+}
+
+function rootTemplateImportPaths(templatePath: string | undefined, records: ProjectImportRecord[]): Pick<Awaited<ReturnType<typeof loadProject>>, "importedWorldbookPath" | "importedCharacterCardPath"> {
+  if (!templatePath) return {};
+  const templateRecord = records.find((record) => record.path === templatePath);
+  if (!templateRecord) return {};
+  if (templateRecord.type === "worldbook") return { importedWorldbookPath: templatePath };
+  return { importedCharacterCardPath: templatePath };
 }
