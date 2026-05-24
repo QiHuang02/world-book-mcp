@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { importExistingTavernJsonFiles } from "../core/project-initializer.js";
-import { aggregateProjectDraft, projectWithAggregate } from "../core/project-draft-aggregate.js";
+import { aggregateProjectDraft, hydrateProjectDraft, projectWithAggregate } from "../core/project-draft-aggregate.js";
 import { listProjects, loadProject, summarizeProject, updateProject } from "../storage/project-store.js";
 import { ensureRootTemplateJson, initWorkspaceProject } from "../storage/workspace-store.js";
 import { logToolCall } from "../storage/tool-log.js";
@@ -57,7 +57,7 @@ export function registerProjectTools(server: McpServer): void {
   });
 
   server.tool("get_project", { project_id: z.string(), include_content: z.boolean().default(false) }, async (input) => {
-    const project = await loadProject(input.project_id);
+    const { project } = await hydrateProjectDraft(await loadProject(input.project_id));
     return toolText(summarizeProject(project, input.include_content));
   });
 }

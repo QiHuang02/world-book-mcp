@@ -57,30 +57,44 @@ export async function readPlan(): Promise<string> {
 }
 
 export async function writePlan(content: string): Promise<string> {
-  await fs.mkdir(path.dirname(PLAN_PATH), { recursive: true });
-  await fs.writeFile(PLAN_PATH, content, "utf8");
-  return PLAN_PATH;
+  return enqueuePlanWrite(async () => {
+    await fs.mkdir(path.dirname(PLAN_PATH), { recursive: true });
+    await fs.writeFile(PLAN_PATH, content, "utf8");
+    return PLAN_PATH;
+  });
 }
 
 export async function replacePlanSection(section: string, content: string): Promise<string> {
-  return updatePlanSection(section, () => `\n${content.trim()}\n\n`);
+  return enqueuePlanWrite(async () => updatePlanSection(section, () => `\n${content.trim()}\n\n`));
 }
 
 export async function appendPlanNote(section: string, content: string): Promise<string> {
-  return updatePlanSection(section, (body) => `${body.trimEnd()}\n\n${content.trim()}\n\n`);
+  return enqueuePlanWrite(async () => updatePlanSection(section, (body) => `${body.trimEnd()}\n\n${content.trim()}\n\n`));
 }
 
 export async function appendDecision(input: { question: string; answer: string; rationale?: string }): Promise<string> {
   const row = `| ${escapeTable(input.question)} | ${escapeTable(input.answer)} | ${escapeTable(input.rationale ?? "")} |`;
-  return appendPlanNote("4. 用户决策记录", row);
+  return enqueuePlanWrite(async () => updatePlanSection("4. 用户决策记录", (body) => `${body.trimEnd()}\n\n${row.trim()}\n\n`));
+}
+
+let planQueueTail: Promise<unknown> = Promise.resolve();
+
+function enqueuePlanWrite<T>(operation: () => Promise<T>): Promise<T> {
+  const next = planQueueTail.catch(() => undefined).then(operation);
+  planQueueTail = next;
+  return next;
 }
 
 async function updatePlanSection(section: string, updater: (body: string) => string): Promise<string> {
   const plan = await readPlan();
   const heading = normalizeHeading(section);
   const pattern = sectionPattern(heading);
-  if (!pattern.test(plan)) return writePlan(`${plan.trimEnd()}\n\n${heading}\n\n${updater("").trim()}\n`);
-  return writePlan(plan.replace(pattern, (_match, head, body) => `${head}${updater(body)}`));
+  const newContent = !pattern.test(plan)
+    ? `${plan.trimEnd()}\n\n${heading}\n\n${updater("").trim()}\n`
+    : plan.replace(pattern, (_match, head, body) => `${head}${updater(body)}`);
+  await fs.mkdir(path.dirname(PLAN_PATH), { recursive: true });
+  await fs.writeFile(PLAN_PATH, newContent, "utf8");
+  return PLAN_PATH;
 }
 
 function normalizeHeading(section: string): string {
@@ -88,7 +102,7 @@ function normalizeHeading(section: string): string {
 }
 
 function sectionPattern(heading: string): RegExp {
-  return new RegExp(`(^${escapeRegExp(heading)}\\n)([\\s\\S]*?)(?=^## |\\z)`, "m");
+  return new RegExp(`(^${escapeRegExp(heading)}\\n)([\\s\\S]*?)(?=^## |\\s*$)`, "m");
 }
 
 function escapeRegExp(value: string): string {

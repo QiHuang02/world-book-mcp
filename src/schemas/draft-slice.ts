@@ -145,7 +145,7 @@ export const DeleteDraftSliceInputSchema = GetDraftSliceInputSchema.extend({
 
 export const ValidateDraftInputSchema = z.object({
   project_id: z.string(),
-  scope: z.enum(["all", "worldbook", "character_card", "mvu", "html", "ejs", "style", "chapter"]).default("all"),
+  scope: z.enum(["all", "plan", "worldbook", "character_card", "mvu", "ejs", "html", "assets", "content", "delivery", "style", "chapter"]).default("all"),
   strict: z.boolean().default(false),
 });
 
@@ -160,6 +160,7 @@ export const GenerateJsonInputSchema = z.object({
   output_path: z.string().optional(),
   overwrite: z.boolean().default(false),
   strict_review: z.boolean().optional(),
+  force: z.boolean().default(false),
 });
 
 export const QueryJsonInputSchema = z.object({

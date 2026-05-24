@@ -8,8 +8,6 @@ describe("buildProjectAssets", () => {
       id: "project_test",
       name: "测试",
       revision: 0,
-      patches: [],
-      characterCardPatches: [],
       pendingDecisions: [],
       recordedDecisions: [],
       imports: [],

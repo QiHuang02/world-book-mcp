@@ -6,11 +6,11 @@ function emptyProject(): Project {
   return {
     id: "project_test",
     name: "测试",
-    patches: [],
     pendingDecisions: [],
     recordedDecisions: [],
     revision: 1,
-    characterCardPatches: [],
+    plan: { enabled_assets: {} },
+    imports: [],
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
   };

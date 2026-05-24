@@ -7,6 +7,8 @@ import { logToolCall } from "../storage/tool-log.js";
 import { toolText } from "./helpers.js";
 
 export function registerMvuVariableTools(server: McpServer): void {
+  // 注意：MVU variable tools 同时操作 schema + rules 两个 slice，revision check 在队列外完成。
+  // MCP 协议本身是串行的，所以并发风险有限；如果未来引入并行调用，需要改为组合锁。
   server.tool("list_mvu_variables", ListMvuVariablesInputSchema.shape, async (input) => toolText(await logToolCall("list_mvu_variables", input, async () => {
     const parsed = ListMvuVariablesInputSchema.parse(input);
     await loadProject(parsed.project_id);
@@ -36,7 +38,7 @@ export function registerMvuVariableTools(server: McpServer): void {
       schema_slice: { id: schemaWrite.slice.id, revision: schemaWrite.slice.revision, path: schemaWrite.path },
       rules_slice: rulesWrite ? { id: rulesWrite.slice.id, revision: rulesWrite.slice.revision, path: rulesWrite.path } : undefined,
       variable_count: result.variables.length,
-      next_action: "建议运行 validate_draft(scope='mvu') 检查 MVU 配置",
+      next_tools: ["validate_draft(scope='mvu')", "build_assets(target='mvu')"],
     };
   })));
 
@@ -60,7 +62,7 @@ export function registerMvuVariableTools(server: McpServer): void {
       schema_slice: { id: schemaWrite.slice.id, revision: schemaWrite.slice.revision, path: schemaWrite.path },
       rules_slice: rulesWrite ? { id: rulesWrite.slice.id, revision: rulesWrite.slice.revision, path: rulesWrite.path } : undefined,
       variable_count: result.variables.length,
-      next_action: "建议运行 validate_draft(scope='mvu') 检查 MVU 配置",
+      next_tools: ["validate_draft(scope='mvu')", "build_assets(target='mvu')"],
     };
   })));
 
@@ -82,7 +84,7 @@ export function registerMvuVariableTools(server: McpServer): void {
       schema_slice: { id: schemaWrite.slice.id, revision: schemaWrite.slice.revision, path: schemaWrite.path },
       rules_slice: rulesWrite ? { id: rulesWrite.slice.id, revision: rulesWrite.slice.revision, path: rulesWrite.path } : undefined,
       variable_count: result.variables.length,
-      next_action: "建议运行 validate_draft(scope='mvu') 检查 MVU 配置",
+      next_tools: ["validate_draft(scope='mvu')", "build_assets(target='mvu')"],
     };
   })));
 }

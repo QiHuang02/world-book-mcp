@@ -34,7 +34,7 @@ export async function initWorkspaceProject(input: { name: string; projectId?: st
   }
 
   if (existing && ifExists === "overwrite") {
-    await clearWorkspaceDraftEntries();
+    await clearWorkspaceData();
   }
 
   await ensureWorkspaceDirs();
@@ -141,8 +141,9 @@ export async function ensureWorkspaceDirs(): Promise<void> {
   await ensureLogDir();
 }
 
-async function clearWorkspaceDraftEntries(): Promise<void> {
+async function clearWorkspaceData(): Promise<void> {
   await fs.rm(WORKSPACE_DRAFT_DIR, { recursive: true, force: true });
+  await fs.rm(PLAN_PATH, { force: true }).catch(() => undefined);
   await ensureDraftDirs();
 }
 

@@ -105,6 +105,19 @@ export function lintContent(content: string): ContentLintResult {
     issues.push({ type: "authorial_explanation", category: "authorial_explanation", severity: "warning", message: "疑似作者视角解释心理或动作意义", suggestion: "保留可观察动作，删除解释" });
   }
 
+  if (/精致|白皙|好看|漂亮|美丽|英俊|帅气|完美/.test(content)) {
+    issues.push({ type: "generic_beauty", category: "appearance", severity: "warning", message: "外貌描写疑似使用万能美人词", suggestion: "只写可辨认特征，如发型、衣料磨损、姿态习惯、标志物" });
+  }
+  if (/温柔善良|感情深厚|关系很好|性格复杂|很有魅力|十分神秘/.test(content)) {
+    issues.push({ type: "abstract_label", category: "specificity", severity: "warning", message: "发现抽象性格/关系标签", suggestion: "改写为具体事件、行为边界或互动证据" });
+  }
+  if (/某(?:城市|组织|学校|地点|人物|家族)|待定|TODO|TBD|占位/.test(content)) {
+    issues.push({ type: "placeholder_term", category: "specificity", severity: "error", message: "发现占位词或未完成设定", suggestion: "补成具体名称；如果未知，应记录为 pending decision 而非写入成品条目" });
+  }
+  if (/角色卡|世界书|AI|模型|玩家正在使用|提示词|prompt/i.test(content)) {
+    issues.push({ type: "fourth_wall", category: "meta", severity: "warning", message: "疑似出现第四面墙或工具层术语", suggestion: "条目应只写角色可用的世界内信息" });
+  }
+
   return { ok: issues.every((issue) => issue.severity !== "error"), issues };
 }
 

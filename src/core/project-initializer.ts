@@ -40,8 +40,8 @@ async function importWorldbook(filePath: string, raw: unknown): Promise<{ summar
   const book = SillyTavernWorldbookSchema.parse(raw);
   const draft = worldbookToDraft(book);
   const written: InitImportSummary["draft_slices"] = [];
-  for (const entry of draft) {
-    const id = uniqueImportedId(filePath, entry.comment);
+  for (const [index, entry] of draft.entries()) {
+    const id = uniqueImportedId(filePath, `${index}-${entry.comment}`);
     const { path: slicePath } = await upsertDraftSlice(createDraftSlice({ type: "worldbook_entry", id, title: entry.comment, data: entry }));
     written.push({ type: "worldbook_entry", id, path: slicePath });
   }
@@ -71,8 +71,8 @@ async function importCharacterCard(filePath: string, raw: Record<string, unknown
   }));
   written.push({ type: "character_greetings", id: greetingsId, path: greetingsPath });
   const assets = extractThirdPartyAssetsFromCharacterCard({ card: raw, worldbookDraft: draft, idPrefix: uniqueImportedId(filePath, "assets") });
-  for (const entry of assets.retainedWorldbookEntries) {
-    const id = uniqueImportedId(filePath, entry.comment);
+  for (const [index, entry] of assets.retainedWorldbookEntries.entries()) {
+    const id = uniqueImportedId(filePath, `${index}-${entry.comment}`);
     const { path: slicePath } = await upsertDraftSlice(createDraftSlice({ type: "worldbook_entry", id, title: entry.comment, data: entry }));
     written.push({ type: "worldbook_entry", id, path: slicePath });
   }

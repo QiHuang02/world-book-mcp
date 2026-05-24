@@ -8,7 +8,7 @@ export const CARDS_DIR = path.resolve(ROOT_DIR);
 
 // 即便目标路径在仓库内，也禁止落到这些"几乎肯定不该被酒馆 JSON 覆盖"的目录里。
 // 仅按目录命中：./src/* / ./node_modules/* / ./.git/* / ./dist/* / ./build/*。
-const DENY_RELATIVE_DIRS = ["src", "node_modules", ".git", "dist", "build", ".worldbook/backups", ".worldbook/logs", ".worldbook/draft"];
+const DENY_RELATIVE_DIRS = ["src", "node_modules", ".git", "dist", "build", ".worldbook"];
 
 // 在 EXPORTS_DIR / CARDS_DIR 之外，禁止覆盖这些"项目级元数据"文件，避免误把酒馆 JSON 写到它们上面。
 const PROTECTED_ROOT_FILES = new Set(["package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "tsconfig.json", "jsconfig.json", "biome.json", "vite.config.json", "turbo.json"]);
@@ -34,7 +34,7 @@ function assertNotInDeniedDir(resolved: string): void {
     if (segments.length < deniedSegments.length) continue;
     const matches = deniedSegments.every((segment, index) => segments[index] === segment);
     if (matches) {
-      throw new Error(`路径落在受保护目录 ${denied}/ 中，请改用项目根目录或 ./.worldbook/exports/ 目录: ${resolved}`);
+      throw new Error(`路径落在受保护目录 ${denied}/ 中，请改用项目根目录: ${resolved}`);
     }
   }
 }

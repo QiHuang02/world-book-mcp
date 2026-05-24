@@ -78,6 +78,22 @@ export async function upsertDraftSlice(slice: DraftSlice): Promise<{ path: strin
   });
 }
 
+export async function updateDraftSliceWithRevisionCheck(
+  type: DraftType, id: string,
+  expectedRevision: number | undefined,
+  mutator: (slice: DraftSlice) => DraftSlice,
+): Promise<{ path: string; slice: DraftSlice }> {
+  return enqueueDraftWrite(type, id, async () => {
+    const existing = await readDraftSlice(type, id);
+    if (expectedRevision !== undefined && existing.revision !== expectedRevision) {
+      throw new Error(`draft slice revision 冲突：expected=${expectedRevision}, actual=${existing.revision}`);
+    }
+    const next = mutator(existing);
+    const parsed = DraftSliceSchema.parse({ ...next, createdAt: existing.createdAt, updatedAt: nowIso(), revision: existing.revision + 1 });
+    return { path: await writeDraftSlice(parsed), slice: parsed };
+  });
+}
+
 const draftWriteQueues = new Map<string, Promise<unknown>>();
 
 function enqueueDraftWrite<T>(type: DraftType, id: string, operation: () => Promise<T>): Promise<T> {

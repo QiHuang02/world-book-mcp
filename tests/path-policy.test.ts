@@ -82,6 +82,13 @@ describe("path policy", () => {
     expect(() => resolveCardExportPath("dist/escape.json", "x")).toThrow(/受保护目录/);
   });
 
+  it("rejects export paths inside .worldbook directory", () => {
+    expect(() => resolveExportPath(".worldbook/project.json", "x")).toThrow(/受保护目录/);
+    expect(() => resolveExportPath(".worldbook/plan.md", "x")).toThrow(/受保护目录/);
+    expect(() => resolveExportPath(".worldbook/draft/worldbook/entry.json", "x")).toThrow(/受保护目录/);
+    expect(() => resolveCardExportPath(".worldbook/exports/card.json", "x")).toThrow(/受保护目录/);
+  });
+
   it("rejects export paths that target known project metadata files", () => {
     expect(() => resolveExportPath("package.json", "x")).toThrow(/项目元数据文件/);
     expect(() => resolveCardExportPath("tsconfig.json", "x")).toThrow(/项目元数据文件/);

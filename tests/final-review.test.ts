@@ -6,9 +6,11 @@ function baseProject(overrides: Partial<Project> = {}): Project {
   return {
     id: "project_test",
     name: "测试",
-    patches: [],
     pendingDecisions: [],
     recordedDecisions: [],
+    revision: 0,
+    plan: { enabled_assets: {} },
+    imports: [],
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     ...overrides,
@@ -37,5 +39,22 @@ describe("createFinalReviewReport", () => {
     const report = createFinalReviewReport(baseProject());
     expect(report.sections.pending_decisions?.ok).toBe(true);
     expect(report.sections.pending_decisions?.warnings).toHaveLength(0);
+  });
+
+  it("does not duplicate pending decisions inside plan section", () => {
+    const project = baseProject({
+      pendingDecisions: [{
+        id: "card_type",
+        question: "卡型？",
+        options: [],
+        allow_custom: true,
+        multiple: false,
+        created_at: "2026-01-01T00:00:00.000Z",
+      }],
+    });
+    const report = createFinalReviewReport(project);
+    // pending decisions 现在只来自 pending_decisions section，不再混进 plan
+    expect(report.sections.plan?.errors).toHaveLength(0);
+    expect(report.sections.plan?.warnings).toHaveLength(0);
   });
 });

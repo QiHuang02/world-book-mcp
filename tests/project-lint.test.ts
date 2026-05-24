@@ -7,7 +7,11 @@ describe("lintProjectContent", () => {
     const project: Project = {
       id: "project_test",
       name: "测试",
-      patches: [],
+      pendingDecisions: [],
+      recordedDecisions: [],
+      revision: 0,
+      plan: { enabled_assets: {} },
+      imports: [],
       draft: [{
         comment: "条目",
         entryType: "other",
@@ -52,7 +56,11 @@ describe("lintProjectContent", () => {
     const project: Project = {
       id: "project_test",
       name: "测试",
-      patches: [],
+      pendingDecisions: [],
+      recordedDecisions: [],
+      revision: 0,
+      plan: { enabled_assets: {} },
+      imports: [],
       draft: [{
         comment: "条目",
         entryType: "other",
@@ -81,7 +89,11 @@ describe("lintProjectContent", () => {
     const project: Project = {
       id: "project_test",
       name: "破折号测试",
-      patches: [],
+      pendingDecisions: [],
+      recordedDecisions: [],
+      revision: 0,
+      plan: { enabled_assets: {} },
+      imports: [],
       draft: [{
         comment: "条目",
         entryType: "other",

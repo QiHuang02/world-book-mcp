@@ -4,7 +4,7 @@ import { createMvuTemplate } from "../core/mvu-template.js";
 import { createWorldbookDraftTemplate } from "../core/worldbook-draft-editor.js";
 import { updateDraftSliceField, updateDraftSliceFields } from "../core/draft-field-editor.js";
 import { CreateDraftSliceInputSchema, DeleteDraftSliceInputSchema, DraftSliceDataSchemas, GetDraftSliceInputSchema, ListDraftSlicesInputSchema, UpdateDraftFieldInputSchema, UpdateDraftFieldsInputSchema, type DraftType } from "../schemas/draft-slice.js";
-import { createDraftSlice, deleteDraftSlice, draftSlicePath, listDraftSlices, readDraftSlice, upsertDraftSlice } from "../storage/draft-store.js";
+import { createDraftSlice, deleteDraftSlice, draftSlicePath, listDraftSlices, readDraftSlice, updateDraftSliceWithRevisionCheck, upsertDraftSlice } from "../storage/draft-store.js";
 import { loadProject, updateProject } from "../storage/project-store.js";
 import { logToolCall } from "../storage/tool-log.js";
 import { toolText } from "./helpers.js";
@@ -24,20 +24,21 @@ export function registerDraftTools(server: McpServer): void {
 
   server.tool("update_draft_field", UpdateDraftFieldInputSchema.shape, async (input) => toolText(await logToolCall("update_draft_field", input, async () => {
     const parsed = UpdateDraftFieldInputSchema.parse(input);
-    const slice = await readDraftSlice(parsed.draft_type, parsed.id);
-    assertSliceRevision(slice.revision, parsed.expected_slice_revision);
-
-    const next = updateDraftSliceField(slice, parsed.field_path, parsed.value);
-    const result = await upsertDraftSlice(next);
+    await loadProject(parsed.project_id);
+    const result = await updateDraftSliceWithRevisionCheck(
+      parsed.draft_type, parsed.id, parsed.expected_slice_revision,
+      (slice) => updateDraftSliceField(slice, parsed.field_path, parsed.value),
+    );
     return { ok: true, project_id: parsed.project_id, slice: result.slice, path: result.path };
   })));
 
   server.tool("update_draft_fields", UpdateDraftFieldsInputSchema.shape, async (input) => toolText(await logToolCall("update_draft_fields", input, async () => {
     const parsed = UpdateDraftFieldsInputSchema.parse(input);
-    const slice = await readDraftSlice(parsed.draft_type, parsed.id);
-    assertSliceRevision(slice.revision, parsed.expected_slice_revision);
-    const next = updateDraftSliceFields(slice, parsed.changes);
-    const result = await upsertDraftSlice(next);
+    await loadProject(parsed.project_id);
+    const result = await updateDraftSliceWithRevisionCheck(
+      parsed.draft_type, parsed.id, parsed.expected_slice_revision,
+      (slice) => updateDraftSliceFields(slice, parsed.changes),
+    );
     return { ok: true, project_id: parsed.project_id, slice: result.slice, path: result.path };
   })));
 

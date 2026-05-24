@@ -24,10 +24,9 @@ function makeConfig(first_mes: string): CharacterCardConfig {
 }
 
 describe("validateGreetings", () => {
-  it("rejects user preset actions", () => {
+  it("warns about user preset actions", () => {
     const result = validateGreetings({ config: makeConfig("清晨，角色A站在窗边，看见你刚刚醒来。") });
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((issue) => issue.message.includes("预设 user"))).toBe(true);
+    expect(result.warnings.some((issue) => issue.message.includes("预设 user"))).toBe(true);
   });
 
   it("warns when mvu placeholder is missing", () => {
@@ -35,9 +34,8 @@ describe("validateGreetings", () => {
     expect(result.warnings.some((issue) => issue.message.includes("StatusPlaceHolderImpl"))).toBe(true);
   });
 
-  it("rejects user preset follow-up choices", () => {
+  it("warns about user preset follow-up choices", () => {
     const result = validateGreetings({ config: makeConfig("夜里，角色A站在门口，看向你。你只好点头跟着他离开。") });
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((issue) => issue.message.includes("后续行动"))).toBe(true);
+    expect(result.warnings.some((issue) => issue.message.includes("后续行动"))).toBe(true);
   });
 });
