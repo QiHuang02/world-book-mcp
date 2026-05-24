@@ -61,7 +61,7 @@ jobs:
   publish-npm:
     name: Publish npm package
     needs: check-version
-    if: needs.check-version.outputs.should_publish == 'true' && needs.check-version.outputs.is_beta == 'false'
+    if: needs.check-version.outputs.should_publish == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -82,20 +82,26 @@ jobs:
 
       - name: Publish package to npm
         shell: bash
-        run: npm publish --access public
+        run: |
+          if [[ "${{ needs.check-version.outputs.is_beta }}" == "true" ]]; then
+            npm publish --access public --tag beta
+          else
+            npm publish --access public
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   release:
     name: Package and publish GitHub Release
     needs: [check-version, publish-npm]
-    if: always() && needs.check-version.outputs.should_publish == 'true' && needs.check-version.result == 'success' && (needs.publish-npm.result == 'success' || needs.publish-npm.result == 'skipped')
+    if: always() && needs.check-version.outputs.should_publish == 'true' && needs.check-version.result == 'success' && needs.publish-npm.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
 
       - name: Setup Node.js
+        if: needs.check-version.outputs.is_beta == 'true'
         uses: actions/setup-node@v6
         with:
           node-version: '24'
