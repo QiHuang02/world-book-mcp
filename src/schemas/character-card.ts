@@ -16,7 +16,7 @@ export const CharacterCardBaseSchema = z.object({
   talkativeness: z.string().default("0.5"),
 });
 
-export const CharacterCardWorldbookConfigSchema = z.object({
+const CharacterCardWorldbookConfigSchema = z.object({
   source: z.enum(["project_draft", "none"]).default("project_draft"),
   name: z.string().optional(),
 });
@@ -26,16 +26,4 @@ export const CharacterCardConfigSchema = z.object({
   worldbook: CharacterCardWorldbookConfigSchema.default({ source: "project_draft" }),
 });
 
-export const ValidateCharacterCardConfigInputSchema = z.object({
-  project_id: z.string(),
-  config: CharacterCardConfigSchema.optional(),
-});
-
-export const QueryCharacterCardInputSchema = z.object({
-  path: z.string().min(1),
-  mode: z.enum(["summary", "worldbook_entries", "greetings"]),
-});
-
-export type CharacterCardBase = z.infer<typeof CharacterCardBaseSchema>;
-export type CharacterCardWorldbookConfig = z.infer<typeof CharacterCardWorldbookConfigSchema>;
 export type CharacterCardConfig = z.infer<typeof CharacterCardConfigSchema>;

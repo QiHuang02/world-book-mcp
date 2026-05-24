@@ -42,9 +42,9 @@ export interface MvuAssets {
   tavernHelperScripts: TavernHelperScriptAsset[];
 }
 
-export const DEFAULT_MVU_BUNDLE = "import 'https://testingcf.jsdelivr.net/gh/MagicalAstrogy/MagVarUpdate/artifact/bundle.js';";
+const DEFAULT_MVU_BUNDLE = "import 'https://testingcf.jsdelivr.net/gh/MagicalAstrogy/MagVarUpdate/artifact/bundle.js';";
 
-export const DEFAULT_MVU_BUTTONS = [
+const DEFAULT_MVU_BUTTONS = [
   { name: "重新处理变量", visible: true },
   { name: "重新读取初始变量", visible: true },
   { name: "清除旧楼层变量", visible: false },
@@ -191,6 +191,6 @@ function wrapInitvar(initvar: string): string {
   return wrapWithXmlTag(initvar, "initvar");
 }
 
-export function defaultOutputFormat(): string {
+function defaultOutputFormat(): string {
   return `变量输出格式:\n  rule:\n    - 你必须在回复末尾输出更新分析和实际的更新命令\n    - 更新命令遵循JSON Patch (RFC 6902)标准\n    - 支持操作: replace/delta/insert/remove\n    - 不要更新以_开头的只读变量\n  format: |-\n    <UpdateVariable>\n    <Analysis>$(按英文输出，不超过80词)\n    - \${计算经过的时间: ...}\n    - \${判断是否允许戏剧性变化: 是/否}\n    - \${基于check分析每个变量: ...}\n    </Analysis>\n    <JSONPatch>\n    [\n      { "op": "replace", "path": "\${路径}", "value": "\${新值}" },\n      { "op": "delta", "path": "\${数值路径}", "value": \${变动值} },\n      { "op": "insert", "path": "\${对象路径/新键}", "value": "\${新值}" },\n      { "op": "remove", "path": "\${对象路径/键}" }\n    ]\n    </JSONPatch>\n    </UpdateVariable>`;
 }

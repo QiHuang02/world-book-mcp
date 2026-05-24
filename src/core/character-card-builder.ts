@@ -213,7 +213,7 @@ function hasSingleXmlWrapper(content: string): boolean {
   return /^<([a-zA-Z_][\w-]*)>[\s\S]*<\/\1>$/.test(content.trim());
 }
 
-export function draftEntriesToCharacterBookEntries(entries: WorldbookDraftEntry[]): CharacterBookEntry[] {
+function draftEntriesToCharacterBookEntries(entries: WorldbookDraftEntry[]): CharacterBookEntry[] {
   return mergeCharacterProfileEntries(entries).map((entry, index) => ({
     id: index,
     keys: entry.keys,

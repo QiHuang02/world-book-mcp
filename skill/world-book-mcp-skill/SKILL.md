@@ -5,7 +5,7 @@ description: Use the world-book-mcp MCP server to create, modify, validate, and 
 
 # world-book-mcp 创作项目主线
 
-`world-book-mcp` 是 SillyTavern 世界书与 `chara_card_v3` 角色卡的创作项目编排器。它不是旧式 JSON patch 工具，也不是脚本命令索引；它负责把需求、用户决策、draft 切片、MVU/EJS/HTML 资产和导出前校验串成同一条主线。
+`world-book-mcp` 是 SillyTavern 世界书与 `chara_card_v3` 角色卡的创作项目编排器。它负责把需求、用户决策、draft 切片、MVU/EJS/HTML 资产和导出前校验串成同一条主线。
 
 ## 绝对主线
 
@@ -22,15 +22,16 @@ init_project
 → generate_json
 ```
 
-`init_project` 是固定入口。修改已有 JSON 也先 `init_project(scan_existing=true, import_strategy="auto")`，由 MCP 自动切片到 `.worldbook/draft/`。
+`init_project` 是固定入口。修改已有 JSON 时也先调用 `init_project(scan_existing=true, import_strategy="auto")`，由 MCP 自动切片到 `.worldbook/draft/`。
 
 ## 强制路由
 
 - 原创角色卡：`character_profile` + `character_greetings` + 世界书条目，必要时加 MVU/HTML/EJS。
-- 纯世界书：只创建 `worldbook_entry`，但仍记录 plan、需求边界和导出目标。
-- 二创/材料转化：先整理来源事实和 sourceRefs，再写 draft；原文没有的不补。
+- 纯世界书：只创建 `worldbook_entry`，但仍需记录 plan、需求边界和导出目标。
+- 二创/材料转化：先整理来源事实和 sourceRefs，再写 draft；不补原文未提及内容。
 - 修改已有 JSON：先导入切片，再只改相关 draft，不直接编辑最终 JSON。
 - MVU/EJS/HTML 局部任务：只改对应 draft slice，但必须跑对应 scope 校验和 `build_assets`。
+- 多阶段 EJS 人设：角色性格随变量变化时，使用 controller + stage 结构或单条目 if/else。详见 `references/multi-stage-ejs.md`。
 - 内容审查：优先 `validate_draft(scope="content")`、`review_project`、`check_delivery`。
 
 ## 需求对齐
@@ -52,9 +53,9 @@ request_user_decision → record_user_decision → update_plan(mode="append_deci
 - `character_greetings`：first_mes / alternate_greetings。
 - `mvu_schema`、`mvu_update_rules`：MVU ZOD、initvar、update_rules。
 - `html_statusbar`、`html_regex`：HTML 状态栏与正则资产。
-- `ejs_entry`：controller / stage / inline / helper 动态条目。
+- `ejs_entry`：controller / stage / inline / helper 动态条目。 多阶段人设使用 controller + stage 结构，详见 `multi-stage-ejs.md`。
 
-世界书条目建议数据库式 XML 包裹 YAML：具体、短句、可触发、可维护。绿灯条目必须有 keys，物品/能力/场景/事件建议 `scanDepth=2`；条目默认双递归：`preventRecursion=true`、`excludeRecursion=true`。
+世界书条目建议数据库式 XML 包裹 YAML：具体、短句、可触发、可维护。绿灯条目必须有 keys，物品/能力/场景/事件建议 `scanDepth=2`；条目默认双递归：`preventRecursion=true` 和 `excludeRecursion=true`。
 
 ## MVU / EJS / HTML 一致性
 
@@ -65,6 +66,7 @@ request_user_decision → record_user_decision → update_plan(mode="append_deci
 - EJS 的 `variable_paths`、`getvar(...)`、`_.get(stat_data, ...)` 必须与 MVU schema 对齐。
 - `getwi(...)` 引用的 stage/helper 条目必须存在；stage 默认 `enabled=false`。
 - HTML 状态栏必须有 `.wbm-statusbar` 作用域，禁止 `body/html/*` 全局选择器和外部 URL。
+- 多阶段 EJS 人设：变量声明用 `var` + `typeof` 防重复；条件边界无重叠无遗漏；底色和通用衍生放条件外；stage 条目 `enabled=false`。
 - 启用 MVU 或 HTML 状态栏时，开场白必须包含 `<StatusPlaceHolderImpl/>`。
 
 局部资产修改后固定运行：
@@ -120,3 +122,5 @@ generate_json(project_id, target)
 `style-extraction-guide.md` 指导文风提取：从源材料分析叙事视角、句长节奏、描写重心等维度，转化为可执行的风格条目和禁词条目。
 
 `rephrase-guide.md` 指导二次解释：作者对角色深层逻辑的注释，防止 AI 误解角色性格，引导用户自己创作。
+
+`multi-stage-ejs.md` 指导多阶段 EJS 人设：角色性格随 MVU 变量变化的条件渲染，controller + stage 结构，调色盘分阶段输出，条件边界校验。

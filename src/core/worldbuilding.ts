@@ -76,32 +76,6 @@ export function validateWorldbuildingSummary(summary: WorldbuildingSummary): Wor
   return { ok: errors.length === 0, errors, warnings, summary: { world_type: summary.world_type, summary_length: length, filled_dimension_count: dimensions } };
 }
 
-export interface WorldbuildingTypeClassification {
-  world_type: WorldbuildingType;
-  confidence: "high" | "medium" | "low";
-  reasons: string[];
-  recommended_dimensions: string[];
-}
-
-export function classifyWorldbuildingType(input: { title?: string; brief?: string; tags?: string[] }): WorldbuildingTypeClassification {
-  const text = `${input.title ?? ""} ${input.brief ?? ""} ${(input.tags ?? []).join(" ")}`.toLowerCase();
-  const reasons: string[] = [];
-
-  if (/(架空|奇幻|玄幻|修仙|魔法|星际|科幻|异界|大陆|王国|帝国|多神)/.test(text)) {
-    reasons.push("出现架空/奇幻/科幻关键词，倾向 C 类大世界");
-    return { world_type: "C_large_world", confidence: "high", reasons, recommended_dimensions: ["geography", "history", "factions", "rules", "society", "technology"] };
-  }
-  if (/(学院|学园|学校|宅邸|公司|小镇|村庄|岛屿|船舱|地下城|末日避难)/.test(text)) {
-    reasons.push("出现封闭舞台关键词，倾向 B 类小世界");
-    return { world_type: "B_small_world", confidence: "high", reasons, recommended_dimensions: ["geography", "society", "rules", "boundaries"] };
-  }
-  if (/(现代|都市|当代|高中|大学|公司|职场|日常|城市|国内|海外)/.test(text)) {
-    reasons.push("出现现代/日常关键词，倾向 A 类真实背景");
-    return { world_type: "A_realistic_background", confidence: "high", reasons, recommended_dimensions: ["geography", "society", "boundaries"] };
-  }
-  reasons.push("未命中明显关键词，默认按 B 类小世界处理");
-  return { world_type: "B_small_world", confidence: "low", reasons, recommended_dimensions: ["geography", "society", "rules", "boundaries"] };
-}
 
 export function createWorldbuildingDesignTemplate(input: { world_type?: WorldbuildingType; title?: string }): { world_type: WorldbuildingType; title: string; sections: Array<{ name: string; required: boolean; guidance: string; placeholder: string }>; rules: string[] } {
   const worldType = input.world_type ?? "B_small_world";

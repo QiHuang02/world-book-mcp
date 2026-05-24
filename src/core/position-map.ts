@@ -1,6 +1,6 @@
 import type { PositionName } from "../schemas/worldbook-draft.js";
 
-export const POSITION_TO_NUMBER: Record<PositionName, number> = {
+const POSITION_TO_NUMBER: Record<PositionName, number> = {
   before_char: 0,
   after_char: 1,
   before_an: 2,
@@ -11,7 +11,7 @@ export const POSITION_TO_NUMBER: Record<PositionName, number> = {
   outlet: 7,
 };
 
-export const NUMBER_TO_POSITION: Record<number, PositionName> = {
+const NUMBER_TO_POSITION: Record<number, PositionName> = {
   0: "before_char",
   1: "after_char",
   2: "before_an",

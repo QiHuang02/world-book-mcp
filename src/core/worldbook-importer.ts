@@ -1,13 +1,7 @@
-import { SillyTavernWorldbookSchema, type SillyTavernWorldbook, type SillyTavernWorldbookEntry } from "../schemas/sillytavern-worldbook.js";
+import type { SillyTavernWorldbook, SillyTavernWorldbookEntry } from "../schemas/sillytavern-worldbook.js";
 import type { EntryType, WorldbookDraftEntry } from "../schemas/worldbook-draft.js";
-import { readJsonFile } from "../utils/json.js";
 import { normalizeWorldbookEntryContent } from "../utils/yaml-xml.js";
 import { numberToPosition } from "./position-map.js";
-
-export async function importWorldbookFromFile(path: string): Promise<{ book: SillyTavernWorldbook; draft: WorldbookDraftEntry[] }> {
-  const book = await readJsonFile(path, SillyTavernWorldbookSchema);
-  return { book, draft: worldbookToDraft(book) };
-}
 
 export function worldbookToDraft(book: SillyTavernWorldbook): WorldbookDraftEntry[] {
   return Object.values(book.entries)

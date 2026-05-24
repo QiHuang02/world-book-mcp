@@ -1,5 +1,3 @@
-import type { ZodTypeAny } from "zod";
-
 export function toolText(value: unknown) {
   return {
     content: [
@@ -10,5 +8,3 @@ export function toolText(value: unknown) {
     ],
   };
 }
-
-export type AnySchema = ZodTypeAny;

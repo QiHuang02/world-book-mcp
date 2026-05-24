@@ -69,10 +69,6 @@ export function section<TSummary>(input: {
   return { ok: input.ok ?? errors.length === 0, errors, warnings, infos, summary: input.summary };
 }
 
-export function emptySection<TSummary>(summary: TSummary): ValidationSection<TSummary> {
-  return section({ summary });
-}
-
 export function normalizeIssue(input: {
   field?: string;
   entry?: string;

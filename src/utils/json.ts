@@ -3,17 +3,17 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { z, ZodTypeAny } from "zod";
 
-export function stringifyPrettyJson(value: unknown): string {
-  return `${JSON.stringify(value, null, 2)}\n`;
-}
-
-export function parseJsonLike<T = unknown>(text: string): T {
+function parseJsonLike<T = unknown>(text: string): T {
   try {
     return JSON.parse(text) as T;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`JSON 解析失败: ${message}`);
   }
+}
+
+export function toPrettyJson(value: unknown): string {
+  return `${JSON.stringify(value, null, 2)}\n`;
 }
 
 export async function readJsonFile<T = unknown>(filePath: string): Promise<T>;
@@ -31,7 +31,7 @@ export async function writeJsonFile(filePath: string, value: unknown): Promise<v
   await fs.mkdir(path.dirname(resolved), { recursive: true });
   const tempName = `.${path.basename(resolved)}.tmp.${process.pid}.${crypto.randomBytes(4).toString("hex")}`;
   const tempPath = path.join(path.dirname(resolved), tempName);
-  await fs.writeFile(tempPath, stringifyPrettyJson(value), { encoding: "utf8", flag: "wx" });
+  await fs.writeFile(tempPath, toPrettyJson(value), { encoding: "utf8", flag: "wx" });
   try {
     await fs.rename(tempPath, resolved);
   } catch (error) {
@@ -39,6 +39,3 @@ export async function writeJsonFile(filePath: string, value: unknown): Promise<v
     throw error;
   }
 }
-
-export const toPrettyJson = stringifyPrettyJson;
-export const safeJsonParse = parseJsonLike;

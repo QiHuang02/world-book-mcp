@@ -4,7 +4,7 @@ import path from "node:path";
 import { nowIso } from "../utils/ids.js";
 import { assertInside, ROOT_DIR } from "./path-policy.js";
 
-export const LOG_DIR = assertInside(path.resolve(ROOT_DIR, ".worldbook"), path.resolve(ROOT_DIR, ".worldbook", "logs"));
+const LOG_DIR = assertInside(path.resolve(ROOT_DIR, ".worldbook"), path.resolve(ROOT_DIR, ".worldbook", "logs"));
 export const LATEST_LOG_PATH = assertInside(LOG_DIR, path.resolve(LOG_DIR, "latest.jsonl"));
 
 let sessionId = `session_${Date.now().toString(36)}_${crypto.randomBytes(4).toString("hex")}`;
@@ -13,12 +13,7 @@ export function currentSessionId(): string {
   return sessionId;
 }
 
-export function resetToolLogSession(id?: string): string {
-  sessionId = id ?? `session_${Date.now().toString(36)}_${crypto.randomBytes(4).toString("hex")}`;
-  return sessionId;
-}
-
-export function sessionLogPath(id = sessionId): string {
+function sessionLogPath(id = sessionId): string {
   return assertInside(LOG_DIR, path.resolve(LOG_DIR, `${id}.jsonl`));
 }
 
@@ -45,7 +40,7 @@ function ensureLatestLogTruncated(): Promise<void> {
   return latestLogTruncated;
 }
 
-export async function appendToolLog(event: {
+async function appendToolLog(event: {
   project_id?: string;
   tool: string;
   request?: unknown;

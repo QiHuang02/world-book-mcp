@@ -25,36 +25,5 @@ export const HtmlBeautifyConfigSchema = z.object({
   }).default({ enabled: false, regex_scripts: [] }),
 });
 
-export const CreateHtmlBeautifyTemplateInputSchema = z.object({
-  project_id: z.string().optional(),
-  target: z.enum(["statusbar", "global", "both"]).default("statusbar"),
-  theme: z.enum(["minimal", "dark", "light", "custom"]).default("minimal"),
-});
-
-export const SubmitHtmlBeautifyConfigInputSchema = z.object({
-  project_id: z.string(),
-  html: HtmlBeautifyConfigSchema,
-});
-
-export const UpsertHtmlStatusbarInputSchema = z.object({
-  project_id: z.string(),
-  html: z.string().optional(),
-  theme: z.enum(["minimal", "dark", "light", "custom"]).optional(),
-  target: z.enum(["statusbar", "both"]).optional(),
-  enabled: z.boolean().optional(),
-  hide_regex: z.boolean().optional(),
-  expected_revision: z.number().int().nonnegative().optional(),
-});
-
-export const ValidateHtmlBeautifyConfigInputSchema = z.object({
-  project_id: z.string(),
-  html: HtmlBeautifyConfigSchema.optional(),
-});
-
-export const BuildHtmlBeautifyAssetsInputSchema = z.object({
-  project_id: z.string(),
-  html: HtmlBeautifyConfigSchema.optional(),
-});
-
 export type HtmlRegexScriptConfig = z.infer<typeof HtmlRegexScriptConfigSchema>;
 export type HtmlBeautifyConfig = z.infer<typeof HtmlBeautifyConfigSchema>;

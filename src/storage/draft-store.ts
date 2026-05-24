@@ -5,7 +5,7 @@ import { nowIso } from "../utils/ids.js";
 import { readJsonFile, writeJsonFile } from "../utils/json.js";
 import { assertInside, ROOT_DIR, sanitizeFilename } from "./path-policy.js";
 
-export const DRAFT_WORKSPACE_DIR = path.resolve(ROOT_DIR, ".worldbook", "draft");
+const DRAFT_WORKSPACE_DIR = path.resolve(ROOT_DIR, ".worldbook", "draft");
 
 const DRAFT_TYPE_DIRS: Record<DraftType, string> = {
   worldbook_entry: "worldbook",
@@ -129,9 +129,4 @@ export async function deleteDraftSlice(type: DraftType, id: string): Promise<str
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
   return outputPath;
-}
-
-export async function clearDraftSlices(): Promise<void> {
-  await fs.rm(DRAFT_WORKSPACE_DIR, { recursive: true, force: true });
-  await ensureDraftDirs();
 }

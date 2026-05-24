@@ -3,7 +3,6 @@ import path from "node:path";
 
 export const ROOT_DIR = process.cwd();
 export const EXPORTS_DIR = path.resolve(ROOT_DIR);
-export const BACKUPS_DIR = path.resolve(ROOT_DIR, ".worldbook", "backups");
 export const CARDS_DIR = path.resolve(ROOT_DIR);
 
 // 即便目标路径在仓库内，也禁止落到这些"几乎肯定不该被酒馆 JSON 覆盖"的目录里。
@@ -27,7 +26,7 @@ function assertNotInDeniedDir(resolved: string): void {
   const relative = path.relative(ROOT_DIR, resolved);
   // 已经过 assertInside(EXPORTS_DIR/CARDS_DIR/ROOT_DIR) 校验，这里只关心仓库内的子路径。
   if (relative.startsWith("..") || path.isAbsolute(relative)) return;
-  const segments = relative.split(/[\\/]+/).filter(Boolean);
+  const segments = relative.split(/[\/]+/).filter(Boolean);
   if (segments.length === 0) return;
   for (const denied of DENY_RELATIVE_DIRS) {
     const deniedSegments = denied.split("/").filter(Boolean);
@@ -62,13 +61,6 @@ export function resolveReadableWorldbookPath(inputPath: string): string {
   return assertInside(ROOT_DIR, resolved);
 }
 
-export function resolveBackupPath(originalPath: string, timestamp = new Date()): string {
-  const parsed = path.parse(originalPath);
-  const safeBase = sanitizeFilename(parsed.name || "worldbook");
-  const stamp = timestamp.toISOString().replace(/[:.]/g, "-");
-  return assertInside(BACKUPS_DIR, path.resolve(BACKUPS_DIR, `${safeBase}.${stamp}.bak.json`));
-}
-
 export function resolveCardExportPath(outputPath: string | undefined, fallbackName: string): string {
   const filename = outputPath?.trim() || `${sanitizeFilename(fallbackName)}.json`;
   const resolved = path.isAbsolute(filename) ? filename : path.resolve(CARDS_DIR, filename);
@@ -83,72 +75,8 @@ export function resolveReadableCardPath(inputPath: string): string {
   return assertInside(ROOT_DIR, resolved);
 }
 
-export async function backupIfExists(originalPath: string): Promise<string | undefined> {
-  try {
-    await fs.access(originalPath);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-    throw error;
-  }
-  const backupPath = resolveBackupPath(originalPath);
-  await fs.mkdir(path.dirname(backupPath), { recursive: true });
-  await fs.copyFile(originalPath, backupPath);
-  return backupPath;
-}
-
-export async function writeTempThenCommit(input: { targetPath: string; content: string; tempId: string; overwrite?: boolean; commit: () => Promise<void>; backup?: boolean }): Promise<{ backupPath?: string }> {
-  const targetPath = path.resolve(input.targetPath);
-  const overwrite = input.overwrite ?? false;
-  const targetExists = await fileExists(targetPath);
-  if (!overwrite && targetExists) {
-    const error = new Error(`文件已存在: ${targetPath}`) as NodeJS.ErrnoException;
-    error.code = "EEXIST";
-    throw error;
-  }
-
-  const tempPath = assertInside(path.dirname(targetPath), path.resolve(path.dirname(targetPath), `.${path.basename(targetPath)}.tmp.${sanitizeFilename(input.tempId)}`));
-  await writeTextFileSafely(tempPath, input.content, { overwrite: false });
-
-  let backupPath: string | undefined;
-  try {
-    if (input.backup && targetExists) backupPath = await backupIfExists(targetPath);
-    if (overwrite) await fs.rm(targetPath, { force: true });
-    await fs.rename(tempPath, targetPath);
-    try {
-      await input.commit();
-    } catch (error) {
-      await restoreAfterCommitFailure({ targetPath, backupPath, hadOriginal: targetExists });
-      throw error;
-    }
-    return { backupPath };
-  } catch (error) {
-    await fs.rm(tempPath, { force: true });
-    throw error;
-  }
-}
-
-async function restoreAfterCommitFailure(input: { targetPath: string; backupPath?: string; hadOriginal: boolean }): Promise<void> {
-  if (input.backupPath) {
-    await fs.copyFile(input.backupPath, input.targetPath);
-    return;
-  }
-  if (!input.hadOriginal) {
-    await fs.rm(input.targetPath, { force: true });
-  }
-}
-
-async function fileExists(filePath: string): Promise<boolean> {
-  try {
-    await fs.access(filePath);
-    return true;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
-    throw error;
-  }
-}
-
 export function sanitizeFilename(name: string): string {
-  return name.replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_").trim() || "worldbook";
+  return name.replace(/[<>:"/\|?*\u0000-\u001F]/g, "_").trim() || "worldbook";
 }
 
 const fileWriteQueues = new Map<string, Promise<unknown>>();

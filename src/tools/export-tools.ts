@@ -65,13 +65,13 @@ export function registerExportTools(server: McpServer): void {
   })));
 }
 
-export function resolveWorldbookOutputPath(input: { explicitPath?: string; importedPath?: string; fallbackName: string }): string {
+function resolveWorldbookOutputPath(input: { explicitPath?: string; importedPath?: string; fallbackName: string }): string {
   if (input.explicitPath?.trim()) return resolveExportPath(input.explicitPath, input.fallbackName);
   if (input.importedPath) return assertInside(EXPORTS_DIR, input.importedPath);
   return resolveExportPath(undefined, input.fallbackName);
 }
 
-export function resolveCharacterCardOutputPath(input: { explicitPath?: string; importedPath?: string; fallbackName: string }): string {
+function resolveCharacterCardOutputPath(input: { explicitPath?: string; importedPath?: string; fallbackName: string }): string {
   if (input.explicitPath?.trim()) return resolveCardExportPath(input.explicitPath, input.fallbackName);
   if (input.importedPath) return assertInside(CARDS_DIR, input.importedPath);
   return resolveCardExportPath(undefined, input.fallbackName);

@@ -1,6 +1,12 @@
 import type { EjsConfig } from "../schemas/ejs.js";
 import { normalizePath, toUiPath } from "./mvu-path-analyzer.js";
 
+export interface EjsStageInfo {
+  name: string;
+  condition: string;
+  condition_variables: string[];
+}
+
 export interface EjsEntryAnalysis {
   entry_name: string;
   entry_role: string;
@@ -8,6 +14,9 @@ export interface EjsEntryAnalysis {
   lodash_get_paths: string[];
   getwi_refs: string[];
   defined_names: string[];
+  condition_branch_count: number;
+  has_else_fallback: boolean;
+  stages: EjsStageInfo[];
 }
 
 export interface EjsAnalysis {
@@ -18,7 +27,7 @@ export interface EjsAnalysis {
 }
 
 export function analyzeEjsConfig(ejs: EjsConfig): EjsAnalysis {
-  const entries = ejs.entries.map((entry) => analyzeEjsEntry(entry.name, entry.role, entry.content));
+  const entries = ejs.entries.map((entry) => analyzeEjsEntry(entry.name, entry.role, entry.content, entry.stages));
   return {
     declared_variable_paths: [...new Set(ejs.variable_paths.map(normalizeEjsUiPath))],
     content_variable_paths: [...new Set(entries.flatMap((entry) => [...entry.getvar_paths, ...entry.lodash_get_paths]).map(normalizeEjsUiPath))],
@@ -34,7 +43,8 @@ export function normalizeEjsUiPath(path: string): string {
   return toUiPath(normalizePath(trimmed));
 }
 
-function analyzeEjsEntry(entryName: string, entryRole: string, content: string): EjsEntryAnalysis {
+function analyzeEjsEntry(entryName: string, entryRole: string, content: string, stages?: Array<{ name: string; condition: string }>): EjsEntryAnalysis {
+  const branchCount = countConditionBranches(content);
   return {
     entry_name: entryName,
     entry_role: entryRole,
@@ -42,7 +52,36 @@ function analyzeEjsEntry(entryName: string, entryRole: string, content: string):
     lodash_get_paths: extractLodashGetPaths(content).map(normalizeEjsUiPath),
     getwi_refs: [...content.matchAll(/getwi\(\s*['"]([^'"]+)['"]/g)].map((match) => match[1]),
     defined_names: [...content.matchAll(/\b(?:var|let|const)\s+([A-Za-z_$][\w$]*)\s*=/g)].map((match) => match[1]),
+    condition_branch_count: branchCount.ifCount,
+    has_else_fallback: branchCount.hasElse,
+    stages: (stages ?? []).map((stage) => ({
+      name: stage.name,
+      condition: stage.condition,
+      condition_variables: extractConditionVariables(stage.condition),
+    })),
   };
+}
+
+function countConditionBranches(content: string): { ifCount: number; hasElse: boolean } {
+  // Count top-level if/else if branches in EJS content
+  const ifMatches = content.match(/<%_?\s*(?:}\s*else\s+)?if\s*\(/g);
+  const ifCount = ifMatches?.length ?? 0;
+  // Check if there's a final else (not else if) fallback
+  const hasElse = /<%_?\s*}\s*else\s*{\s*_%?>/.test(content);
+  return { ifCount, hasElse };
+}
+
+function extractConditionVariables(condition: string): string[] {
+  // Extract variable names referenced in a condition expression
+  const vars = new Set<string>();
+  for (const match of condition.matchAll(/\b([a-zA-Z_$][\w$]*)\b/g)) {
+    const name = match[1];
+    // Skip JS keywords and literals
+    if (!["if", "else", "true", "false", "null", "undefined", "typeof", "var", "const", "let", "return", "function", "new", "this"].includes(name)) {
+      vars.add(name);
+    }
+  }
+  return [...vars];
 }
 
 function extractLodashGetPaths(content: string): string[] {

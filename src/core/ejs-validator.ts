@@ -61,6 +61,24 @@ export function validateEjsConfig(input: { ejs: EjsConfig; mvu?: MvuConfig; mvuA
       const target = ejs.entries.find((item) => item.name === ref);
       if (target?.role === "stage" && target.enabled) issues.push(issue({ code: "ejs.getwi.stage_enabled", field: `entries.${index}.content`, severity: "warning", message: `getwi 加载的 stage 条目应 enabled=false：${ref}` }));
     }
+    // Multi-stage EJS validation
+    const entryAnalysis = analysis.entries[index];
+    if (entry.stages && entry.stages.length > 0) {
+      if (entryAnalysis && entryAnalysis.condition_branch_count > 0 && entryAnalysis.condition_branch_count < entry.stages.length) {
+        issues.push(issue({ code: "ejs.stages.branch_count_mismatch", field: `entries.${index}.stages`, severity: "warning", message: `定义了 ${entry.stages.length} 个阶段但内容中只有 ${entryAnalysis.condition_branch_count} 个条件分支` }));
+      }
+      if (entryAnalysis && !entryAnalysis.has_else_fallback && entry.stages.length > 1) {
+        issues.push(issue({ code: "ejs.stages.no_else_fallback", field: `entries.${index}.content`, severity: "warning", message: "多阶段条目建议最后一个分支使用 else 兜底，避免条件遗漏" }));
+      }
+      for (const stage of entry.stages) {
+        for (const varName of entryAnalysis?.stages.find((s) => s.name === stage.name)?.condition_variables ?? []) {
+          const definedNames = new Set(entryAnalysis?.defined_names ?? []);
+          if (!definedNames.has(varName)) {
+            issues.push(issue({ code: "ejs.stages.undeclared_condition_var", field: `entries.${index}.stages`, severity: "info", message: `阶段 "${stage.name}" 条件引用变量 "${varName}"，确认已在内容中通过 getvar 声明` }));
+          }
+        }
+      }
+    }
   });
 
   return withValid(section({ ...splitIssues(issues), summary: summary(ejs, analysis.content_variable_paths.length) }));

@@ -2,7 +2,7 @@ import type { Project } from "../schemas/project.js";
 import type { DecisionOption, PendingDecision, RecordedDecision } from "../schemas/decision.js";
 import { nowIso } from "../utils/ids.js";
 
-export interface RequestUserDecisionInput {
+export function requestUserDecision(project: Project, input: {
   id: string;
   question: string;
   context?: string;
@@ -11,38 +11,7 @@ export interface RequestUserDecisionInput {
   allow_custom?: boolean;
   multiple?: boolean;
   default_value?: string;
-}
-
-export interface RequestUserDecisionResult {
-  project: Project;
-  decision: PendingDecision;
-  prompt_text: string;
-  recorded_already: RecordedDecision | undefined;
-}
-
-export interface RecordUserDecisionInput {
-  id: string;
-  selected_values?: string[];
-  custom_text?: string;
-}
-
-export interface RecordUserDecisionResult {
-  project: Project;
-  recorded: RecordedDecision;
-}
-
-export interface ListUserDecisionsResult {
-  pending: PendingDecision[];
-  recorded: RecordedDecision[];
-}
-
-export interface ClearUserDecisionResult {
-  project: Project;
-  cleared_pending: boolean;
-  cleared_recorded: boolean;
-}
-
-export function requestUserDecision(project: Project, input: RequestUserDecisionInput): RequestUserDecisionResult {
+}): { project: Project; decision: PendingDecision; prompt_text: string; recorded_already: RecordedDecision | undefined } {
   const decision: PendingDecision = {
     id: input.id,
     question: input.question,
@@ -60,7 +29,11 @@ export function requestUserDecision(project: Project, input: RequestUserDecision
   return { project: updated, decision, prompt_text: renderPrompt(decision), recorded_already };
 }
 
-export function recordUserDecision(project: Project, input: RecordUserDecisionInput): RecordUserDecisionResult {
+export function recordUserDecision(project: Project, input: {
+  id: string;
+  selected_values?: string[];
+  custom_text?: string;
+}): { project: Project; recorded: RecordedDecision } {
   const pending = (project.pendingDecisions ?? []).find((item) => item.id === input.id);
   if (!pending && !(project.recordedDecisions ?? []).some((item) => item.id === input.id)) {
     throw new Error(`未找到 id=${input.id} 的 pending decision，请先调用 request_user_decision`);
@@ -70,8 +43,6 @@ export function recordUserDecision(project: Project, input: RecordUserDecisionIn
     if (!pending.allow_custom && selected.length === 0) throw new Error(`决策 ${input.id} 不允许自由输入，必须从 options 中选择`);
     if (!pending.multiple && selected.length > 1) throw new Error(`决策 ${input.id} 为单选，selected_values 只允许 1 个`);
     if (pending.options.length > 0 && !pending.allow_custom) {
-      // allow_custom=false 时 selected 必须落在 options.value 集合中；
-      // allow_custom=true 时任何 selected_value 都被视为合法（自由输入）。
       const allowed = new Set(pending.options.map((option) => option.value));
       for (const value of selected) {
         if (!allowed.has(value)) throw new Error(`决策 ${input.id} 收到了非法选项：${value}`);
@@ -93,18 +64,14 @@ export function recordUserDecision(project: Project, input: RecordUserDecisionIn
   return { project: { ...project, pendingDecisions: newPending, recordedDecisions: newRecorded }, recorded };
 }
 
-export function listUserDecisions(project: Project, filter?: { only_pending?: boolean; only_recorded?: boolean }): ListUserDecisionsResult {
+export function listUserDecisions(project: Project, filter?: { only_pending?: boolean; only_recorded?: boolean }): { pending: PendingDecision[]; recorded: RecordedDecision[] } {
   return {
     pending: filter?.only_recorded ? [] : project.pendingDecisions ?? [],
     recorded: filter?.only_pending ? [] : project.recordedDecisions ?? [],
   };
 }
 
-export function getUserDecision(project: Project, id: string): RecordedDecision | undefined {
-  return (project.recordedDecisions ?? []).find((item) => item.id === id);
-}
-
-export function clearUserDecision(project: Project, id: string): ClearUserDecisionResult {
+export function clearUserDecision(project: Project, id: string): { project: Project; cleared_pending: boolean; cleared_recorded: boolean } {
   const pendingBefore = project.pendingDecisions ?? [];
   const recordedBefore = project.recordedDecisions ?? [];
   const newPending = pendingBefore.filter((item) => item.id !== id);

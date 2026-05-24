@@ -40,11 +40,6 @@ export function validateProject(project: Project, options: { scope?: ProjectVali
   return { ok, ready_to_export, scope_used: scope, sections, recommendations };
 }
 
-/** 暴露给调用方查询某个 scope 实际产出的 section keys。和 SCOPE_SECTIONS 一致。 */
-export function sectionsForScope(scope: ProjectValidationScope): readonly string[] {
-  return SCOPE_SECTIONS[scope];
-}
-
 function validatePlanSection(project: Project): ValidationSection {
   const issues: ValidationIssue[] = [];
   if (!project.name?.trim()) issues.push(normalizeIssue({ code: "plan.name.empty", field: "name", severity: "error", message: "项目 name 不能为空" }));

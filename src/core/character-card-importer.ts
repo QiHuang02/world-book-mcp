@@ -1,6 +1,5 @@
 import { CharacterCardConfigSchema, type CharacterCardConfig } from "../schemas/character-card.js";
 import type { WorldbookDraftEntry } from "../schemas/worldbook-draft.js";
-import { readJsonFile } from "../utils/json.js";
 
 interface ImportedCharacterCardJson {
   name?: string;
@@ -60,9 +59,6 @@ interface ImportedCharacterBookEntry {
   };
 }
 
-export async function importCharacterCardFromFile(filePath: string): Promise<{ card: ImportedCharacterCardJson; config: CharacterCardConfig; draft: WorldbookDraftEntry[] }> {
-  return characterCardToProjectData(await readJsonFile<ImportedCharacterCardJson>(filePath));
-}
 
 export function characterCardToProjectData(card: ImportedCharacterCardJson): { card: ImportedCharacterCardJson; config: CharacterCardConfig; draft: WorldbookDraftEntry[] } {
   const data = card.data ?? {};
@@ -91,7 +87,7 @@ export function characterCardToProjectData(card: ImportedCharacterCardJson): { c
   return { card, config, draft: characterBookEntriesToDraft(characterBook?.entries ?? []) };
 }
 
-export function characterBookEntriesToDraft(entries: ImportedCharacterBookEntry[]): WorldbookDraftEntry[] {
+function characterBookEntriesToDraft(entries: ImportedCharacterBookEntry[]): WorldbookDraftEntry[] {
   return entries.map((entry, index) => {
     const position = positionFromImportedEntry(entry);
     const scanDepth = entry.extensions?.scan_depth ?? entry.extensions?.scanDepth ?? entry.scanDepth ?? entry.scan_depth;

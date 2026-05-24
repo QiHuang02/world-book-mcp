@@ -5,7 +5,7 @@ import { assertInside, ROOT_DIR } from "./path-policy.js";
 const PLAN_WORKSPACE_DIR = path.resolve(ROOT_DIR, ".worldbook");
 export const PLAN_PATH = assertInside(PLAN_WORKSPACE_DIR, path.resolve(PLAN_WORKSPACE_DIR, "plan.md"));
 
-export const DEFAULT_PLAN = `# World Book MCP Plan
+const DEFAULT_PLAN = `# World Book MCP Plan
 
 ## 1. 用户原始需求
 

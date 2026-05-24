@@ -19,6 +19,18 @@
 - `getwi(...)` 引用条目必须存在；stage 默认 `enabled=false`。
 - controller 建议 `constant=true`、`enabled=true`。
 
+### 多阶段 EJS 人设
+
+- 变量声明必须用 `var` + `typeof` 防重复声明，不可用 `const` / `let`。
+- 条件边界无重叠无遗漏，最后一个分支用 `else` 兜底。
+- 底色和通用衍生放在所有条件外，始终发送。
+- 阶段专属衍生是该阶段新出现的行为，不是上一阶段衍生的升级版。
+- 二次解释：通用的放条件外，阶段专属的用条件包裹。
+- 方案 A（controller + getwi）：controller `constant=true`、`enabled=true`；stage `enabled=false`。
+- 方案 B（单条目 if/else）：条目 `constant=true`、`enabled=true`。
+- `stages` 字段可选，用于记录阶段名称和条件表达式，辅助校验。
+- 详见 `references/multi-stage-ejs.md`。
+
 ## HTML
 
 - 状态栏必须有 `.wbm-statusbar` 作用域。
