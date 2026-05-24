@@ -1,6 +1,8 @@
 name: Release
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -8,8 +10,58 @@ permissions:
   id-token: write
 
 jobs:
+  check-version:
+    name: Check version and tag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tag_name: ${{ steps.meta.outputs.tag_name }}
+      is_beta: ${{ steps.meta.outputs.is_beta }}
+      tag_exists: ${{ steps.meta.outputs.tag_exists }}
+      should_publish: ${{ steps.meta.outputs.should_publish }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Determine version metadata
+        id: meta
+        shell: bash
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          TAG_NAME="v${VERSION}"
+
+          # Check if version contains beta
+          if [[ "$VERSION" == *beta* ]]; then
+            IS_BETA="true"
+          else
+            IS_BETA="false"
+          fi
+
+          # Check if tag already exists on remote
+          if git ls-remote --tags origin "refs/tags/${TAG_NAME}" | grep -q "${TAG_NAME}"; then
+            TAG_EXISTS="true"
+            SHOULD_PUBLISH="false"
+          else
+            TAG_EXISTS="false"
+            SHOULD_PUBLISH="true"
+          fi
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag_name=${TAG_NAME}" >> "$GITHUB_OUTPUT"
+          echo "is_beta=${IS_BETA}" >> "$GITHUB_OUTPUT"
+          echo "tag_exists=${TAG_EXISTS}" >> "$GITHUB_OUTPUT"
+          echo "should_publish=${SHOULD_PUBLISH}" >> "$GITHUB_OUTPUT"
+
+          echo "Version: ${VERSION}"
+          echo "Tag: ${TAG_NAME}"
+          echo "Is beta: ${IS_BETA}"
+          echo "Tag exists: ${TAG_EXISTS}"
+          echo "Should publish: ${SHOULD_PUBLISH}"
+
   publish-npm:
     name: Publish npm package
+    needs: check-version
+    if: needs.check-version.outputs.should_publish == 'true' && needs.check-version.outputs.is_beta == 'false'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -30,47 +82,61 @@ jobs:
 
       - name: Publish package to npm
         shell: bash
-        run: |
-          VERSION="$(node -p "require('./package.json').version")"
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-          if [[ "$VERSION" == *-* ]]; then
-            PRERELEASE_TAG="${VERSION#*-}"
-            PRERELEASE_TAG="${PRERELEASE_TAG%%.*}"
-            npm publish --access public --tag "$PRERELEASE_TAG"
-          else
-            npm publish --access public
-          fi
-
-  release-skill:
-    name: Package skill and publish release
+  release:
+    name: Package and publish GitHub Release
+    needs: [check-version, publish-npm]
+    if: always() && needs.check-version.outputs.should_publish == 'true' && needs.check-version.result == 'success' && (needs.publish-npm.result == 'success' || needs.publish-npm.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Read package version
-        id: version
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Install dependencies
+        if: needs.check-version.outputs.is_beta == 'true'
+        run: npm ci
+
+      - name: Build MCP package
+        if: needs.check-version.outputs.is_beta == 'true'
+        run: npm run build
+
+      - name: Package release assets
         shell: bash
         run: |
-          VERSION="$(node -p "require('./package.json').version")"
-          TAG_NAME="v${VERSION}"
-          ZIP_NAME="world-book-mcp-skill-v${VERSION}.zip"
+          VERSION="${{ needs.check-version.outputs.version }}"
+          IS_BETA="${{ needs.check-version.outputs.is_beta }}"
 
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "tag_name=${TAG_NAME}" >> "$GITHUB_OUTPUT"
-          echo "zip_name=${ZIP_NAME}" >> "$GITHUB_OUTPUT"
-
-      - name: Package skill as zip
-        shell: bash
-        run: |
           mkdir -p release-assets
-          cd skill
-          zip -r "../release-assets/${{ steps.version.outputs.zip_name }}" world-book-mcp-skill
 
-      - name: Publish skill zip to GitHub Release
+          # Always package skill
+          cd skill
+          zip -r "../release-assets/world-book-mcp-skill-v${VERSION}.zip" world-book-mcp-skill
+          cd ..
+
+          # Beta: also package MCP dist
+          if [[ "$IS_BETA" == "true" ]]; then
+            zip -r "release-assets/world-book-mcp-v${VERSION}.zip" \
+              dist/ \
+              package.json \
+              package-lock.json \
+              README.md \
+              LICENSE
+          fi
+
+      - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.tag_name }}
-          name: ${{ steps.version.outputs.tag_name }}
+          tag_name: ${{ needs.check-version.outputs.tag_name }}
+          name: ${{ needs.check-version.outputs.tag_name }}
           target_commitish: ${{ github.sha }}
-          files: release-assets/${{ steps.version.outputs.zip_name }}
+          prerelease: ${{ needs.check-version.outputs.is_beta == 'true' }}
+          files: release-assets/*
