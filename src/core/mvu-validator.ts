@@ -66,7 +66,7 @@ export function validateMvuConfig(input: { mvu: MvuConfig; characterCardConfig?:
     if (normalized && !schemaPaths.has(normalized)) issues.push(issue({ code: "mvu.output_format.unknown_path", field: "output_format", severity: "error", message: `output_format 引用的路径不存在：${normalized}` }));
     if (analysis.hidden_paths.includes(normalized)) issues.push(issue({ code: "mvu.output_format.hidden_path", field: "output_format", severity: "error", message: `$ 前缀隐藏变量不得输出：${normalized}` }));
   }
-  if (mvu.variable_list_path !== false && mvu.variable_list_path !== "stat_data") issues.push(issue({ code: "mvu.variable_list_path.nonstandard", field: "variable_list_path", severity: "warning", message: "variable_list_path 如果不是 stat_data 或 false，可能导致 EJS/HTML 路径不一致" }));
+  if (mvu.variable_list_path !== null && mvu.variable_list_path !== "stat_data") issues.push(issue({ code: "mvu.variable_list_path.nonstandard", field: "variable_list_path", severity: "warning", message: "variable_list_path 如果不是 stat_data 或 null，可能导致 EJS/HTML 路径不一致" }));
 
   if (characterCardConfig) {
     [characterCardConfig.card.first_mes, ...characterCardConfig.card.alternate_greetings].forEach((greeting, index) => {

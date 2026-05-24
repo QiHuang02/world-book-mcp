@@ -48,8 +48,8 @@ export const WorldbookDraftEntrySchema = z.object({
   enabled: z.boolean().default(true),
   depth: z.number().int().min(0).optional(),
   scanDepth: z.number().int().min(0).optional(),
-  preventRecursion: z.literal(true).default(true),
-  excludeRecursion: z.literal(true).default(true),
+  preventRecursion: z.boolean().default(true),
+  excludeRecursion: z.boolean().default(true),
 });
 
 export const CreateWorldbookDraftTemplateInputSchema = z.object({

@@ -72,7 +72,7 @@ export function buildMvuAssets(mvu: MvuConfig): MvuAssets {
     },
   ];
 
-  if (mvu.variable_list_path !== false) {
+  if (mvu.variable_list_path !== null) {
     worldbookEntries.push({
       comment: "变量列表",
       entryType: "other",

@@ -17,7 +17,7 @@ export const MvuConfigSchema = z.object({
   initvar: mvuInitvarText.default(""),
   update_rules: mvuUpdateRulesText.default(""),
   output_format: mvuOutputFormatText.optional(),
-  variable_list_path: z.union([z.string().min(1), z.literal(false)]).default("stat_data"),
+  variable_list_path: z.union([z.string().min(1), z.null()]).default("stat_data"),
   hide_regex: z.boolean().default(true),
   beautify_regex: z.boolean().default(true),
 });
