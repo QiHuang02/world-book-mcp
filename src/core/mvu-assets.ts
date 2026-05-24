@@ -1,5 +1,13 @@
 import type { MvuConfig } from "../schemas/mvu.js";
 import type { WorldbookDraftEntry } from "../schemas/worldbook-draft.js";
+import { wrapWithXmlTag } from "../utils/yaml-xml.js";
+
+/**
+ * MVU 世界书条目使用的 XML 包裹标签。
+ * skill 约束：世界书条目里的 YAML 必须用 XML 标签包裹，不能直接用 YAML `---` 分隔符。
+ */
+export const MVU_UPDATE_RULES_TAG = "variable_update_rules";
+export const MVU_OUTPUT_FORMAT_TAG = "variable_output_format";
 
 export interface RegexScriptAsset {
   id?: string;
@@ -70,7 +78,7 @@ export function buildMvuAssets(mvu: MvuConfig): MvuAssets {
       entryType: "other",
       keys: [],
       secondaryKeys: [],
-      content: `---\n<status_current_variable>\n{{format_message_variable::${mvu.variable_list_path}}}\n</status_current_variable>`,
+      content: `<status_current_variable>\n{{format_message_variable::${mvu.variable_list_path}}}\n</status_current_variable>`,
       constant: true,
       position: "at_depth",
       order: 14720,
@@ -87,7 +95,7 @@ export function buildMvuAssets(mvu: MvuConfig): MvuAssets {
       entryType: "other",
       keys: [],
       secondaryKeys: [],
-      content: mvu.update_rules,
+      content: wrapWithXmlTag(mvu.update_rules, MVU_UPDATE_RULES_TAG),
       constant: true,
       position: "at_depth",
       order: 14720,
@@ -101,7 +109,7 @@ export function buildMvuAssets(mvu: MvuConfig): MvuAssets {
       entryType: "other",
       keys: [],
       secondaryKeys: [],
-      content: mvu.output_format?.trim() || defaultOutputFormat(),
+      content: wrapWithXmlTag(mvu.output_format?.trim() || defaultOutputFormat(), MVU_OUTPUT_FORMAT_TAG),
       constant: true,
       position: "at_depth",
       order: 14720,
@@ -180,11 +188,9 @@ function tavernScript(name: string, content: string, buttons: Array<{ name: stri
 }
 
 function wrapInitvar(initvar: string): string {
-  const trimmed = initvar.trim();
-  if (trimmed.startsWith("<initvar>")) return trimmed;
-  return `<initvar>\n${trimmed}\n</initvar>`;
+  return wrapWithXmlTag(initvar, "initvar");
 }
 
 export function defaultOutputFormat(): string {
-  return `---\n变量输出格式:\n  rule:\n    - 你必须在回复末尾输出更新分析和实际的更新命令\n    - 更新命令遵循JSON Patch (RFC 6902)标准\n    - 支持操作: replace/delta/insert/remove\n    - 不要更新以_开头的只读变量\n  format: |-\n    <UpdateVariable>\n    <Analysis>$(按英文输出，不超过80词)\n    - \${计算经过的时间: ...}\n    - \${判断是否允许戏剧性变化: 是/否}\n    - \${基于check分析每个变量: ...}\n    </Analysis>\n    <JSONPatch>\n    [\n      { "op": "replace", "path": "\${路径}", "value": "\${新值}" },\n      { "op": "delta", "path": "\${数值路径}", "value": \${变动值} },\n      { "op": "insert", "path": "\${对象路径/新键}", "value": "\${新值}" },\n      { "op": "remove", "path": "\${对象路径/键}" }\n    ]\n    </JSONPatch>\n    </UpdateVariable>`;
+  return `变量输出格式:\n  rule:\n    - 你必须在回复末尾输出更新分析和实际的更新命令\n    - 更新命令遵循JSON Patch (RFC 6902)标准\n    - 支持操作: replace/delta/insert/remove\n    - 不要更新以_开头的只读变量\n  format: |-\n    <UpdateVariable>\n    <Analysis>$(按英文输出，不超过80词)\n    - \${计算经过的时间: ...}\n    - \${判断是否允许戏剧性变化: 是/否}\n    - \${基于check分析每个变量: ...}\n    </Analysis>\n    <JSONPatch>\n    [\n      { "op": "replace", "path": "\${路径}", "value": "\${新值}" },\n      { "op": "delta", "path": "\${数值路径}", "value": \${变动值} },\n      { "op": "insert", "path": "\${对象路径/新键}", "value": "\${新值}" },\n      { "op": "remove", "path": "\${对象路径/键}" }\n    ]\n    </JSONPatch>\n    </UpdateVariable>`;
 }

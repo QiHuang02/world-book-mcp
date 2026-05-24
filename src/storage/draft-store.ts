@@ -62,15 +62,32 @@ export async function writeDraftSlice(slice: DraftSlice): Promise<string> {
 }
 
 export async function upsertDraftSlice(slice: DraftSlice): Promise<{ path: string; slice: DraftSlice }> {
-  let next = slice;
-  try {
-    const existing = await readDraftSlice(slice.type, slice.id);
-    next = DraftSliceSchema.parse({ ...slice, createdAt: existing.createdAt, updatedAt: nowIso(), revision: existing.revision + 1 });
-  } catch (error) {
-    // Only a missing file means this is a create path; parse/schema errors must surface.
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-  }
-  return { path: await writeDraftSlice(next), slice: next };
+  // 同一 (type, id) 的读 → 改 revision → 写需要串行化，避免并发 update_draft_field 调用
+  // 出现 "后写覆盖前写 + revision 重复" 的情况。client 仍可使用 expected_slice_revision
+  // 做协议层防御，这里是结构层兜底。
+  return enqueueDraftWrite(slice.type, slice.id, async () => {
+    let next = slice;
+    try {
+      const existing = await readDraftSlice(slice.type, slice.id);
+      next = DraftSliceSchema.parse({ ...slice, createdAt: existing.createdAt, updatedAt: nowIso(), revision: existing.revision + 1 });
+    } catch (error) {
+      // Only a missing file means this is a create path; parse/schema errors must surface.
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    return { path: await writeDraftSlice(next), slice: next };
+  });
+}
+
+const draftWriteQueues = new Map<string, Promise<unknown>>();
+
+function enqueueDraftWrite<T>(type: DraftType, id: string, operation: () => Promise<T>): Promise<T> {
+  const key = `${type}::${id}`;
+  const previous = draftWriteQueues.get(key) ?? Promise.resolve();
+  const next = previous.catch(() => undefined).then(operation);
+  draftWriteQueues.set(key, next.finally(() => {
+    if (draftWriteQueues.get(key) === next) draftWriteQueues.delete(key);
+  }));
+  return next;
 }
 
 export async function listDraftSlices(type?: DraftType): Promise<DraftSlice[]> {

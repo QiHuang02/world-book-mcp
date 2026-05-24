@@ -110,6 +110,10 @@ function enabledSlicesOf<T extends DraftSlice["type"]>(slices: DraftSlice[], typ
 }
 
 function lastEnabledSlice<T extends DraftSlice["type"]>(slices: DraftSlice[], type: T): (DraftSlice & { type: T }) | undefined {
+  // updatedAt 是 ISO 字符串（同时区、同精度），lexicographic 排序对毫秒级时间是单调的。
+  // 边界情形：两次写入落在同一毫秒内时，排序退化为字典序而非真实写入顺序。
+  // mvu_schema/mvu_update_rules/character_profile 等类型在实践中通常每个项目只保留 1 份，影响有限；
+  // 如果未来出现并发写入同一类型多份的场景，需要改用单调计数器或加上 nanoseconds 字段。
   return enabledSlicesOf(slices, type).sort((a, b) => a.updatedAt.localeCompare(b.updatedAt)).at(-1);
 }
 

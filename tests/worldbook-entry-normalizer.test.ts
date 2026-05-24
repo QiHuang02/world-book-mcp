@@ -63,4 +63,22 @@ describe("worldbook entry normalizer", () => {
     expect(parsed.success).toBe(false);
     expect(parsed.error?.issues[0].message).toContain("comment 重复");
   });
+
+  it("strips leading `---` from content", () => {
+    const entry = normalizeWorldbookEntry({
+      comment: "原初异质",
+      keys: ["原初异质"],
+      content: "---\n<character>\nname: 原初\n</character>",
+    });
+    expect(entry.content).toBe("<character>\nname: 原初\n</character>");
+  });
+
+  it("strips trailing `---` from content", () => {
+    const entry = normalizeWorldbookEntry({
+      comment: "原初异质",
+      keys: ["原初异质"],
+      content: "<character>\nname: 原初\n</character>\n---",
+    });
+    expect(entry.content).toBe("<character>\nname: 原初\n</character>");
+  });
 });

@@ -6,6 +6,13 @@ export const EXPORTS_DIR = path.resolve(ROOT_DIR);
 export const BACKUPS_DIR = path.resolve(ROOT_DIR, ".worldbook", "backups");
 export const CARDS_DIR = path.resolve(ROOT_DIR);
 
+// 即便目标路径在仓库内，也禁止落到这些"几乎肯定不该被酒馆 JSON 覆盖"的目录里。
+// 仅按目录命中：./src/* / ./node_modules/* / ./.git/* / ./dist/* / ./build/*。
+const DENY_RELATIVE_DIRS = ["src", "node_modules", ".git", "dist", "build", ".worldbook/backups", ".worldbook/logs", ".worldbook/draft"];
+
+// 在 EXPORTS_DIR / CARDS_DIR 之外，禁止覆盖这些"项目级元数据"文件，避免误把酒馆 JSON 写到它们上面。
+const PROTECTED_ROOT_FILES = new Set(["package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "tsconfig.json", "jsconfig.json", "biome.json", "vite.config.json", "turbo.json"]);
+
 export function assertInside(baseDir: string, candidate: string): string {
   const resolvedBase = path.resolve(baseDir);
   const resolvedCandidate = path.resolve(candidate);
@@ -16,10 +23,38 @@ export function assertInside(baseDir: string, candidate: string): string {
   return resolvedCandidate;
 }
 
+function assertNotInDeniedDir(resolved: string): void {
+  const relative = path.relative(ROOT_DIR, resolved);
+  // 已经过 assertInside(EXPORTS_DIR/CARDS_DIR/ROOT_DIR) 校验，这里只关心仓库内的子路径。
+  if (relative.startsWith("..") || path.isAbsolute(relative)) return;
+  const segments = relative.split(/[\\/]+/).filter(Boolean);
+  if (segments.length === 0) return;
+  for (const denied of DENY_RELATIVE_DIRS) {
+    const deniedSegments = denied.split("/").filter(Boolean);
+    if (segments.length < deniedSegments.length) continue;
+    const matches = deniedSegments.every((segment, index) => segments[index] === segment);
+    if (matches) {
+      throw new Error(`路径落在受保护目录 ${denied}/ 中，请改用项目根目录或 ./.worldbook/exports/ 目录: ${resolved}`);
+    }
+  }
+}
+
+function assertNotProtectedRootFile(resolved: string): void {
+  const relative = path.relative(ROOT_DIR, resolved);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) return;
+  // 只在仓库根目录直接命中受保护文件名时拒绝；子目录中允许同名文件。
+  if (relative === path.basename(resolved) && PROTECTED_ROOT_FILES.has(path.basename(resolved))) {
+    throw new Error(`不允许覆盖项目元数据文件 ${path.basename(resolved)}：请换一个文件名`);
+  }
+}
+
 export function resolveExportPath(outputPath: string | undefined, fallbackName: string): string {
   const filename = outputPath?.trim() || `${sanitizeFilename(fallbackName)}.json`;
   const resolved = path.isAbsolute(filename) ? filename : path.resolve(EXPORTS_DIR, filename);
-  return assertInside(EXPORTS_DIR, resolved);
+  const inside = assertInside(EXPORTS_DIR, resolved);
+  assertNotInDeniedDir(inside);
+  assertNotProtectedRootFile(inside);
+  return inside;
 }
 
 export function resolveReadableWorldbookPath(inputPath: string): string {
@@ -37,7 +72,10 @@ export function resolveBackupPath(originalPath: string, timestamp = new Date()):
 export function resolveCardExportPath(outputPath: string | undefined, fallbackName: string): string {
   const filename = outputPath?.trim() || `${sanitizeFilename(fallbackName)}.json`;
   const resolved = path.isAbsolute(filename) ? filename : path.resolve(CARDS_DIR, filename);
-  return assertInside(CARDS_DIR, resolved);
+  const inside = assertInside(CARDS_DIR, resolved);
+  assertNotInDeniedDir(inside);
+  assertNotProtectedRootFile(inside);
+  return inside;
 }
 
 export function resolveReadableCardPath(inputPath: string): string {

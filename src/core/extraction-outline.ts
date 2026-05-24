@@ -1,6 +1,45 @@
 export type ExtractionFocus = "characters" | "world" | "items" | "events";
 
-export function createExtractionOutline(focus: ExtractionFocus[] = ["characters", "world", "items", "events"]): unknown {
+export interface ExtractionCharacterOutlineItem {
+  name: string;
+  aliases: string[];
+  firstAppearance: string;
+  appearance: string[];
+  identity: string;
+  personalityEvidence: string[];
+  keyEvents: string[];
+  relationships: string[];
+  abilities: string[];
+  sourceRefs: unknown[];
+}
+
+export interface ExtractionWorldOutlineItem {
+  name: string;
+  type: string;
+  facts: string[];
+  sourceRefs: unknown[];
+}
+
+export interface ExtractionGenericOutlineItem {
+  name: string;
+  type?: string;
+  summary?: string;
+  facts?: string[];
+  participants?: string[];
+  sourceRefs: unknown[];
+}
+
+export interface ExtractionOutline {
+  outline_schema: {
+    characters: ExtractionCharacterOutlineItem[];
+    world: ExtractionWorldOutlineItem[];
+    items: ExtractionGenericOutlineItem[];
+    events: ExtractionGenericOutlineItem[];
+  };
+  instructions_for_ai: string[];
+}
+
+export function createExtractionOutline(focus: ExtractionFocus[] = ["characters", "world", "items", "events"]): ExtractionOutline {
   return {
     outline_schema: {
       characters: focus.includes("characters")

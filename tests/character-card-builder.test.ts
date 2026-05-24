@@ -132,4 +132,16 @@ describe("buildCharacterCardJson", () => {
     expect(content).toContain("</character>");
     expect(content).toContain("【性格设定】");
   });
+
+  it("uses character_basic position when merging across multiple personality entries", () => {
+    // 关键回归：连续 3 条同名角色（personality, basic, personality），合并后位置必须取 basic 那条。
+    const entries: WorldbookDraftEntry[] = [
+      { ...draft[1], comment: "角色丁_性格1", characterName: "角色丁", position: "before_char", order: 1 },
+      { ...draft[0], comment: "角色丁_基础", characterName: "角色丁", position: "after_char", order: 2 },
+      { ...draft[1], comment: "角色丁_性格2", characterName: "角色丁", position: "before_em", order: 3 },
+    ];
+    const card = buildCharacterCardJson({ config, worldbookEntries: entries });
+    expect(card.data.character_book.entries).toHaveLength(1);
+    expect(card.data.character_book.entries[0].position).toBe("after_char");
+  });
 });

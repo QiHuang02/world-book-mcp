@@ -53,4 +53,27 @@ describe("validateWorldbookDraft", () => {
     expect(result.valid).toBe(true);
     expect(result.warnings.some((issue) => issue.message.includes("多个触发词"))).toBe(true);
   });
+
+  it("rejects content containing a YAML doc separator `---`", () => {
+    const result = validateWorldbookDraft([
+      makeEntry({ content: "---\n<character>\nname: 角色A\n</character>", scanDepth: 2 }),
+    ]);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((issue) => issue.message.includes("YAML 文档分隔符"))).toBe(true);
+  });
+
+  it("rejects content with a trailing `---`", () => {
+    const result = validateWorldbookDraft([
+      makeEntry({ content: "<character>\nname: 角色A\n</character>\n---", scanDepth: 2 }),
+    ]);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((issue) => issue.message.includes("YAML 文档分隔符"))).toBe(true);
+  });
+
+  it("does not reject a natural-language ellipsis line `...`", () => {
+    const result = validateWorldbookDraft([
+      makeEntry({ content: "<character>\nname: 角色A\n...\n</character>", scanDepth: 2 }),
+    ]);
+    expect(result.errors.some((issue) => issue.message.includes("YAML 文档分隔符"))).toBe(false);
+  });
 });

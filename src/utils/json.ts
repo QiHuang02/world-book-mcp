@@ -1,4 +1,6 @@
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
+import path from "node:path";
 import type { z, ZodTypeAny } from "zod";
 
 export function stringifyPrettyJson(value: unknown): string {
@@ -21,8 +23,21 @@ export async function readJsonFile(filePath: string, schema?: ZodTypeAny): Promi
   return schema ? schema.parse(parsed) : parsed;
 }
 
+// 使用临时文件 + rename 实现原子写入；rename 在大多数文件系统上是原子的，
+// 可以避免写一半被并发读到、或者跨进程同时写入导致内容串台/截断。
+// 若同一进程内有多次并发写同一路径，依旧通过 fileWriteQueues 串行化（见 path-policy）。
 export async function writeJsonFile(filePath: string, value: unknown): Promise<void> {
-  await fs.writeFile(filePath, stringifyPrettyJson(value), "utf8");
+  const resolved = path.resolve(filePath);
+  await fs.mkdir(path.dirname(resolved), { recursive: true });
+  const tempName = `.${path.basename(resolved)}.tmp.${process.pid}.${crypto.randomBytes(4).toString("hex")}`;
+  const tempPath = path.join(path.dirname(resolved), tempName);
+  await fs.writeFile(tempPath, stringifyPrettyJson(value), { encoding: "utf8", flag: "wx" });
+  try {
+    await fs.rename(tempPath, resolved);
+  } catch (error) {
+    await fs.rm(tempPath, { force: true });
+    throw error;
+  }
 }
 
 export const toPrettyJson = stringifyPrettyJson;

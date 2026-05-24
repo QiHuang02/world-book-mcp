@@ -1,6 +1,7 @@
 import { SillyTavernWorldbookSchema, type SillyTavernWorldbook, type SillyTavernWorldbookEntry } from "../schemas/sillytavern-worldbook.js";
 import type { EntryType, WorldbookDraftEntry } from "../schemas/worldbook-draft.js";
 import { readJsonFile } from "../utils/json.js";
+import { normalizeWorldbookEntryContent } from "../utils/yaml-xml.js";
 import { numberToPosition } from "./position-map.js";
 
 export async function importWorldbookFromFile(path: string): Promise<{ book: SillyTavernWorldbook; draft: WorldbookDraftEntry[] }> {
@@ -10,7 +11,8 @@ export async function importWorldbookFromFile(path: string): Promise<{ book: Sil
 
 export function worldbookToDraft(book: SillyTavernWorldbook): WorldbookDraftEntry[] {
   return Object.values(book.entries)
-    .map((entry, index) => ({ ...entry, uid: entry.uid || index, order: entry.order || index, displayIndex: entry.displayIndex || index }))
+    // uid/order/displayIndex 取 0 是合法值，使用 ?? 而非 || 防止把 0 误当成"未提供"再被 index 顶替。
+    .map((entry, index) => ({ ...entry, uid: entry.uid ?? index, order: entry.order ?? index, displayIndex: entry.displayIndex ?? index }))
     .sort((a, b) => a.uid - b.uid)
     .map(entryToDraft);
 }
@@ -21,7 +23,7 @@ function entryToDraft(entry: SillyTavernWorldbookEntry): WorldbookDraftEntry {
     entryType: inferEntryType(entry),
     keys: entry.key ?? [],
     secondaryKeys: entry.keysecondary ?? [],
-    content: entry.content ?? "",
+    content: normalizeWorldbookEntryContent(entry.content ?? ""),
     sourceUid: entry.uid,
     constant: entry.constant,
     position: numberToPosition(entry.position) ?? "after_char",

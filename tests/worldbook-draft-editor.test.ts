@@ -89,4 +89,10 @@ describe("worldbook draft editor", () => {
     expect(result.ready_to_merge).toBe(true);
     expect(result.ok).toBe(true);
   });
+
+  it("strips YAML doc separators from content on update", () => {
+    const entry = createWorldbookDraftTemplate({ comment: "条目" });
+    const updated = updateWorldbookDraftField(entry, "content", "---\n<entry>\nfoo: bar\n</entry>\n---");
+    expect(updated.content).toBe("<entry>\nfoo: bar\n</entry>");
+  });
 });

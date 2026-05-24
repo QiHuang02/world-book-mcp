@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { clearUserDecision, listUserDecisions, recordUserDecision, requestUserDecision } from "../core/decision-prompts.js";
 import { DecisionOptionSchema } from "../schemas/decision.js";
-import { loadProject, updateProject } from "../storage/project-store.js";
+import { loadProject, withProjectMutation } from "../storage/project-store.js";
 import { toolText } from "./helpers.js";
 
 export function registerDecisionTools(server: McpServer): void {
@@ -17,16 +17,12 @@ export function registerDecisionTools(server: McpServer): void {
     multiple: z.boolean().optional(),
     default_value: z.string().optional(),
   }, async (input) => {
-    let result: ReturnType<typeof requestUserDecision> | undefined;
-    await updateProject(input.project_id, (project) => {
-      result = requestUserDecision(project, input);
-      return result.project;
-    });
+    const result = await withProjectMutation(input.project_id, (project) => requestUserDecision(project, input));
     return toolText({
-      project_id: result!.project.id,
-      decision: result!.decision,
-      prompt_text: result!.prompt_text,
-      recorded_already: result!.recorded_already,
+      project_id: result.project.id,
+      decision: result.decision,
+      prompt_text: result.prompt_text,
+      recorded_already: result.recorded_already,
     });
   });
 
@@ -36,12 +32,8 @@ export function registerDecisionTools(server: McpServer): void {
     selected_values: z.array(z.string()).default([]),
     custom_text: z.string().optional(),
   }, async (input) => {
-    let result: ReturnType<typeof recordUserDecision> | undefined;
-    await updateProject(input.project_id, (project) => {
-      result = recordUserDecision(project, input);
-      return result.project;
-    });
-    return toolText({ project_id: result!.project.id, recorded: result!.recorded });
+    const result = await withProjectMutation(input.project_id, (project) => recordUserDecision(project, input));
+    return toolText({ project_id: result.project.id, recorded: result.recorded });
   });
 
   server.tool("list_user_decisions", {
@@ -54,11 +46,7 @@ export function registerDecisionTools(server: McpServer): void {
   });
 
   server.tool("clear_user_decision", { project_id: z.string(), id: z.string().min(1) }, async (input) => {
-    let result: ReturnType<typeof clearUserDecision> | undefined;
-    await updateProject(input.project_id, (project) => {
-      result = clearUserDecision(project, input.id);
-      return result.project;
-    });
-    return toolText({ project_id: result!.project.id, cleared_pending: result!.cleared_pending, cleared_recorded: result!.cleared_recorded });
+    const result = await withProjectMutation(input.project_id, (project) => clearUserDecision(project, input.id));
+    return toolText({ project_id: result.project.id, cleared_pending: result.cleared_pending, cleared_recorded: result.cleared_recorded });
   });
 }

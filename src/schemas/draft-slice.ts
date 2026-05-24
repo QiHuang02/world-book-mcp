@@ -84,6 +84,10 @@ export const DraftSliceSchema = z.object({
   updatedAt: z.string(),
   revision: z.number().int().nonnegative().default(0),
 }).superRefine((slice, context) => {
+  // 这里 data 是 z.unknown() + superRefine 二次校验，相当于"类型驱动的二段式解析"。
+  // 改成 z.discriminatedUnion 能让 slice.data 直接获得精确类型推断（替代当前各处的 cast）并少一次 parse，
+  // 但 DraftSliceDataSchemas 里有 string-key 直读、有 satisfies Record，迁移会牵动 draft-field-editor / project-draft-aggregate / draft-store 多处；
+  // 当前性能损耗可接受，留作后续重构（讨论中）。
   const schema = DraftSliceDataSchemas[slice.type];
   const parsed = schema.safeParse(slice.data);
   if (!parsed.success) {

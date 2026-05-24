@@ -100,9 +100,11 @@ export async function findRootTavernJsonFiles(): Promise<string[]> {
   const result: string[] = [];
   for (const file of files) {
     if (!file.isFile() || !file.name.endsWith(".json")) continue;
-    if (isCommonProjectJson(file.name)) continue;
     const filePath = path.resolve(ROOT_DIR, file.name);
     try {
+      // 不再维护"已知项目配置 JSON"的黑名单（package.json/tsconfig.json/...）；
+      // 直接交给 isTavernJson 做正向识别。结构上不像酒馆 JSON 的文件会被忽略，
+      // 解析失败的 JSON 也只是落入 catch 分支，IO 成本可以接受。
       const parsed = await readJsonFile(filePath);
       if (isTavernJson(parsed)) result.push(filePath);
     } catch {
@@ -175,10 +177,6 @@ async function rootFileExists(filename: string): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-function isCommonProjectJson(filename: string): boolean {
-  return filename === "package.json" || filename === "package-lock.json" || filename === "tsconfig.json" || filename === "jsconfig.json";
 }
 
 function isTavernJson(value: unknown): boolean {

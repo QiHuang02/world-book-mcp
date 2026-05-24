@@ -69,10 +69,12 @@ export function recordUserDecision(project: Project, input: RecordUserDecisionIn
   if (pending) {
     if (!pending.allow_custom && selected.length === 0) throw new Error(`决策 ${input.id} 不允许自由输入，必须从 options 中选择`);
     if (!pending.multiple && selected.length > 1) throw new Error(`决策 ${input.id} 为单选，selected_values 只允许 1 个`);
-    if (pending.options.length > 0) {
+    if (pending.options.length > 0 && !pending.allow_custom) {
+      // allow_custom=false 时 selected 必须落在 options.value 集合中；
+      // allow_custom=true 时任何 selected_value 都被视为合法（自由输入）。
       const allowed = new Set(pending.options.map((option) => option.value));
       for (const value of selected) {
-        if (!allowed.has(value) && !pending.allow_custom) throw new Error(`决策 ${input.id} 收到了非法选项：${value}`);
+        if (!allowed.has(value)) throw new Error(`决策 ${input.id} 收到了非法选项：${value}`);
       }
     }
   }
@@ -129,6 +131,9 @@ function renderPrompt(decision: PendingDecision): string {
   if (decision.default_value) lines.push(`默认值：${decision.default_value}`);
   if (decision.allow_custom) lines.push("用户也可以自行输入答案。");
   if (decision.multiple) lines.push("可多选。");
+  lines.push("提问规范：一次只询问当前 decision.id 对应的单一主题，不要把多个独立主题合并成一个问题。");
+  lines.push("复杂主题需拆成多个 decision 逐轮记录；世界观、人物设定、MVU 变量设计至少三轮追问后再进入写作或生成。");
+  lines.push("MVU 变量设计至少分别确认：用途目标、变量清单、变量规格/初始值/更新条件，必要时再确认状态栏展示。");
   lines.push(`请向用户复述上述内容并收集回答；用户答完后调用 record_user_decision 写入答案（id=${decision.id}）。`);
   return lines.join("\n");
 }

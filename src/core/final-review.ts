@@ -14,6 +14,20 @@ export interface FinalReviewReport {
   recommendations: string[];
 }
 
+/**
+ * 决定某个 section 在交付清单里应不应该阻塞导出 / 仅警告 / 通过。
+ * 这是 final-review 模块对外暴露的统一策略，delivery-checklist 直接消费，
+ * 避免在两边重复实现"errors=阻塞、warnings=警告"的判定。
+ */
+export type DeliveryStatus = "ok" | "warning" | "blocking";
+
+export function sectionDeliveryStatus(section: FinalReviewReport["sections"][string] | undefined, fallback: DeliveryStatus = "warning"): DeliveryStatus {
+  if (!section) return fallback;
+  if (section.errors.length > 0) return "blocking";
+  if (section.warnings.length > 0) return "warning";
+  return "ok";
+}
+
 export function createFinalReviewReport(project: Project): FinalReviewReport {
   const sections: FinalReviewReport["sections"] = {};
   const recommendations: string[] = [];
@@ -22,6 +36,9 @@ export function createFinalReviewReport(project: Project): FinalReviewReport {
     const result = validateWorldbuildingSummary(project.worldbuildingSummary);
     sections.worldbuilding = result;
   } else {
+    // 缺少世界观总纲只是建议性提示（很多二创/同人项目根本不需要），所以保持 ok=true 但发出 warning。
+    // 这里有意与其它 section "有 warning -> ok=false" 的风格不同；delivery-checklist 用 sectionDeliveryStatus
+    // 把这个 section 视为 warning 而不是 blocking。
     sections.worldbuilding = { ok: true, errors: [], warnings: [{ field: "worldbuildingSummary", severity: "warning", message: "项目未保存世界观总纲；原创项目建议补充" }] };
   }
 

@@ -1,5 +1,6 @@
 import type { EntryType, PositionName, WorldbookDraftEntry } from "../schemas/worldbook-draft.js";
 import { uniqueStrings } from "../utils/strings.js";
+import { normalizeWorldbookEntryContent } from "../utils/yaml-xml.js";
 import { defaultOrderForEntryType } from "./worldbook-entry-defaults.js";
 
 export interface SimplifiedWorldbookEntryInput {
@@ -35,7 +36,7 @@ export function normalizeWorldbookEntry(input: SimplifiedWorldbookEntryInput, ex
     entryType,
     keys: uniqueStrings(input.keys ?? existing?.keys ?? [input.comment]),
     secondaryKeys: uniqueStrings(secondaryKeys),
-    content: input.content,
+    content: normalizeWorldbookEntryContent(input.content),
     ...(characterName ? { characterName: characterName.trim() } : {}),
     constant,
     position,

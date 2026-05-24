@@ -28,6 +28,22 @@ describe("decision-prompts", () => {
     expect(result.prompt_text).toContain("卡型？");
     expect(result.prompt_text).toContain("[single]");
     expect(result.prompt_text).toContain("推荐");
+    expect(result.prompt_text).toContain("单一主题");
+    expect(result.prompt_text).toContain("不要把多个独立主题合并");
+  });
+
+  it("renders guidance for complex multi-round topics and MVU variables", () => {
+    const result = requestUserDecision(emptyProject(), {
+      id: "mvu_variable_goal",
+      question: "MVU 变量主要服务什么玩法？",
+      options: [{ value: "romance", label: "恋爱互动" }, { value: "adventure", label: "冒险探索" }],
+      source_tool: "skill.mvu-routing",
+    });
+    expect(result.prompt_text).toContain("至少三轮追问");
+    expect(result.prompt_text).toContain("MVU 变量设计");
+    expect(result.prompt_text).toContain("用途目标");
+    expect(result.prompt_text).toContain("变量清单");
+    expect(result.prompt_text).toContain("变量规格/初始值/更新条件");
   });
 
   it("recordUserDecision moves entry from pending to recorded", () => {

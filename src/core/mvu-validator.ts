@@ -32,7 +32,16 @@ export function validateMvuConfig(input: { mvu: MvuConfig; characterCardConfig?:
   if (!mvu.schema_script.includes("registerMvuSchema")) {
     errors.push({ field: "schema_script", severity: "error", message: "schema_script 必须包含 registerMvuSchema" });
   }
-  if (["_.add(", "_.set(", "getvar("].some((term) => mvu.schema_script.includes(term))) {
+  if (!/export\s+const\s+Schema\s*=\s*z\.object\s*\(/.test(mvu.schema_script)) {
+    errors.push({ field: "schema_script", severity: "error", message: "schema_script 必须包含 export const Schema = z.object(...)" });
+  }
+  if (!/registerMvuSchema\s*\(\s*Schema\s*\)/.test(mvu.schema_script)) {
+    errors.push({ field: "schema_script", severity: "error", message: "schema_script 必须调用 registerMvuSchema(Schema)" });
+  }
+  if ((mvu.schema_script.match(/registerMvuSchema\s*\(/g) ?? []).length > 1) {
+    errors.push({ field: "schema_script", severity: "error", message: "schema_script 不应重复调用 registerMvuSchema" });
+  }
+  if (containsBetaKeyword(stripStringsAndComments(mvu.schema_script))) {
     errors.push({ field: "schema_script", severity: "error", message: "schema_script 疑似混入 MVU beta 风格，请统一使用 ZOD 风格" });
   }
   if (/import\s+.*\b(z|_)\b/.test(mvu.schema_script)) {
@@ -56,10 +65,27 @@ export function validateMvuConfig(input: { mvu: MvuConfig; characterCardConfig?:
   if (mvu.initvar.includes("<initvar>")) {
     warnings.push({ field: "initvar", severity: "warning", message: "initvar 应填写纯 YAML，builder 会自动包裹 <initvar>" });
   }
+  if (containsYamlDocSeparator(mvu.initvar)) {
+    warnings.push({ field: "initvar", severity: "warning", message: "initvar 不应包含 YAML 文档分隔符 `---`，仅写纯 YAML 即可" });
+  }
   if (!mvu.update_rules.trim()) {
     errors.push({ field: "update_rules", severity: "error", message: "update_rules 不能为空" });
   }
-  if (/_.(?:set|add)\(|getvar\(|\[0\]/.test(mvu.update_rules) || /\/stat_data\//.test(mvu.output_format ?? "")) {
+  if (/<\/?variable_update_rules>/i.test(mvu.update_rules)) {
+    warnings.push({ field: "update_rules", severity: "warning", message: "update_rules 应填写纯 YAML，builder 会自动包裹 <variable_update_rules>" });
+  }
+  if (containsYamlDocSeparator(mvu.update_rules)) {
+    warnings.push({ field: "update_rules", severity: "warning", message: "update_rules 不应包含 YAML 文档分隔符 `---`，仅写纯 YAML 即可" });
+  }
+  if (mvu.output_format && /<\/?variable_output_format>/i.test(mvu.output_format)) {
+    warnings.push({ field: "output_format", severity: "warning", message: "output_format 应填写纯 YAML，builder 会自动包裹 <variable_output_format>" });
+  }
+  if (mvu.output_format && containsYamlDocSeparator(mvu.output_format)) {
+    warnings.push({ field: "output_format", severity: "warning", message: "output_format 不应包含 YAML 文档分隔符 `---`，仅写纯 YAML 即可" });
+  }
+  const sanitizedUpdateRules = stripStringsAndComments(mvu.update_rules);
+  const sanitizedOutputFormat = stripStringsAndComments(mvu.output_format ?? "");
+  if (/_\.(?:set|add)\s*\(|getvar\s*\(|\[0\]/.test(sanitizedUpdateRules) || /\/stat_data\//.test(sanitizedOutputFormat)) {
     errors.push({ field: "update_rules", severity: "error", message: "MVU 配置疑似混用 Beta 路径/命令风格，请统一使用 ZOD + JSON Patch" });
   }
   if (/\n\s*_[^:\n]+:\s*\n?[\s\S]{0,80}check\s*:/.test(mvu.update_rules)) {
@@ -92,4 +118,58 @@ function summary(mvu: MvuConfig): MvuValidationResult["summary"] {
     has_initvar: Boolean(mvu.initvar.trim()),
     has_update_rules: Boolean(mvu.update_rules.trim()),
   };
+}
+
+// 把字符串字面量、模板字符串、行/块注释里的内容替换为占位符，
+// 避免因为注释或字符串里写了 _.add(/getvar( 等关键词触发误报。
+function stripStringsAndComments(source: string): string {
+  if (!source) return "";
+  let result = "";
+  let i = 0;
+  while (i < source.length) {
+    const char = source[i];
+    const next = source[i + 1];
+    if (char === "/" && next === "/") {
+      const end = source.indexOf("\n", i + 2);
+      if (end < 0) return result;
+      result += "\n";
+      i = end + 1;
+      continue;
+    }
+    if (char === "/" && next === "*") {
+      const end = source.indexOf("*/", i + 2);
+      if (end < 0) return result;
+      i = end + 2;
+      continue;
+    }
+    if (char === "\"" || char === "'" || char === "`") {
+      const quote = char;
+      result += quote;
+      i += 1;
+      while (i < source.length) {
+        const inner = source[i];
+        if (inner === "\\") { i += 2; continue; }
+        if (inner === quote) { result += quote; i += 1; break; }
+        if (inner === "\n") result += "\n";
+        i += 1;
+      }
+      continue;
+    }
+    result += char;
+    i += 1;
+  }
+  return result;
+}
+
+function containsBetaKeyword(sanitized: string): boolean {
+  return /_\.(?:add|set)\s*\(|getvar\s*\(/.test(sanitized);
+}
+
+/**
+ * 检测字段值是否含有 YAML 文档分隔符 `---`（独占一行）。
+ * MVU 字段约定存纯 YAML，由 builder 在合成世界书条目时统一包裹 XML，因此这里不应出现裸 `---`。
+ */
+function containsYamlDocSeparator(value: string): boolean {
+  if (!value) return false;
+  return /(^|\r?\n)[ \t]*---[ \t]*(?:\r?\n|$)/.test(value);
 }

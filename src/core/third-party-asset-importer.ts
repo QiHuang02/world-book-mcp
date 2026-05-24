@@ -1,7 +1,9 @@
 import type { DraftSlice } from "../schemas/draft-slice.js";
 import type { WorldbookDraftEntry } from "../schemas/worldbook-draft.js";
 import { createDraftSlice } from "../storage/draft-store.js";
+import { normalizeMvuYamlField } from "../utils/yaml-xml.js";
 import type { RegexScriptAsset } from "./mvu-assets.js";
+import { MVU_OUTPUT_FORMAT_TAG, MVU_UPDATE_RULES_TAG } from "./mvu-assets.js";
 
 export interface ThirdPartyAssetExtractionResult {
   draftSlices: DraftSlice[];
@@ -34,8 +36,10 @@ export function extractThirdPartyAssetsFromCharacterCard(input: { card: Record<s
     if (isMvuEntry(entry)) {
       mvuEntries.push(entry);
       if (isInitvarEntry(entry)) initvar = unwrapInitvar(entry.content);
-      else if (/变量更新规则|update/i.test(entry.comment)) updateRules = entry.content;
-      else if (/变量输出格式|output/i.test(entry.comment)) outputFormat = entry.content;
+      // 注意：必须先匹配更具体的"变量输出格式/output"，否则形如 "[mvu_update]变量输出格式" 的 comment
+      // 会被宽松的 "update" 关键词误判为更新规则。
+      else if (/变量输出格式|output/i.test(entry.comment)) outputFormat = normalizeMvuYamlField(entry.content, [MVU_OUTPUT_FORMAT_TAG]);
+      else if (/变量更新规则|update/i.test(entry.comment)) updateRules = normalizeMvuYamlField(entry.content, [MVU_UPDATE_RULES_TAG]);
       else if (/变量列表/.test(entry.comment) || /format_message_variable::/.test(entry.content)) variableListPath = extractVariableListPath(entry.content) ?? variableListPath;
       continue;
     }

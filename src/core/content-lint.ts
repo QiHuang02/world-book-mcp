@@ -34,6 +34,11 @@ const FORBIDDEN_TERMS = [
   "勾唇",
   "眸光",
   "眼底",
+];
+
+// 中文/英文长破折号在排版上确实常见，遇到会大量误判正常段落，因此降级为 warning
+// 而不是 FORBIDDEN_TERMS 中的 error；如果未来确认所有项目都要禁用，再升级。
+const PUNCTUATION_WARNINGS = [
   "——",
   "—",
   "–",
@@ -53,6 +58,9 @@ export function lintContent(content: string): ContentLintResult {
 
   for (const term of FORBIDDEN_TERMS) {
     pushTermIssues(issues, content, term, "forbidden_word", "error", "删除禁词，改为具体动作或可观察信息", "forbidden");
+  }
+  for (const term of PUNCTUATION_WARNINGS) {
+    pushTermIssues(issues, content, term, "punctuation_warning", "warning", "考虑改为短句或短破折号", "punctuation");
   }
   for (const term of QUANTUM_TERMS) pushTermIssues(issues, content, term, "quantum_word", "error", "删除量子词，改为可观察事实", "quantum_word");
   for (const term of PERCEPTION_TERMS) pushTermIssues(issues, content, term, "perception_word", "warning", "减少作者视角判断，改为直接动作/环境", "perception_word");

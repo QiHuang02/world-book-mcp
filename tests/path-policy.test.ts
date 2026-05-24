@@ -74,4 +74,21 @@ describe("path policy", () => {
     await expect(fs.readFile(target, "utf8")).resolves.toBe("new");
     await fs.rm(target, { force: true });
   });
+
+  it("rejects export paths that resolve to protected directories", () => {
+    expect(() => resolveExportPath("src/escape.json", "x")).toThrow(/受保护目录/);
+    expect(() => resolveExportPath("node_modules/escape.json", "x")).toThrow(/受保护目录/);
+    expect(() => resolveExportPath(".git/escape.json", "x")).toThrow(/受保护目录/);
+    expect(() => resolveCardExportPath("dist/escape.json", "x")).toThrow(/受保护目录/);
+  });
+
+  it("rejects export paths that target known project metadata files", () => {
+    expect(() => resolveExportPath("package.json", "x")).toThrow(/项目元数据文件/);
+    expect(() => resolveCardExportPath("tsconfig.json", "x")).toThrow(/项目元数据文件/);
+  });
+
+  it("still allows project-root JSON files that are not protected", () => {
+    expect(() => resolveExportPath("世界书.json", "x")).not.toThrow();
+    expect(() => resolveCardExportPath("角色卡.json", "x")).not.toThrow();
+  });
 });

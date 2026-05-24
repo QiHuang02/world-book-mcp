@@ -1,5 +1,4 @@
-import { z } from "zod";
-import { EntryTypeSchema, PositionNameSchema, type CreateWorldbookDraftTemplateInput, type WorldbookDraftEntry, type WorldbookDraftField } from "../schemas/worldbook-draft.js";
+import { WorldbookDraftFieldValueSchemas, type CreateWorldbookDraftTemplateInput, type WorldbookDraftEntry, type WorldbookDraftField } from "../schemas/worldbook-draft.js";
 import { uniqueStrings } from "../utils/strings.js";
 import { defaultOrderForEntryType } from "./worldbook-entry-defaults.js";
 import { validateWorldbookDraft, type ValidationIssue } from "./worldbook-validator.js";
@@ -25,20 +24,7 @@ export interface WorldbookDraftCompletenessResult {
   validation: ReturnType<typeof validateWorldbookDraft>;
 }
 
-const FieldValueSchemas = {
-  comment: z.string().min(1),
-  entry_type: EntryTypeSchema,
-  keys: z.array(z.string()),
-  secondary_keys: z.array(z.string()),
-  content: z.string(),
-  character_name: z.string().nullable(),
-  constant: z.boolean(),
-  position: PositionNameSchema,
-  order: z.number(),
-  enabled: z.boolean(),
-  depth: z.number().int().min(0).nullable(),
-  scan_depth: z.number().int().min(0).nullable(),
-} satisfies Record<WorldbookDraftField, z.ZodTypeAny>;
+const FieldValueSchemas = WorldbookDraftFieldValueSchemas;
 
 export function createWorldbookDraftTemplate(input: CreateWorldbookDraftTemplateInput): WorldbookDraftEntry {
   const comment = input.comment.trim();

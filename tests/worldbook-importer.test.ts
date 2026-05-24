@@ -77,4 +77,19 @@ describe("worldbookToDraft", () => {
     expect(draft[0].constant).toBe(true);
     expect(draft[0].position).toBe("after_char");
   });
+
+  it("preserves uid=0 and order=0 instead of replacing them with array index", () => {
+    const minimal = SillyTavernWorldbookSchema.parse({
+      name: "uid 0 测试",
+      entries: {
+        "0": { uid: 0, order: 0, comment: "首项", content: "<entry>0</entry>" },
+        "1": { uid: 5, order: 5, comment: "次项", content: "<entry>5</entry>" },
+      },
+    });
+
+    const draft = worldbookToDraft(minimal);
+    // sourceUid=0 必须被保留，不能被替换成 index=1
+    expect(draft.map((entry) => entry.sourceUid)).toEqual([0, 5]);
+    expect(draft[0].order).toBe(0);
+  });
 });

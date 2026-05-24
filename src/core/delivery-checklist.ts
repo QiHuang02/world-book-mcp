@@ -1,7 +1,7 @@
 import type { Project } from "../schemas/project.js";
-import { createFinalReviewReport, type FinalReviewReport } from "./final-review.js";
+import { createFinalReviewReport, sectionDeliveryStatus, type DeliveryStatus, type FinalReviewReport } from "./final-review.js";
 
-export type DeliveryStatus = "ok" | "warning" | "blocking";
+export type { DeliveryStatus } from "./final-review.js";
 
 export interface DeliveryChecklistItem {
   section: string;
@@ -15,6 +15,9 @@ export interface DeliveryChecklistResult {
   ready_to_export: boolean;
   blocking_count: number;
   warning_count: number;
+  /** 当 warning_count 超过 high_warning_threshold 时给一个明显提示，便于上层 UI/日志单独高亮。 */
+  high_warning: boolean;
+  high_warning_threshold: number;
   items: DeliveryChecklistItem[];
   review: FinalReviewReport;
 }
@@ -27,14 +30,16 @@ export function createDeliveryChecklist(input: { project: Project; export_target
   if (!input.project.worldbuildingSummary && !input.project.derivativeOutline) {
     items.push({ section: "worldbuilding", status: "warning", message: "未保存世界观总纲或二创 outline，原创项目建议补充", related_tools: ["submit_worldbuilding_summary", "submit_derivative_extraction_outline"] });
   } else {
-    items.push({ section: "worldbuilding", status: review.sections.worldbuilding?.ok ? "ok" : "warning", message: review.sections.worldbuilding?.ok ? "世界观信息齐备" : "世界观信息存在警告", related_tools: ["validate_worldbuilding_summary", "validate_worldbuilding_design"] });
+    const status = sectionDeliveryStatus(review.sections.worldbuilding, "warning");
+    items.push({ section: "worldbuilding", status: status === "blocking" ? "warning" : status, message: status === "ok" ? "世界观信息齐备" : "世界观信息存在警告", related_tools: ["validate_worldbuilding_summary", "validate_worldbuilding_design"] });
   }
 
   // 世界书 draft
   if (!input.project.draft || input.project.draft.length === 0) {
     items.push({ section: "worldbook_draft", status: input.export_target === "worldbook" ? "blocking" : "warning", message: "项目尚未保存世界书 draft", related_tools: ["create_draft_slice"] });
   } else {
-    items.push({ section: "worldbook_draft", status: review.sections.worldbook?.ok ? "ok" : "blocking", message: review.sections.worldbook?.ok ? "世界书 draft 校验通过" : "世界书 draft 存在阻塞性错误", related_tools: ["validate_draft", "list_draft_slices", "update_draft_field"] });
+    const status = sectionDeliveryStatus(review.sections.worldbook, "warning");
+    items.push({ section: "worldbook_draft", status, message: status === "ok" ? "世界书 draft 校验通过" : status === "blocking" ? "世界书 draft 存在阻塞性错误" : "世界书 draft 仅有警告", related_tools: ["validate_draft", "list_draft_slices", "update_draft_field"] });
   }
 
   // 角色卡
@@ -42,26 +47,32 @@ export function createDeliveryChecklist(input: { project: Project; export_target
     if (!input.project.characterCardConfig) {
       items.push({ section: "character_card", status: "blocking", message: "项目尚未保存角色卡配置", related_tools: ["create_draft_slice", "update_draft_field"] });
     } else {
-      items.push({ section: "character_card", status: review.sections.character_card?.ok ? "ok" : "blocking", message: review.sections.character_card?.ok ? "角色卡配置通过校验" : "角色卡配置存在错误", related_tools: ["validate_draft", "update_draft_field"] });
+      const status = sectionDeliveryStatus(review.sections.character_card, "blocking");
+      items.push({ section: "character_card", status, message: status === "ok" ? "角色卡配置通过校验" : status === "blocking" ? "角色卡配置存在错误" : "角色卡配置仅有警告", related_tools: ["validate_draft", "update_draft_field"] });
     }
   } else if (input.project.characterCardConfig) {
-    items.push({ section: "character_card", status: review.sections.character_card?.ok ? "ok" : "warning", message: "导出目标为世界书，角色卡配置仅供参考", related_tools: ["validate_draft"] });
+    const status = sectionDeliveryStatus(review.sections.character_card, "warning");
+    // 导出目标是世界书时，角色卡仅供参考，不应当作 blocking。
+    items.push({ section: "character_card", status: status === "blocking" ? "warning" : status, message: "导出目标为世界书，角色卡配置仅供参考", related_tools: ["validate_draft"] });
   }
 
   // MVU / EJS / HTML 仅在启用时检查
   if (input.project.mvuConfig?.enabled) {
-    items.push({ section: "mvu", status: review.sections.mvu?.ok ? "ok" : "blocking", message: review.sections.mvu?.ok ? "MVU 配置通过" : "MVU 配置存在错误", related_tools: ["validate_draft", "build_assets"] });
+    const status = sectionDeliveryStatus(review.sections.mvu, "blocking");
+    items.push({ section: "mvu", status, message: status === "ok" ? "MVU 配置通过" : status === "blocking" ? "MVU 配置存在错误" : "MVU 配置仅有警告", related_tools: ["validate_draft", "build_assets"] });
   }
   if (input.project.htmlBeautifyConfig?.enabled) {
-    items.push({ section: "html_beautify", status: review.sections.html_beautify?.ok ? "ok" : "blocking", message: review.sections.html_beautify?.ok ? "HTML 美化通过" : "HTML 美化存在错误", related_tools: ["validate_draft", "build_assets"] });
+    const status = sectionDeliveryStatus(review.sections.html_beautify, "blocking");
+    items.push({ section: "html_beautify", status, message: status === "ok" ? "HTML 美化通过" : status === "blocking" ? "HTML 美化存在错误" : "HTML 美化仅有警告", related_tools: ["validate_draft", "build_assets"] });
   }
   if (input.project.ejsConfig?.enabled) {
-    items.push({ section: "ejs", status: review.sections.ejs?.ok ? "ok" : "blocking", message: review.sections.ejs?.ok ? "EJS 配置通过" : "EJS 配置存在错误", related_tools: ["validate_draft", "build_assets"] });
+    const status = sectionDeliveryStatus(review.sections.ejs, "blocking");
+    items.push({ section: "ejs", status, message: status === "ok" ? "EJS 配置通过" : status === "blocking" ? "EJS 配置存在错误" : "EJS 配置仅有警告", related_tools: ["validate_draft", "build_assets"] });
   }
 
-  // 写作优化
-  const writingOk = review.sections.writing_optimization?.ok ?? true;
-  items.push({ section: "writing_optimization", status: writingOk ? "ok" : "blocking", message: writingOk ? "写作优化检查无错误" : "写作优化存在阻塞性错误", related_tools: ["create_writing_optimization_report", "lint_project_content"] });
+  // 写作优化：errors 阻塞，warnings 不阻塞但需要单独提示
+  const writingStatus = sectionDeliveryStatus(review.sections.writing_optimization, "ok");
+  items.push({ section: "writing_optimization", status: writingStatus, message: writingStatus === "ok" ? "写作优化检查无错误" : writingStatus === "blocking" ? "写作优化存在阻塞性错误" : "写作优化存在警告，建议复核", related_tools: ["create_writing_optimization_report", "lint_project_content"] });
 
   // 未解决决策
   const pendingCount = (input.project.pendingDecisions ?? []).length;
@@ -73,12 +84,15 @@ export function createDeliveryChecklist(input: { project: Project; export_target
 
   const blocking_count = items.filter((item) => item.status === "blocking").length;
   const warning_count = items.filter((item) => item.status === "warning").length;
+  const high_warning_threshold = 5;
 
   return {
     export_target: input.export_target,
     ready_to_export: blocking_count === 0,
     blocking_count,
     warning_count,
+    high_warning: warning_count >= high_warning_threshold,
+    high_warning_threshold,
     items,
     review,
   };

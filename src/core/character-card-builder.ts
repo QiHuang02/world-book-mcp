@@ -141,6 +141,9 @@ function withId<T extends object>(value: T): T & { id: string } {
 function mergeCharacterProfileEntries(entries: WorldbookDraftEntry[]): WorldbookDraftEntry[] {
   const merged: WorldbookDraftEntry[] = [];
   const characterIndexes = new Map<string, number>();
+  // existing 在第一次 merge 后会被强制写为 character_basic，丢失原始 entryType 信息；
+  // 这里显式记录"曾经命中 character_basic 的来源 position"，避免后续合并时永远落到 existing.position。
+  const basicPositions = new Map<string, WorldbookDraftEntry["position"]>();
 
   for (const entry of entries) {
     if (entry.entryType !== "character_basic" && entry.entryType !== "character_personality") {
@@ -153,22 +156,27 @@ function mergeCharacterProfileEntries(entries: WorldbookDraftEntry[]): Worldbook
     const existingIndex = characterIndexes.get(key);
     if (existingIndex === undefined) {
       characterIndexes.set(key, merged.length);
+      if (entry.entryType === "character_basic") basicPositions.set(key, entry.position);
       merged.push({ ...entry, comment: characterName, keys: uniqueStrings([characterName, ...entry.keys]) });
       continue;
     }
 
     const existing = merged[existingIndex];
+    if (entry.entryType === "character_basic" && !basicPositions.has(key)) {
+      basicPositions.set(key, entry.position);
+    }
+    const basicPosition = basicPositions.get(key);
     merged[existingIndex] = {
       ...existing,
       comment: characterName,
       entryType: "character_basic",
       keys: uniqueStrings([...existing.keys, ...entry.keys, characterName]),
-      secondaryKeys: uniqueStrings([...(existing.secondaryKeys ?? []), ...(entry.secondaryKeys ?? [])]),
+      secondaryKeys: uniqueStrings([...existing.secondaryKeys, ...entry.secondaryKeys]),
       content: mergeCharacterContent(existing.content, entry.content),
       constant: existing.constant || entry.constant,
       enabled: existing.enabled && entry.enabled,
       order: Math.min(existing.order, entry.order),
-      position: existing.entryType === "character_basic" ? existing.position : entry.position,
+      position: basicPosition ?? entry.position,
       depth: existing.depth ?? entry.depth,
       scanDepth: existing.scanDepth ?? entry.scanDepth,
     };
@@ -216,11 +224,14 @@ export function draftEntriesToCharacterBookEntries(entries: WorldbookDraftEntry[
     selective: !entry.constant,
     insertion_order: entry.order,
     enabled: entry.enabled,
+    // SillyTavern v3 character_book entry 顶层 position 是字符串名（before_char/at_depth/...），
+    // extensions.position 是与之对应的数字编码（见 position-map.ts）；两处都需要写入，
+    // 老版本 SillyTavern 与外部工具会从不同字段读取。
     position: entry.position,
     use_regex: true,
     extensions: {
       position: positionToNumber(entry.position),
-      exclude_recursion: true,
+      exclude_recursion: entry.excludeRecursion,
       display_index: index,
       probability: 100,
       useProbability: true,
@@ -230,14 +241,14 @@ export function draftEntriesToCharacterBookEntries(entries: WorldbookDraftEntry[
       group: "",
       group_override: false,
       group_weight: 100,
-      prevent_recursion: true,
+      prevent_recursion: entry.preventRecursion,
       delay_until_recursion: false,
       scan_depth: entry.scanDepth ?? (!entry.constant ? 2 : null),
       match_whole_words: null,
       use_group_scoring: false,
       case_sensitive: null,
       automation_id: "",
-      role: entry.position === "at_depth" ? 0 : 0,
+      role: 0,
       vectorized: false,
       sticky: 0,
       cooldown: 0,

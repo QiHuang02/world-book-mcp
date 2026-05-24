@@ -28,6 +28,8 @@ export async function updateProject(projectId: string, mutator: (project: Projec
       throw new Error(`project revision conflict: expected ${options.expectedRevision}, current ${project.revision}`);
     }
     const next = await mutator(project);
+    // mutator 返回值里的 id 会被显式覆盖回原来的 project.id —— 这是不可变项目 id 的故意保护：
+    // 即使外部不小心修改了 id，存盘时也只承认初始化时的 id；revision 单调递增，updatedAt 用本次写入时间。
     const updated = ProjectSchema.parse({ ...next, id: project.id, revision: project.revision + 1, updatedAt: nowIso() });
     if (!await isWorkspaceProject(project.id)) {
       throw new Error(`project_id 不匹配，当前工作区不是 ${project.id}`);
@@ -44,6 +46,26 @@ function enqueueProjectWrite<T>(projectId: string, operation: () => Promise<T>):
     if (projectQueues.get(projectId) === next) projectQueues.delete(projectId);
   }));
   return next;
+}
+
+/**
+ * 包装 updateProject 的常见模式：mutator 同时返回 { project, ...extra }，外部既要把 project 写回工作区，
+ * 又要把 extra 字段返回给 caller。
+ *
+ * 用法：
+ *   const { project, decision } = await withProjectMutation(projectId, (project) => requestUserDecision(project, input));
+ */
+export async function withProjectMutation<T extends { project: Project }>(
+  projectId: string,
+  mutator: (project: Project) => T | Promise<T>,
+): Promise<T> {
+  let captured: T | undefined;
+  await updateProject(projectId, async (project) => {
+    captured = await mutator(project);
+    return captured.project;
+  });
+  if (!captured) throw new Error(`mutator never produced a result for project ${projectId}`);
+  return captured;
 }
 
 export async function listProjects(): Promise<Project[]> {

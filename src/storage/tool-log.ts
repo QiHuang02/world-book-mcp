@@ -24,6 +24,25 @@ export function sessionLogPath(id = sessionId): string {
 
 export async function ensureLogDir(): Promise<void> {
   await fs.mkdir(LOG_DIR, { recursive: true });
+  await ensureLatestLogTruncated();
+}
+
+// 跨进程并发写 latest.jsonl 没有原子保护，且文件会无界增长。
+// 折中方案：每次 server 启动时把 latest.jsonl 截断一次，让它只承载"当前会话开始之后"的事件；
+// 历史日志通过 sessionLogPath() 的 session_<id>.jsonl 文件保留。
+let latestLogTruncated: Promise<void> | undefined;
+function ensureLatestLogTruncated(): Promise<void> {
+  if (!latestLogTruncated) {
+    latestLogTruncated = fs.writeFile(LATEST_LOG_PATH, "", "utf8").catch(async (error) => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        await fs.mkdir(LOG_DIR, { recursive: true });
+        await fs.writeFile(LATEST_LOG_PATH, "", "utf8");
+        return;
+      }
+      throw error;
+    });
+  }
+  return latestLogTruncated;
 }
 
 export async function appendToolLog(event: {

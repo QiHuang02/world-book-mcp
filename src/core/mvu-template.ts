@@ -7,7 +7,6 @@ export function createMvuTemplate(input: { characterNames: string[]; variableLis
     .join(",\n");
   const initvar = names.map((name) => `${name}:\n  好感度: 20\n  心情: 平静`).join("\n");
   const updateRules = [
-    "---",
     "变量更新规则:",
     ...names.flatMap((name) => [
       `  ${name}:`,
@@ -37,7 +36,7 @@ export function createMvuTemplate(input: { characterNames: string[]; variableLis
     rules: [
       "schema_script 必须包含 registerMvuSchema 调用",
       "z 和 _ 由酒馆环境注入，不要手动 import",
-      "initvar 填纯 YAML，builder 会自动包裹 <initvar>",
+      "initvar / update_rules / output_format 填纯 YAML（不要带 `---` 分隔符或 XML 包裹），builder 会自动包裹 <initvar> / <variable_update_rules> / <variable_output_format>",
       "启用 MVU 后 first_mes 和 alternate_greetings 建议包含 <StatusPlaceHolderImpl/>",
     ],
   };

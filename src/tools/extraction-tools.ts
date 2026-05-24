@@ -9,7 +9,7 @@ import { toolText } from "./helpers.js";
 
 export function registerExtractionTools(server: McpServer): void {
   server.tool("create_extraction_outline", { project_id: z.string().optional(), focus: z.array(z.enum(["characters", "world", "items", "events"])).optional() }, async (input) => {
-    const outline = createExtractionOutline(input.focus as ExtractionFocus[] | undefined) as Record<string, unknown>;
+    const outline = createExtractionOutline(input.focus as ExtractionFocus[] | undefined);
     return toolText({ project_id: input.project_id, ...outline });
   });
 

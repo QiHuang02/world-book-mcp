@@ -1,4 +1,4 @@
-import { z, type ZodTypeAny } from "zod";
+import type { ZodTypeAny } from "zod";
 
 export function toolText(value: unknown) {
   return {
@@ -9,10 +9,6 @@ export function toolText(value: unknown) {
       },
     ],
   };
-}
-
-export function zodToShape<T extends z.ZodRawShape>(schema: z.ZodObject<T>): T {
-  return schema.shape;
 }
 
 export type AnySchema = ZodTypeAny;

@@ -58,7 +58,9 @@ function dedupeRegex(scripts: RegexScriptAsset[]): RegexScriptAsset[] {
   const seen = new Set<string>();
   const result: RegexScriptAsset[] = [];
   for (const script of scripts) {
-    const key = `${script.scriptName}\n${script.findRegex}\n${script.promptOnly}`;
+    // 同名同 findRegex 但 replaceString 不同的脚本应视为两个不同脚本。
+    // 用 \u0000 做字段分隔符避免拼接歧义。
+    const key = [script.scriptName, script.findRegex, script.replaceString, script.promptOnly].join("\u0000");
     if (seen.has(key)) continue;
     seen.add(key);
     result.push(script);

@@ -32,8 +32,9 @@ export function buildCharacterCardJsonFromProject(project: Project, extraRegexSc
       config: project.characterCardConfig,
       worldbookEntries: project.draft,
       worldbookName: project.characterCardConfig.worldbook.name ?? project.name,
+      // assets.regex_scripts 已经包含 mvu + html + 第三方脚本（buildProjectAssets("all") 内部合并并去重过），
+      // 因此这里只把整个集合放进 mvuAssets.regexScripts 一处，不再额外传 htmlAssets，避免双袋子重复输出。
       mvuAssets: { worldbookEntries: assets.worldbook_entries, regexScripts: assets.regex_scripts, tavernHelperScripts: assets.tavern_helper_scripts },
-      htmlAssets: { regexScripts: [] },
       ejsEntries: assets.ejs_entries,
     }),
   };

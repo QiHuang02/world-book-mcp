@@ -72,6 +72,35 @@ describe("lintProjectContent", () => {
     const result = lintProjectContent(project);
     expect(result.ok).toBe(false);
     expect(result.issues.some((issue) => issue.term === "—")).toBe(true);
-    expect(result.issues.some((issue) => issue.term === "嘴角上扬")).toBe(true);
+    // 破折号本身现在是 warning（避免误判正常排版），但 嘴角上扬 仍然是 error。
+    expect(result.issues.find((issue) => issue.term === "—")?.severity).toBe("warning");
+    expect(result.issues.some((issue) => issue.term === "嘴角上扬" && issue.severity === "error")).toBe(true);
+  });
+
+  it("downgrades em-dash to warning when only punctuation is flagged", () => {
+    const project: Project = {
+      id: "project_test",
+      name: "破折号测试",
+      patches: [],
+      draft: [{
+        comment: "条目",
+        entryType: "other",
+        keys: ["条目"],
+        secondaryKeys: [],
+        content: "他靠在门边——风从远处吹过。",
+        constant: false,
+        position: "after_char",
+        order: 1,
+        enabled: true,
+        preventRecursion: true,
+        excludeRecursion: true,
+      }],
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    const result = lintProjectContent(project);
+    // 只有 —— 时，issues 全部是 warning，ok 应为 true。
+    expect(result.issues.every((issue) => issue.severity === "warning")).toBe(true);
+    expect(result.ok).toBe(true);
   });
 });

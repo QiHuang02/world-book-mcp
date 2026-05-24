@@ -4,29 +4,33 @@ import { DraftSliceDataSchemas, type DraftSlice, type DraftType } from "../schem
 import { EjsEntryConfigSchema } from "../schemas/ejs.js";
 import { HtmlRegexScriptConfigSchema } from "../schemas/html-beautify.js";
 import { MvuConfigSchema } from "../schemas/mvu.js";
-import { PositionNameSchema, EntryTypeSchema, WorldbookDraftEntrySchema } from "../schemas/worldbook-draft.js";
+import { WorldbookDraftEntrySchema, WorldbookDraftFieldValueSchemas } from "../schemas/worldbook-draft.js";
 import { nowIso } from "../utils/ids.js";
 import { uniqueStrings } from "../utils/strings.js";
 
+// worldbook_entry 字段约束统一从 schemas/worldbook-draft.ts 导出，避免和 worldbook-draft-editor.ts 漂移；
+// 这里仅在 snake_case 的入参基础上额外暴露 camelCase 别名，让 update_draft_field 同时接受两种写法。
+const worldbookEntryFieldSchemas = {
+  comment: WorldbookDraftFieldValueSchemas.comment,
+  entryType: WorldbookDraftFieldValueSchemas.entry_type,
+  entry_type: WorldbookDraftFieldValueSchemas.entry_type,
+  keys: WorldbookDraftFieldValueSchemas.keys,
+  secondaryKeys: WorldbookDraftFieldValueSchemas.secondary_keys,
+  secondary_keys: WorldbookDraftFieldValueSchemas.secondary_keys,
+  content: WorldbookDraftFieldValueSchemas.content,
+  characterName: WorldbookDraftFieldValueSchemas.character_name.optional().or(z.string()),
+  character_name: WorldbookDraftFieldValueSchemas.character_name,
+  constant: WorldbookDraftFieldValueSchemas.constant,
+  position: WorldbookDraftFieldValueSchemas.position,
+  order: WorldbookDraftFieldValueSchemas.order,
+  enabled: WorldbookDraftFieldValueSchemas.enabled,
+  depth: WorldbookDraftFieldValueSchemas.depth,
+  scanDepth: WorldbookDraftFieldValueSchemas.scan_depth,
+  scan_depth: WorldbookDraftFieldValueSchemas.scan_depth,
+} as const satisfies Record<string, z.ZodTypeAny>;
+
 const FieldSchemas: Record<DraftType, Record<string, z.ZodTypeAny>> = {
-  worldbook_entry: {
-    comment: z.string().min(1),
-    entryType: EntryTypeSchema,
-    entry_type: EntryTypeSchema,
-    keys: z.array(z.string()),
-    secondaryKeys: z.array(z.string()),
-    secondary_keys: z.array(z.string()),
-    content: z.string(),
-    characterName: z.string().optional(),
-    character_name: z.string().nullable(),
-    constant: z.boolean(),
-    position: PositionNameSchema,
-    order: z.number(),
-    enabled: z.boolean(),
-    depth: z.number().int().min(0).nullable(),
-    scanDepth: z.number().int().min(0).nullable(),
-    scan_depth: z.number().int().min(0).nullable(),
-  },
+  worldbook_entry: worldbookEntryFieldSchemas,
   character_profile: {
     ...CharacterCardBaseSchema.shape,
     include_worldbook: z.boolean(),
@@ -39,14 +43,11 @@ const FieldSchemas: Record<DraftType, Record<string, z.ZodTypeAny>> = {
   mvu_schema: {
     enabled: z.boolean(),
     style: z.literal("zod"),
-    schema_script: z.string(),
     output_format: z.string().optional(),
     variable_list_path: MvuConfigSchema.shape.variable_list_path,
   },
   mvu_update_rules: {
     enabled: z.boolean(),
-    initvar: z.string(),
-    update_rules: z.string(),
     hide_regex: z.boolean(),
     beautify_regex: z.boolean(),
   },

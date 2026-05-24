@@ -1,4 +1,12 @@
 import { z } from "zod";
+import { normalizeWorldbookEntryContent } from "../utils/yaml-xml.js";
+
+/**
+ * 世界书条目 `content` 在所有写入路径上的统一规范化：
+ * 自动剥离首尾 YAML 文档分隔符 `---`。
+ * skill 约束：世界书条目里的 YAML 必须用 XML 标签包裹，不能裸写 `---` 分隔符。
+ */
+const worldbookContentText = z.string().transform(normalizeWorldbookEntryContent);
 
 export const EntryTypeSchema = z.enum([
   "world_summary",
@@ -31,7 +39,7 @@ export const WorldbookDraftEntrySchema = z.object({
   entryType: EntryTypeSchema.default("other"),
   keys: z.array(z.string()).default([]),
   secondaryKeys: z.array(z.string()).default([]),
-  content: z.string().default(""),
+  content: worldbookContentText.default(""),
   characterName: z.string().optional(),
   sourceUid: z.number().int().min(0).optional(),
   constant: z.boolean(),
@@ -46,7 +54,7 @@ export const WorldbookDraftEntrySchema = z.object({
 
 export const SimplifiedWorldbookEntryInputSchema = z.object({
   comment: z.string().min(1),
-  content: z.string().default(""),
+  content: worldbookContentText.default(""),
   character_name: z.string().optional(),
   characterName: z.string().optional(),
   keys: z.array(z.string()).default([]),
@@ -121,6 +129,26 @@ export const WorldbookDraftFieldSchema = z.enum([
   "depth",
   "scan_depth",
 ]);
+
+/**
+ * 单个 worldbook draft 字段（snake_case key）允许写入的值约束。
+ * 由 worldbook-draft-editor.ts（inline draft 路径）和 draft-field-editor.ts（draft slice 路径）共享，
+ * 避免两处独立维护同一字段的 schema 定义出现漂移。
+ */
+export const WorldbookDraftFieldValueSchemas = {
+  comment: z.string().min(1),
+  entry_type: EntryTypeSchema,
+  keys: z.array(z.string()),
+  secondary_keys: z.array(z.string()),
+  content: worldbookContentText,
+  character_name: z.string().nullable(),
+  constant: z.boolean(),
+  position: PositionNameSchema,
+  order: z.number(),
+  enabled: z.boolean(),
+  depth: z.number().int().min(0).nullable(),
+  scan_depth: z.number().int().min(0).nullable(),
+} satisfies Record<z.infer<typeof WorldbookDraftFieldSchema>, z.ZodTypeAny>;
 
 export const UpdateWorldbookDraftFieldInputSchema = z.object({
   project_id: z.string(),
