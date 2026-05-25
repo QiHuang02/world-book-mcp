@@ -80,12 +80,12 @@ describe("lintProjectContent", () => {
     const result = lintProjectContent(project);
     expect(result.ok).toBe(false);
     expect(result.issues.some((issue) => issue.term === "—")).toBe(true);
-    // 破折号本身现在是 warning（避免误判正常排版），但 嘴角上扬 仍然是 error。
-    expect(result.issues.find((issue) => issue.term === "—")?.severity).toBe("warning");
+    // 破折号已升级为 error 级别
+    expect(result.issues.find((issue) => issue.term === "—")?.severity).toBe("error");
     expect(result.issues.some((issue) => issue.term === "嘴角上扬" && issue.severity === "error")).toBe(true);
   });
 
-  it("downgrades em-dash to warning when only punctuation is flagged", () => {
+  it("flags em-dash as error", () => {
     const project: Project = {
       id: "project_test",
       name: "破折号测试",
@@ -111,8 +111,8 @@ describe("lintProjectContent", () => {
       updatedAt: "2026-01-01T00:00:00.000Z",
     };
     const result = lintProjectContent(project);
-    // 只有 —— 时，issues 全部是 warning，ok 应为 true。
-    expect(result.issues.every((issue) => issue.severity === "warning")).toBe(true);
-    expect(result.ok).toBe(true);
+    // 破折号已升级为 error，ok 应为 false
+    expect(result.issues.some((issue) => issue.severity === "error")).toBe(true);
+    expect(result.ok).toBe(false);
   });
 });

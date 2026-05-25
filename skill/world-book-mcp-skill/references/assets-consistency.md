@@ -1,5 +1,40 @@
 # MVU / EJS / HTML 一致性
 
+## MVU 组件存放位置
+
+| 组件 | 正确存放位置 | 错误做法 |
+|------|------------|---------|
+| Zod Schema 脚本 | 酒馆助手脚本库 → 角色脚本（`tavern_helper.scripts`） | 塞进世界书条目 |
+| `[initvar]` 初始变量 | 世界书条目（禁用状态，蓝灯） | — |
+| 变量列表 | 世界书条目（蓝灯，D0） | — |
+| `[mvu_update]` 更新规则 | 世界书条目（蓝灯，D0） | — |
+| `[mvu_update]` 输出格式 | 世界书条目（蓝灯，D0） | — |
+| HTML 状态栏 | 正则脚本 `replaceString`（`regex_scripts`） | 塞进世界书条目 |
+| 正则隐藏规则 | `regex_scripts` 数组 | 塞进世界书条目 |
+| EJS 预处理 | 世界书条目（`@@preprocessing` 装饰器） | — |
+| EJS 条件显隐 | 世界书条目 contents 首片段 `@@if` | — |
+
+## MVU 格式规范
+
+| 组件 | 格式要求 |
+|------|---------|
+| initvar / update_rules / output_format | 存储纯 YAML，builder 自动包裹 XML 标签 |
+| Zod Schema | 必须包含 `import { registerMvuSchema }` + `export const Schema = z.object(...)` + `$(() => { registerMvuSchema(Schema); })` |
+| HTML 状态栏 | 完整 `<!DOCTYPE html>` 文档，内联所有 CSS/JS，禁止外部引用 |
+
+## tavern_helper 序列化格式
+
+`extensions.tavern_helper` 使用二维数组格式：`[["scripts", [...]], ["variables", {}]]`。导入和导出均使用此结构。
+
+## 正则脚本必备项
+
+MVU 系统至少需要以下正则：
+
+1. `[不发送]去除变量更新` — promptOnly，隐藏 `<UpdateVariable>` 块（minDepth: 4）
+2. `[不发送]界面占位符` — promptOnly，隐藏 `<StatusPlaceHolderImpl/>`
+3. `[美化]完整变量更新`（可选） — markdownOnly，折叠 `<UpdateVariable>`
+4. `[美化]变量更新中`（可选） — markdownOnly，处理未闭合标签
+
 ## MVU
 
 - schema 必须有 `export const Schema = z.object(...)`。

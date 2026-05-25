@@ -135,7 +135,7 @@ function buildRegexScripts(mvu: MvuConfig): RegexScriptAsset[] {
   if (mvu.hide_regex) {
     scripts.push(regexScript({
       scriptName: "[不发送]去除变量更新",
-      findRegex: "/<UpdateVariable>(.*?)<\\/UpdateVariable>/gis",
+      findRegex: "/<UpdateVariable>(.*?)<\/UpdateVariable>/gis",
       replaceString: "",
       markdownOnly: false,
       promptOnly: true,
@@ -143,11 +143,21 @@ function buildRegexScripts(mvu: MvuConfig): RegexScriptAsset[] {
       minDepth: 4,
     }));
   }
+  // 隐藏 <StatusPlaceHolderImpl/> 占位符，避免发送给 AI 消耗 token
+  scripts.push(regexScript({
+    scriptName: "[不发送]界面占位符",
+    findRegex: "<StatusPlaceHolderImpl/>",
+    replaceString: "",
+    markdownOnly: false,
+    promptOnly: true,
+    placement: [1, 2],
+    runOnEdit: true,
+  }));
   if (mvu.beautify_regex) {
     scripts.push(
       regexScript({
         scriptName: "[美化]完整变量更新",
-        findRegex: "/<UpdateVariable>(.*?)<\\/UpdateVariable>/gis",
+        findRegex: "/<UpdateVariable>(.*?)<\/UpdateVariable>/gis",
         replaceString: "<details><summary>变量更新完成</summary>\n$1\n</details>",
         markdownOnly: true,
         promptOnly: false,
@@ -155,7 +165,7 @@ function buildRegexScripts(mvu: MvuConfig): RegexScriptAsset[] {
       }),
       regexScript({
         scriptName: "[美化]变量更新中",
-        findRegex: "/<updatevariable>(?!.*<\\/updatevariable>)\\s*(.*)\\s*$/gsi",
+        findRegex: "/<updatevariable>(?!.*<\/updatevariable>)\s*(.*)\s*$/gsi",
         replaceString: "<details><summary>变量更新中...</summary>\n$1\n</details>",
         markdownOnly: true,
         promptOnly: false,
