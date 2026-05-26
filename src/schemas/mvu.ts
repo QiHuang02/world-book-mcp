@@ -40,7 +40,6 @@ const MvuVariableDefinitionSchema = z.object({
 
 export const ListMvuVariablesInputSchema = z.object({
   project_id: z.string(),
-  schema_slice_id: z.string().min(1),
 });
 
 const RewriteOptionsSchema = z.object({
@@ -50,32 +49,29 @@ const RewriteOptionsSchema = z.object({
 
 export const UpsertMvuVariableInputSchema = MvuVariableDefinitionSchema.extend({
   project_id: z.string(),
-  schema_slice_id: z.string().min(1),
-  rules_slice_id: z.string().min(1).optional(),
-  expected_schema_slice_revision: z.number().int().nonnegative().optional(),
-  expected_rules_slice_revision: z.number().int().nonnegative().optional(),
+  expected_revision: z.number().int().nonnegative().optional(),
+  expected_project_revision: z.number().int().nonnegative().optional(),
+  expected_slice_revision: z.number().int().nonnegative().optional(),
 }).merge(RewriteOptionsSchema);
 
 export const RemoveMvuVariableInputSchema = z.object({
   project_id: z.string(),
-  schema_slice_id: z.string().min(1),
-  rules_slice_id: z.string().min(1).optional(),
   path: z.array(z.string().min(1)).min(1),
   rewrite_initvar: z.boolean().default(true),
   rewrite_update_rules: z.boolean().default(true),
-  expected_schema_slice_revision: z.number().int().nonnegative().optional(),
-  expected_rules_slice_revision: z.number().int().nonnegative().optional(),
+  expected_revision: z.number().int().nonnegative().optional(),
+  expected_project_revision: z.number().int().nonnegative().optional(),
+  expected_slice_revision: z.number().int().nonnegative().optional(),
 });
 
 export const RewriteMvuVariablesInputSchema = z.object({
   project_id: z.string(),
-  schema_slice_id: z.string().min(1),
-  rules_slice_id: z.string().min(1).optional(),
   variables: z.array(MvuVariableDefinitionSchema).min(1),
   rewrite_initvar: z.boolean().default(true),
   rewrite_update_rules: z.boolean().default(true),
-  expected_schema_slice_revision: z.number().int().nonnegative().optional(),
-  expected_rules_slice_revision: z.number().int().nonnegative().optional(),
+  expected_revision: z.number().int().nonnegative().optional(),
+  expected_project_revision: z.number().int().nonnegative().optional(),
+  expected_slice_revision: z.number().int().nonnegative().optional(),
 });
 
 export type MvuConfig = z.infer<typeof MvuConfigSchema>;

@@ -2,13 +2,13 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { createDraftSlice, listDraftSlices, upsertDraftSlice } from "../src/storage/draft-store.js";
-import { initWorkspaceProject, loadWorkspaceProjectIfMatches, WORKSPACE_DRAFT_DIR, WORKSPACE_PROJECT_PATH } from "../src/storage/workspace-store.js";
-import { createProject, ensureStorage, listProjects, loadProject, updateProject } from "../src/storage/project-store.js";
+import { createDraftSlice, draftTypeDir, listDraftSlices, upsertDraftSlice } from "../src/storage/draft-store.js";
+import { initWorkspaceProject, loadWorkspace, projectJsonPath, projectSlicesDir, readProjectJson, WORKSPACE_DIR, WORKSPACE_JSON_PATH } from "../src/storage/workspace-store.js";
+import { createProject, ensureStorage, listProjects, loadProject, loadProjectWithSlug, updateProject } from "../src/storage/project-store.js";
 
 async function cleanupWorkspace(): Promise<void> {
-  await fs.rm(path.dirname(WORKSPACE_PROJECT_PATH), { recursive: true, force: true, maxRetries: 3, retryDelay: 10 });
-  await fs.rm(path.resolve(path.dirname(WORKSPACE_PROJECT_PATH), "..", "output"), { recursive: true, force: true, maxRetries: 3, retryDelay: 10 });
+  await fs.rm(WORKSPACE_DIR, { recursive: true, force: true, maxRetries: 3, retryDelay: 10 });
+  await fs.rm(path.resolve(path.dirname(WORKSPACE_DIR), "output"), { recursive: true, force: true, maxRetries: 3, retryDelay: 10 });
 }
 
 function uniqueName(prefix: string): string {
@@ -19,71 +19,74 @@ describe("workspace store", () => {
   it("ensureStorage only creates .worldbook workspace directories", async () => {
     await cleanupWorkspace();
     await ensureStorage();
-    await expect(fs.access(path.dirname(WORKSPACE_PROJECT_PATH))).resolves.toBeUndefined();
-    await expect(fs.access(path.resolve(path.dirname(WORKSPACE_PROJECT_PATH), "..", "output"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(fs.access(WORKSPACE_DIR)).resolves.toBeUndefined();
+    await expect(fs.access(path.resolve(path.dirname(WORKSPACE_DIR), "output"))).rejects.toMatchObject({ code: "ENOENT" });
     await cleanupWorkspace();
   });
 
-  it("loadProject only accepts the current workspace project id", async () => {
+  it("loadProject accepts registered workspace project ids", async () => {
     await cleanupWorkspace();
     const project = await createProject("当前项目");
     await expect(loadProject(project.id)).resolves.toMatchObject({ id: project.id });
-    await expect(loadProject("missing_project")).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(loadProject("missing_project")).rejects.toThrow(/未找到 project_id/);
     await cleanupWorkspace();
   });
 
-  it("listProjects returns only the current workspace project", async () => {
+  it("listProjects returns all workspace projects", async () => {
     await cleanupWorkspace();
-    const project = await createProject("列表项目");
-    await updateProject(project.id, (latest) => ({ ...latest, importedWorldbookPath: "列表项目.json" }));
+    const first = await createProject("列表项目A");
+    const second = (await initWorkspaceProject({ name: "列表项目B", ifExists: "error" })).project;
+    await updateProject(first.id, (latest) => ({ ...latest, importedWorldbookPath: "列表项目.json" }));
     const projects = await listProjects();
-    expect(projects).toHaveLength(1);
-    expect(projects[0].id).toBe(project.id);
-    expect(projects[0].revision).toBe(1);
+    expect(projects.map((p) => p.id).sort()).toEqual([first.id, second.id].sort());
+    expect(projects.find((p) => p.id === first.id)?.revision).toBe(1);
     await cleanupWorkspace();
   });
 
-  it("creates .worldbook project, plan, logs and typed draft directories", async () => {
+  it("creates workspace.json, project directory, plan, logs and typed draft directories", async () => {
     await cleanupWorkspace();
-    const { project, created, workspace } = await initWorkspaceProject({ name: uniqueName("测试项目"), ifExists: "overwrite" });
+    const { project, created, workspace, slug } = await initWorkspaceProject({ name: uniqueName("测试项目"), ifExists: "overwrite" });
     expect(created).toBe(true);
     expect(project.name).toContain("测试项目_");
-    expect(workspace.project_json).toBe(WORKSPACE_PROJECT_PATH);
-    await expect(fs.access(WORKSPACE_PROJECT_PATH)).resolves.toBeUndefined();
-    await expect(fs.access(WORKSPACE_DRAFT_DIR)).resolves.toBeUndefined();
-    await expect(fs.access(path.join(WORKSPACE_DRAFT_DIR, "worldbook"))).resolves.toBeUndefined();
+    expect(workspace.workspace_json).toBe(WORKSPACE_JSON_PATH);
+    await expect(fs.access(WORKSPACE_JSON_PATH)).resolves.toBeUndefined();
+    await expect(fs.access(projectJsonPath(slug))).resolves.toBeUndefined();
+    await expect(fs.access(projectSlicesDir(slug))).resolves.toBeUndefined();
+    await expect(fs.access(draftTypeDir(slug, "entry"))).resolves.toBeUndefined();
     await expect(fs.access(workspace.plan_md)).resolves.toBeUndefined();
     await expect(fs.access(workspace.logs_dir)).resolves.toBeUndefined();
+    const workspaceJson = await loadWorkspace();
+    expect(workspaceJson.projects.some((entry) => entry.slug === slug)).toBe(true);
     await cleanupWorkspace();
   });
 
-  it("returns existing workspace when requested", async () => {
+  it("returns existing project with same slug when requested", async () => {
     await cleanupWorkspace();
     const first = await initWorkspaceProject({ name: "原项目", ifExists: "error" });
-    const second = await initWorkspaceProject({ name: "新项目", ifExists: "return_existing" });
+    const second = await initWorkspaceProject({ name: "原项目", ifExists: "return_existing" });
     expect(second.created).toBe(false);
     expect(second.project.id).toBe(first.project.id);
     expect(second.project.name).toBe("原项目");
     await cleanupWorkspace();
   });
 
-  it("clears typed draft slices when overwriting workspace", async () => {
+  it("clears typed draft slices when overwriting the same project slug", async () => {
     await cleanupWorkspace();
-    await initWorkspaceProject({ name: "旧项目", ifExists: "error" });
-    await upsertDraftSlice(createDraftSlice({
-      type: "worldbook_entry",
+    const first = await initWorkspaceProject({ name: "同名项目", ifExists: "error" });
+    await upsertDraftSlice(first.slug, createDraftSlice({
+      type: "entry",
       id: "old-entry",
       data: { comment: "旧条目", entryType: "world_summary", keys: ["旧"], secondaryKeys: [], content: "旧内容。", constant: true, position: "before_char", order: 1, enabled: true, preventRecursion: true, excludeRecursion: true },
     }));
-    const exportedPath = path.resolve(path.dirname(WORKSPACE_PROJECT_PATH), "..", "保留导出.json");
+    const exportedPath = path.resolve(path.dirname(WORKSPACE_DIR), "保留导出.json");
     await fs.writeFile(exportedPath, "keep", "utf8");
 
-    const { project } = await initWorkspaceProject({ name: "新项目", ifExists: "overwrite" });
-    const loaded = await loadWorkspaceProjectIfMatches(project.id);
+    const { project, slug } = await initWorkspaceProject({ name: "同名项目", ifExists: "overwrite" });
+    const loaded = await readProjectJson(slug);
 
-    expect(project.name).toBe("新项目");
-    expect(loaded?.draft).toBeUndefined();
-    expect(await listDraftSlices("worldbook_entry")).toHaveLength(0);
+    expect(project.name).toBe("同名项目");
+    expect(loaded.draft).toBeUndefined();
+    expect(await listDraftSlices(slug, "entry")).toHaveLength(0);
     await expect(fs.readFile(exportedPath, "utf8")).resolves.toBe("keep");
     await fs.rm(exportedPath, { force: true });
     await cleanupWorkspace();
@@ -91,16 +94,16 @@ describe("workspace store", () => {
 
   it("does not hydrate legacy project.draft from project.json", async () => {
     await cleanupWorkspace();
-    const { project } = await initWorkspaceProject({ name: "旧草稿不兼容", ifExists: "error" });
+    const { project, slug } = await initWorkspaceProject({ name: "旧草稿不兼容", ifExists: "error" });
     const legacyProject = {
       ...project,
       draft: [{ comment: "旧全量草稿", entryType: "world_summary", keys: ["旧"], secondaryKeys: [], content: "<entry>旧</entry>", constant: true, position: "before_char", order: 1, enabled: true, preventRecursion: true, excludeRecursion: true }],
     };
-    await fs.writeFile(WORKSPACE_PROJECT_PATH, `${JSON.stringify(legacyProject, null, 2)}\n`, "utf8");
-    await fs.rm(WORKSPACE_DRAFT_DIR, { recursive: true, force: true });
+    await fs.writeFile(projectJsonPath(slug), `${JSON.stringify(legacyProject, null, 2)}\n`, "utf8");
+    await fs.rm(projectSlicesDir(slug), { recursive: true, force: true });
 
-    const loaded = await loadWorkspaceProjectIfMatches(project.id);
-    expect(loaded?.draft).toBeUndefined();
+    const { project: loaded } = await loadProjectWithSlug(project.id);
+    expect(loaded.draft).toBeUndefined();
     await cleanupWorkspace();
   });
 });

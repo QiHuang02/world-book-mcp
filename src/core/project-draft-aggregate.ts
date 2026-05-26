@@ -1,13 +1,14 @@
 import { CharacterCardConfigSchema, type CharacterCardConfig } from "../schemas/character-card.js";
 import { DraftSliceDataSchemas, type DraftSlice, type DraftSliceDataSchemasByType } from "../schemas/draft-slice.js";
-import type { RegexScriptAsset } from "./mvu-assets.js";
 import { EjsConfigSchema, type EjsConfig } from "../schemas/ejs.js";
 import { HtmlBeautifyConfigSchema, type HtmlBeautifyConfig } from "../schemas/html-beautify.js";
 import { MvuConfigSchema, type MvuConfig } from "../schemas/mvu.js";
 import type { Project } from "../schemas/project.js";
 import type { WorldbookDraftEntry } from "../schemas/worldbook-draft.js";
-import { uniqueStrings } from "../utils/strings.js";
 import { listDraftSlices } from "../storage/draft-store.js";
+import { requireSlugByProjectId } from "../storage/workspace-store.js";
+import { uniqueStrings } from "../utils/strings.js";
+import type { RegexScriptAsset } from "./mvu-assets.js";
 
 export interface ProjectDraftAggregate {
   worldbookDraft: WorldbookDraftEntry[];
@@ -18,61 +19,35 @@ export interface ProjectDraftAggregate {
   extraRegexScripts: RegexScriptAsset[];
 }
 
-export async function aggregateProjectDraft(project: Project): Promise<ProjectDraftAggregate> {
-  const slices = await listDraftSlices();
+export async function aggregateProjectDraft(project: Project, slug?: string): Promise<ProjectDraftAggregate> {
+  const resolvedSlug = slug ?? await requireSlugByProjectId(project.id);
+  const slices = await listDraftSlices(resolvedSlug);
   return aggregateDraftSlices(project, slices);
 }
 
 export function aggregateDraftSlices(project: Project, slices: DraftSlice[]): ProjectDraftAggregate {
-  const worldbookDraft = enabledSlicesOf(slices, "worldbook_entry")
-    .map((slice) => dataOf(slice, "worldbook_entry"))
+  const worldbookDraft = enabledSlicesOf(slices, "entry")
+    .map((slice) => dataOf(slice, "entry"))
     .sort((a, b) => a.order - b.order || a.comment.localeCompare(b.comment, "zh-Hans-CN"));
 
-  const profile = lastEnabledSlice(slices, "character_profile");
-  const profileData = profile ? dataOf(profile, "character_profile") : undefined;
-  const greetings = lastEnabledSlice(slices, "character_greetings");
-  const greetingsData = greetings ? dataOf(greetings, "character_greetings") : undefined;
-  const characterCardConfig = profileData ? CharacterCardConfigSchema.parse({
+  const characterCardConfig = project.profile ? CharacterCardConfigSchema.parse({
     card: {
-      ...profileData,
-      ...(greetingsData ?? {}),
+      ...project.profile,
+      ...(project.greetings ?? {}),
     },
     worldbook: {
-      source: profileData.include_worldbook === false ? "none" : "project_draft",
-      name: profileData.worldbook_name ?? profileData.name,
+      source: project.profile.include_worldbook === false ? "none" : "project_draft",
+      name: project.profile.worldbook_name ?? project.profile.name,
     },
   }) : project.characterCardConfig;
 
-  const mvuSchema = lastEnabledSlice(slices, "mvu_schema");
-  const mvuRules = lastEnabledSlice(slices, "mvu_update_rules");
-  const mvuConfig = mvuSchema || mvuRules ? MvuConfigSchema.parse({
-    ...(mvuSchema ? dataOf(mvuSchema, "mvu_schema") : {}),
-    ...(mvuRules ? dataOf(mvuRules, "mvu_update_rules") : {}),
-  }) : project.mvuConfig;
+  const mvuSlice = lastEnabledSlice(slices, "mvu");
+  const mvuConfig = mvuSlice ? MvuConfigSchema.parse(dataOf(mvuSlice, "mvu")) : project.mvuConfig;
 
-  const htmlStatusbar = lastEnabledSlice(slices, "html_statusbar");
-  const htmlStatusbarData = htmlStatusbar ? dataOf(htmlStatusbar, "html_statusbar") : undefined;
-  const allRegexes = enabledSlicesOf(slices, "html_regex").map((slice) => dataOf(slice, "html_regex"));
-  const htmlRegexes = allRegexes.filter((regex) => regex.source === "html" || regex.source === undefined);
-  const extraRegexScripts = allRegexes
-    .filter((regex) => regex.source !== "html" && regex.source !== undefined)
-    .map(toRegexScriptAsset);
-  const htmlBeautifyConfig = htmlStatusbarData || htmlRegexes.length > 0 ? HtmlBeautifyConfigSchema.parse({
-    ...(htmlStatusbarData ? {
-      enabled: htmlStatusbarData.enabled,
-      target: htmlStatusbarData.target,
-      theme: htmlStatusbarData.theme,
-      statusbar: {
-        enabled: htmlStatusbarData.enabled,
-        html: htmlStatusbarData.html,
-        hide_regex: htmlStatusbarData.hide_regex,
-      },
-    } : {}),
-    global: { enabled: htmlRegexes.length > 0, regex_scripts: htmlRegexes.map(stripSource) },
-  }) : project.htmlBeautifyConfig;
+  const htmlSlice = lastEnabledSlice(slices, "html");
+  const htmlBeautifyConfig = htmlSlice ? HtmlBeautifyConfigSchema.parse(dataOf(htmlSlice, "html")) : project.htmlBeautifyConfig;
 
-  const ejsSlices = enabledSlicesOf(slices, "ejs_entry");
-  const ejsData = ejsSlices.map((slice) => dataOf(slice, "ejs_entry"));
+  const ejsData = enabledSlicesOf(slices, "ejs").map((slice) => dataOf(slice, "ejs"));
   const ejsEntries = ejsData.map(stripEjsMetadata);
   const ejsConfig = ejsEntries.length > 0 ? EjsConfigSchema.parse({
     enabled: true,
@@ -81,17 +56,19 @@ export function aggregateDraftSlices(project: Project, slices: DraftSlice[]): Pr
     entries: ejsEntries,
   }) : project.ejsConfig;
 
-  return { worldbookDraft, characterCardConfig, mvuConfig, htmlBeautifyConfig, ejsConfig, extraRegexScripts };
+  return { worldbookDraft, characterCardConfig, mvuConfig, htmlBeautifyConfig, ejsConfig, extraRegexScripts: project.extraRegexScripts ?? [] };
 }
 
 export interface HydratedProject {
   project: Project;
+  slug: string;
   extraRegexScripts: RegexScriptAsset[];
 }
 
-export async function hydrateProjectDraft(project: Project): Promise<HydratedProject> {
-  const aggregate = await aggregateProjectDraft(project);
-  return { project: projectWithAggregate(project, aggregate), extraRegexScripts: aggregate.extraRegexScripts };
+export async function hydrateProjectDraft(project: Project, slug?: string): Promise<HydratedProject> {
+  const resolvedSlug = slug ?? await requireSlugByProjectId(project.id);
+  const aggregate = await aggregateProjectDraft(project, resolvedSlug);
+  return { project: projectWithAggregate(project, aggregate), slug: resolvedSlug, extraRegexScripts: aggregate.extraRegexScripts };
 }
 
 export function projectWithAggregate(project: Project, aggregate: ProjectDraftAggregate): Project {
@@ -110,10 +87,6 @@ function enabledSlicesOf<T extends DraftSlice["type"]>(slices: DraftSlice[], typ
 }
 
 function lastEnabledSlice<T extends DraftSlice["type"]>(slices: DraftSlice[], type: T): (DraftSlice & { type: T }) | undefined {
-  // updatedAt 是 ISO 字符串（同时区、同精度），lexicographic 排序对毫秒级时间是单调的。
-  // 边界情形：两次写入落在同一毫秒内时，排序退化为字典序而非真实写入顺序。
-  // mvu_schema/mvu_update_rules/character_profile 等类型在实践中通常每个项目只保留 1 份，影响有限；
-  // 如果未来出现并发写入同一类型多份的场景，需要改用单调计数器或加上 nanoseconds 字段。
   return enabledSlicesOf(slices, type).sort((a, b) => a.updatedAt.localeCompare(b.updatedAt)).at(-1);
 }
 
@@ -121,31 +94,9 @@ function dataOf<T extends DraftSlice["type"]>(slice: DraftSlice & { type: T }, t
   return DraftSliceDataSchemas[type].parse(slice.data) as DraftSliceDataSchemasByType[T];
 }
 
-function stripSource(value: Record<string, unknown>): Record<string, unknown> {
-  const { source: _source, ...rest } = value;
-  return rest;
-}
-
 function stripEjsMetadata(value: Record<string, unknown>): Record<string, unknown> {
   const { source: _source, variable_paths: _variablePaths, template_type: _templateType, ...rest } = value;
   return rest;
-}
-
-function toRegexScriptAsset(value: Record<string, unknown>): RegexScriptAsset {
-  return {
-    scriptName: String(value.name ?? value.scriptName ?? "导入正则"),
-    findRegex: String(value.findRegex ?? ""),
-    replaceString: String(value.replaceString ?? ""),
-    trimStrings: Array.isArray(value.trimStrings) ? value.trimStrings.map(String) : [],
-    placement: Array.isArray(value.placement) ? value.placement.map(Number) : [2],
-    disabled: Boolean(value.disabled ?? false),
-    markdownOnly: Boolean(value.markdownOnly ?? true),
-    promptOnly: Boolean(value.promptOnly ?? false),
-    runOnEdit: Boolean(value.runOnEdit ?? false),
-    substituteRegex: Number(value.substituteRegex ?? 0),
-    minDepth: typeof value.minDepth === "number" ? value.minDepth : null,
-    maxDepth: typeof value.maxDepth === "number" ? value.maxDepth : null,
-  };
 }
 
 function firstString(values: unknown[]): string | undefined {

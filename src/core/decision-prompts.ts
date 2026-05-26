@@ -36,7 +36,7 @@ export function recordUserDecision(project: Project, input: {
 }): { project: Project; recorded: RecordedDecision } {
   const pending = (project.pendingDecisions ?? []).find((item) => item.id === input.id);
   if (!pending && !(project.recordedDecisions ?? []).some((item) => item.id === input.id)) {
-    throw new Error(`未找到 id=${input.id} 的 pending decision，请先调用 request_user_decision`);
+    throw new Error(`未找到 id=${input.id} 的 pending decision，请先调用 update_plan(mode="request_decision")`);
   }
   const selected = input.selected_values ?? [];
   if (pending) {
@@ -62,6 +62,10 @@ export function recordUserDecision(project: Project, input: {
   const newRecorded = [...(project.recordedDecisions ?? []).filter((item) => item.id !== input.id), recorded];
   const newPending = (project.pendingDecisions ?? []).filter((item) => item.id !== input.id);
   return { project: { ...project, pendingDecisions: newPending, recordedDecisions: newRecorded }, recorded };
+}
+
+export function getUserDecision(project: Project, id: string): PendingDecision | RecordedDecision | undefined {
+  return (project.pendingDecisions ?? []).find((item) => item.id === id) ?? (project.recordedDecisions ?? []).find((item) => item.id === id);
 }
 
 export function listUserDecisions(project: Project, filter?: { only_pending?: boolean; only_recorded?: boolean }): { pending: PendingDecision[]; recorded: RecordedDecision[] } {
@@ -101,6 +105,6 @@ function renderPrompt(decision: PendingDecision): string {
   lines.push("提问规范：一次只询问当前 decision.id 对应的单一主题，不要把多个独立主题合并成一个问题。");
   lines.push("复杂主题需拆成多个 decision 逐轮记录；世界观、人物设定、MVU 变量设计至少三轮追问后再进入写作或生成。");
   lines.push("MVU 变量设计至少分别确认：用途目标、变量清单、变量规格/初始值/更新条件，必要时再确认状态栏展示。");
-  lines.push(`请向用户复述上述内容并收集回答；用户答完后调用 record_user_decision 写入答案（id=${decision.id}）。`);
+  lines.push(`请向用户复述上述内容并收集回答；用户答完后调用 update_plan(mode="record_decision") 写入答案（id=${decision.id}）。`);
   return lines.join("\n");
 }

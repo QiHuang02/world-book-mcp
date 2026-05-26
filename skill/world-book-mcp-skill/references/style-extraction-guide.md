@@ -1,6 +1,8 @@
 # 文风提取与风格条目
 
-本文指导如何从源材料中提取写作风格特征，并转化为可指导 AI 输出的世界书条目或 style_profile draft。
+本文指导如何从源材料中提取写作风格特征，并转化为可指导 AI 输出的 `entry` 世界书条目。
+
+> 边界：文风提取、禁词条目、正负面写作规则属于 skill 层。MCP 不再注册 style profile 专用工具；最终通过 `create_draft_slice(draft_type="entry")` 写入。
 
 ## 一、文风提取维度
 
@@ -15,8 +17,8 @@
 | 描写重心 | 动作/环境/心理/对话/感官 | 动作和对话为主，极少心理描写 |
 | 标志性技法 | 作者独特的写作手法 | 自由间接引语、环境烘托情绪 |
 | 正面规则 | 应该做什么 | 用环境暗示心理，不直接写内心 |
-| 负面规则 | 不应该做什么 | 不用破折号解释，不写"似乎" |
-| 禁用词/模式 | 作者明确回避的表达 | 不用"一丝""仿佛"，不写八股微表情 |
+| 负面规则 | 不应该做什么 | 不用破折号解释，不写“似乎” |
+| 禁用词/模式 | 作者明确回避的表达 | 不用“一丝”“仿佛”，不写八股微表情 |
 
 ## 二、提取方法
 
@@ -34,8 +36,8 @@
 
 ```text
 ### 句长节奏
-- 证据："她站起来。椅子倒了。没人看她。"（连续短句，无连接词）
-- 证据："走廊尽头的灯灭了，她停下脚步，手指摸到墙壁上的裂缝。"（中等长度，感官细节）
+- 证据：“她站起来。椅子倒了。没人看她。”（连续短句，无连接词）
+- 证据：“走廊尽头的灯灭了，她停下脚步，手指摸到墙壁上的裂缝。”（中等长度，感官细节）
 - 结论：动作段落用极短句（3-8字），过渡段落用中等句（15-25字），无长句
 ```
 
@@ -51,7 +53,7 @@
 
 负面规则：
 - 不用破折号做因果解释
-- 不写"似乎""仿佛""好像"
+- 不写“似乎”“仿佛”“好像”
 - 不在对话后附加心理描写
 ```
 
@@ -71,7 +73,7 @@
 描写重心: 动作和对话为主，环境烘托情绪，极少直接心理描写
 禁止:
   - 破折号因果解释
-  - "似乎""仿佛""好像"等模糊词
+  - “似乎”“仿佛”“好像”等模糊词
   - 八股微表情（嘴角上扬、眼中闪过）
   - 语气声线标签（带着XX的口吻）
 </style_guide>
@@ -99,33 +101,19 @@ preventRecursion: true
 excludeRecursion: true
 ```
 
-## 四、MCP 工作流
-
-### 使用 style_profile draft
+## 四、MCP 落地流程
 
 ```text
-create_draft_slice(draft_type="style_profile", id="main-style")
-→ update_draft_field(field_path="narrative_perspective", value="third_person_limited")
-→ update_draft_field(field_path="sentence_length", value="short")
-→ update_draft_field(field_path="dialogue_ratio", value="high")
-→ update_draft_field(field_path="positive_rules", value=[...])
-→ update_draft_field(field_path="negative_rules", value=[...])
-→ update_draft_field(field_path="forbidden_terms", value=[...])
-→ submit_style_profile / build_style_worldbook_entries
-```
-
-### 使用 MCP 工具链
-
-```text
-create_style_extraction_template(project_id)
-→ 宿主 AI 分析源材料，填写 style profile
-→ submit_style_profile(project_id, profile)
-→ build_style_worldbook_entries(project_id)：自动生成风格条目和禁词条目
+宿主 AI 分析源材料，填写文风画像（可写在 plan）
+→ create_draft_slice(draft_type="entry", id="style-guide")
+→ update_draft_fields(..., changes={ entryType:"other", content:<style_guide>, constant:true, position:"before_char", order })
+→ 如需禁词条目，再创建 entry slice 写入 <forbidden_patterns>
+→ validate_draft(scope="worldbook")
 ```
 
 ## 五、禁词条目
 
-文风提取后应生成禁词条目，防止 AI 使用不符合目标风格的表达。`build_style_worldbook_entries` 会自动生成，也可手动创建：
+文风提取后应生成禁词条目，防止 AI 使用不符合目标风格的表达。可手动创建：
 
 ```yaml
 <forbidden_patterns>
@@ -139,12 +127,14 @@ create_style_extraction_template(project_id)
 </forbidden_patterns>
 ```
 
+完整禁词库见 `content-rules.md`。
+
 ## 六、常见错误
 
 | 错误 | 正确 |
 |------|------|
 | 文风分析写成文学评论 | 写成可执行的正面/负面规则 |
-| 规则太抽象（"文笔优美"） | 写具体（"动作段落用 3-8 字短句"） |
+| 规则太抽象（“文笔优美”） | 写具体（“动作段落用 3-8 字短句”） |
 | 只写禁止不写应该 | 正面指导比负面约束更有效 |
 | 把文风条目写成 500 字长文 | 控制在 200 字以内，简洁可执行 |
 | 忘记生成禁词条目 | 文风提取必须配套禁词条目 |

@@ -1,5 +1,4 @@
 import type { CharacterCardConfig } from "../schemas/character-card.js";
-import { lintContent } from "./content-lint.js";
 import { issue, section, splitIssues, withValid, type ValidationIssue, type ValidationSection } from "./validation-types.js";
 
 export type FirstMessageValidationResult = ValidationSection<{
@@ -45,9 +44,6 @@ export function validateFirstMessages(input: { config: CharacterCardConfig; mvu_
       issues.push(issue({ code: "first_mes.initvar_override", field, severity: "info", message: "alternate greeting 内含 UpdateVariable/initvar，会覆盖默认 initvar，请确认这是有意的分支初始状态" }));
       if (!looksLikeYaml(block[1])) issues.push(issue({ code: "first_mes.initvar_unparseable", field, severity: "warning", message: "UpdateVariable/initvar 内容不像可解析 YAML，请复核缩进与 key: value 结构" }));
     }
-
-    const lint = lintContent(greeting);
-    for (const lintIssue of lint.issues) issues.push(issue({ code: `first_mes.content.${lintIssue.severity}`, field, severity: lintIssue.severity, message: lintIssue.term ? `开场白文本问题：${lintIssue.term}` : lintIssue.message, suggestion: lintIssue.suggestion }));
   });
 
   return withValid(section({ ...splitIssues(issues), summary: { first_mes_present: Boolean(config.card.first_mes.trim()), alternate_greeting_count: config.card.alternate_greetings.length, total_greeting_count: greetings.length, mvu_placeholder_required: placeholderRequired, initvar_override_count: initvarOverrideCount } }));

@@ -16,7 +16,7 @@
  *   `\n---\nfoo: bar\n` -> `foo: bar`
  *   `foo: bar\n---\nbaz: qux` -> 保持不变（中间的 `---` 表示真正的多文档边界，留给上层决定）。
  */
-function stripYamlDocSeparators(content: string): string {
+export function stripYamlDocSeparators(content: string): string {
   if (!content) return content;
   let working = content;
 
@@ -45,7 +45,7 @@ function stripYamlDocSeparators(content: string): string {
  * 检查整段 content 是否被指定 XML 标签整体包裹（首尾位置）。
  * 标签名匹配大小写不敏感。
  */
-function hasXmlWrapper(content: string, tag: string): boolean {
+export function hasXmlWrapper(content: string, tag: string): boolean {
   const escaped = escapeRegExp(tag);
   return new RegExp(`^\\s*<${escaped}\\b[^>]*>[\\s\\S]*<\\/${escaped}>\\s*$`, "i").test(content);
 }
@@ -54,7 +54,7 @@ function hasXmlWrapper(content: string, tag: string): boolean {
  * 幂等地剥离 `<tag>...</tag>` 包裹。如果没有这个包裹，原样返回。
  * 仅在最外层匹配；内部内容不被改动。
  */
-function unwrapXmlTag(content: string, tag: string): string {
+export function unwrapXmlTag(content: string, tag: string): string {
   const escaped = escapeRegExp(tag);
   const match = content.match(new RegExp(`^\\s*<${escaped}\\b[^>]*>([\\s\\S]*)<\\/${escaped}>\\s*$`, "i"));
   if (!match) return content;

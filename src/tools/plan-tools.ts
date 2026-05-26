@@ -1,46 +1,71 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { loadProject, updateProject } from "../storage/project-store.js";
-import { appendDecision, appendPlanNote, readPlan, replacePlanSection, writePlan } from "../storage/plan-store.js";
+import { loadProjectWithSlug, updateProject } from "../storage/project-store.js";
+import { clearUserDecision, listUserDecisions, recordUserDecision, requestUserDecision } from "../core/decision-prompts.js";
+import { DecisionOptionSchema } from "../schemas/decision.js";
+import { appendDecision, appendPlanNote, planPath, readPlan, replacePlanSection, writePlan } from "../storage/plan-store.js";
 import { logToolCall } from "../storage/tool-log.js";
+import { resolveExpectedProjectRevision, versionSnapshot } from "../storage/version-manager.js";
 import { toolText } from "./helpers.js";
 
 export function registerPlanTools(server: McpServer): void {
   server.tool("update_plan", {
     project_id: z.string(),
-    mode: z.enum(["replace_section", "append_decision", "append_note", "set_export_target", "rewrite"]),
+    mode: z.enum(["replace_section", "append_decision", "append_note", "set_export_target", "rewrite", "request_decision", "record_decision", "list_decisions", "clear_decision"]),
     section: z.string().optional(),
     content: z.string().optional(),
     decision: z.object({ question: z.string(), answer: z.string(), rationale: z.string().optional() }).optional(),
     export_target: z.object({
       type: z.enum(["worldbook", "character_card", "both"]),
       filename: z.string().optional(),
-      strict_review: z.boolean().optional(),
+      strict_review: z.union([z.boolean(), z.enum(["off", "standard", "strict"])]).optional(),
     }).optional(),
     expected_revision: z.number().int().nonnegative().optional(),
+    expected_project_revision: z.number().int().nonnegative().optional(),
+    decision_request: z.object({
+      id: z.string().min(1),
+      question: z.string().min(1),
+      context: z.string().optional(),
+      source_tool: z.string().optional(),
+      options: z.array(DecisionOptionSchema).optional(),
+      allow_custom: z.boolean().optional(),
+      multiple: z.boolean().optional(),
+      default_value: z.string().optional(),
+    }).optional(),
+    decision_record: z.object({
+      id: z.string().min(1),
+      selected_values: z.array(z.string()).default([]),
+      custom_text: z.string().optional(),
+      append_to_plan: z.boolean().default(true),
+    }).optional(),
+    decision_filter: z.object({
+      only_pending: z.boolean().optional(),
+      only_recorded: z.boolean().optional(),
+    }).optional(),
+    decision_id: z.string().optional(),
   }, async (input) => toolText(await logToolCall("update_plan", input, async () => {
-    await loadProject(input.project_id);
-    let path: string;
+    const { slug } = await loadProjectWithSlug(input.project_id);
+    let planFilePath: string;
     switch (input.mode) {
       case "rewrite":
         if (input.content === undefined) throw new Error("rewrite 需要 content");
-        path = await writePlan(input.content);
+        planFilePath = await writePlan(slug, input.content);
         break;
       case "replace_section":
         if (!input.section || input.content === undefined) throw new Error("replace_section 需要 section 和 content");
-        path = await replacePlanSection(input.section, input.content);
+        planFilePath = await replacePlanSection(slug, input.section, input.content);
         break;
       case "append_note":
         if (!input.section || input.content === undefined) throw new Error("append_note 需要 section 和 content");
-        path = await appendPlanNote(input.section, input.content);
+        planFilePath = await appendPlanNote(slug, input.section, input.content);
         break;
       case "append_decision":
         if (!input.decision) throw new Error("append_decision 需要 decision");
-        path = await appendDecision(input.decision);
+        planFilePath = await appendDecision(slug, input.decision);
         break;
       case "set_export_target":
         if (!input.export_target) throw new Error("set_export_target 需要 export_target");
-        path = await replacePlanSection("15. 导出计划", [
+        planFilePath = await replacePlanSection(slug, "15. 导出计划", [
           `- 导出类型：${input.export_target.type}`,
           `- 文件名：${input.export_target.filename ?? "未指定"}`,
           `- strict review：${input.export_target.strict_review ?? false}`,
@@ -53,13 +78,55 @@ export function registerPlanTools(server: McpServer): void {
             export_filename: input.export_target!.filename,
             strict_review: input.export_target!.strict_review,
           },
-        }), { expectedRevision: input.expected_revision });
+        }), { expectedRevision: resolveExpectedProjectRevision(input) });
         break;
+      case "request_decision": {
+        if (!input.decision_request) throw new Error("request_decision 需要 decision_request");
+        let result: ReturnType<typeof requestUserDecision> | undefined;
+        const saved = await updateProject(input.project_id, (latest) => {
+          result = requestUserDecision(latest, input.decision_request!);
+          return result.project;
+        }, { expectedRevision: resolveExpectedProjectRevision(input) });
+        if (!result) throw new Error("request_decision 未生成结果");
+        planFilePath = await appendPlanNote(slug, "4. 用户决策记录", `[待决] ${result.decision.question} (id=${result.decision.id})`);
+        return { ok: true, project_id: input.project_id, plan_path: planFilePath, decision: result.decision, prompt_text: result.prompt_text, recorded_already: result.recorded_already, version: versionSnapshot({ project: saved }) };
+      }
+      case "record_decision": {
+        if (!input.decision_record) throw new Error("record_decision 需要 decision_record");
+        let result2: ReturnType<typeof recordUserDecision> | undefined;
+        const saved = await updateProject(input.project_id, (latest) => {
+          result2 = recordUserDecision(latest, input.decision_record!);
+          return result2.project;
+        }, { expectedRevision: resolveExpectedProjectRevision(input) });
+        if (!result2) throw new Error("record_decision 未生成结果");
+        if (input.decision_record.append_to_plan !== false) {
+          const answer = input.decision_record.custom_text ?? input.decision_record.selected_values?.join(", ") ?? "";
+          planFilePath = await appendDecision(slug, { question: result2.recorded.question, answer, rationale: "" });
+        } else {
+          planFilePath = (await readPlan(slug), planPath(slug));
+        }
+        return { ok: true, project_id: input.project_id, plan_path: planFilePath, recorded: result2.recorded, version: versionSnapshot({ project: saved }) };
+      }
+      case "list_decisions": {
+        const { project: loaded3 } = await loadProjectWithSlug(input.project_id);
+        const decisions = listUserDecisions(loaded3, input.decision_filter);
+        return { ok: true, project_id: input.project_id, ...decisions };
+      }
+      case "clear_decision": {
+        if (!input.decision_id) throw new Error("clear_decision 需要 decision_id");
+        let cleared: ReturnType<typeof clearUserDecision> | undefined;
+        const saved = await updateProject(input.project_id, (latest) => {
+          cleared = clearUserDecision(latest, input.decision_id!);
+          return cleared.project;
+        }, { expectedRevision: resolveExpectedProjectRevision(input) });
+        if (!cleared) throw new Error("clear_decision 未生成结果");
+        planFilePath = await appendPlanNote(slug, "4. 用户决策记录", `[已清除] id=${input.decision_id}`);
+        return { ok: true, project_id: input.project_id, plan_path: planFilePath, cleared_pending: cleared.cleared_pending, cleared_recorded: cleared.cleared_recorded, version: versionSnapshot({ project: saved }) };
+      }
       default: {
-        const exhaustive: never = input.mode;
-        throw new Error(`未知 update_plan mode: ${exhaustive}`);
+        throw new Error(`未知 update_plan mode: ${input.mode}`);
       }
     }
-    return { ok: true, project_id: input.project_id, plan_path: path, plan_preview: (await readPlan()).slice(0, 1200) };
+    return { ok: true, project_id: input.project_id, plan_path: planFilePath, plan_preview: (await readPlan(slug)).slice(0, 1200) };
   })));
 }

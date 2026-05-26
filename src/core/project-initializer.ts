@@ -4,7 +4,8 @@ import { extractThirdPartyAssetsFromCharacterCard } from "./third-party-asset-im
 import { worldbookToDraft } from "./worldbook-importer.js";
 import { SillyTavernWorldbookSchema } from "../schemas/sillytavern-worldbook.js";
 import type { DraftSlice } from "../schemas/draft-slice.js";
-import type { ProjectImportRecord } from "../schemas/project.js";
+import type { RegexScriptAsset } from "./mvu-assets.js";
+import type { ProjectImportRecord, ProjectProfile, ProjectGreetings } from "../schemas/project.js";
 import { createDraftSlice, upsertDraftSlice } from "../storage/draft-store.js";
 import { findRootTavernJsonFiles } from "../storage/workspace-store.js";
 import { nowIso } from "../utils/ids.js";
@@ -18,32 +19,42 @@ export interface InitImportSummary {
   name?: string;
 }
 
-export async function importExistingTavernJsonFiles(): Promise<{ summaries: InitImportSummary[]; records: ProjectImportRecord[] }> {
+export interface InitProjectMetadataPatch {
+  profile?: ProjectProfile;
+  greetings?: ProjectGreetings;
+  extraRegexScripts?: RegexScriptAsset[];
+}
+
+export async function importExistingTavernJsonFiles(slug: string): Promise<{ summaries: InitImportSummary[]; records: ProjectImportRecord[]; projectPatch: InitProjectMetadataPatch }> {
   const files = await findRootTavernJsonFiles();
   const summaries: InitImportSummary[] = [];
   const records: ProjectImportRecord[] = [];
+  const projectPatch: InitProjectMetadataPatch = {};
   for (const file of files) {
-    const imported = await importTavernJsonFile(file);
+    const imported = await importTavernJsonFile(slug, file);
     summaries.push(imported.summary);
     records.push(imported.record);
+    if (imported.projectPatch?.profile && !projectPatch.profile) projectPatch.profile = imported.projectPatch.profile;
+    if (imported.projectPatch?.greetings && !projectPatch.greetings) projectPatch.greetings = imported.projectPatch.greetings;
+    if (imported.projectPatch?.extraRegexScripts?.length) projectPatch.extraRegexScripts = [...(projectPatch.extraRegexScripts ?? []), ...imported.projectPatch.extraRegexScripts];
   }
-  return { summaries, records };
+  return { summaries, records, projectPatch };
 }
 
-async function importTavernJsonFile(filePath: string): Promise<{ summary: InitImportSummary; record: ProjectImportRecord }> {
+async function importTavernJsonFile(slug: string, filePath: string): Promise<{ summary: InitImportSummary; record: ProjectImportRecord; projectPatch?: InitProjectMetadataPatch }> {
   const raw = await readJsonFile(filePath);
-  if (isCharacterCard(raw)) return importCharacterCard(filePath, raw as Record<string, unknown>);
-  return importWorldbook(filePath, raw);
+  if (isCharacterCard(raw)) return importCharacterCard(slug, filePath, raw as Record<string, unknown>);
+  return importWorldbook(slug, filePath, raw);
 }
 
-async function importWorldbook(filePath: string, raw: unknown): Promise<{ summary: InitImportSummary; record: ProjectImportRecord }> {
+async function importWorldbook(slug: string, filePath: string, raw: unknown): Promise<{ summary: InitImportSummary; record: ProjectImportRecord }> {
   const book = SillyTavernWorldbookSchema.parse(raw);
   const draft = worldbookToDraft(book);
   const written: InitImportSummary["draft_slices"] = [];
   for (const [index, entry] of draft.entries()) {
     const id = uniqueImportedId(filePath, `${index}-${entry.comment}`);
-    const { path: slicePath } = await upsertDraftSlice(createDraftSlice({ type: "worldbook_entry", id, title: entry.comment, data: entry }));
-    written.push({ type: "worldbook_entry", id, path: slicePath });
+    const { path: slicePath } = await upsertDraftSlice(slug, createDraftSlice({ type: "entry", id, title: entry.comment, data: entry }));
+    written.push({ type: "entry", id, path: slicePath });
   }
   return {
     summary: { path: filePath, type: "worldbook", draft_slices: written, worldbook_entry_count: draft.length, name: book.name },
@@ -51,33 +62,19 @@ async function importWorldbook(filePath: string, raw: unknown): Promise<{ summar
   };
 }
 
-async function importCharacterCard(filePath: string, raw: Record<string, unknown>): Promise<{ summary: InitImportSummary; record: ProjectImportRecord }> {
+async function importCharacterCard(slug: string, filePath: string, raw: Record<string, unknown>): Promise<{ summary: InitImportSummary; record: ProjectImportRecord; projectPatch: InitProjectMetadataPatch }> {
   const { config, draft } = characterCardToProjectData(raw);
   const written: InitImportSummary["draft_slices"] = [];
-  const profileId = uniqueImportedId(filePath, "profile");
-  const greetingsId = uniqueImportedId(filePath, "greetings");
-  const { path: profilePath } = await upsertDraftSlice(createDraftSlice({
-    type: "character_profile",
-    id: profileId,
-    title: `${config.card.name} profile`,
-    data: { ...config.card, include_worldbook: config.worldbook.source === "project_draft", worldbook_name: config.worldbook.name },
-  }));
-  written.push({ type: "character_profile", id: profileId, path: profilePath });
-  const { path: greetingsPath } = await upsertDraftSlice(createDraftSlice({
-    type: "character_greetings",
-    id: greetingsId,
-    title: `${config.card.name} greetings`,
-    data: { first_mes: config.card.first_mes, alternate_greetings: config.card.alternate_greetings },
-  }));
-  written.push({ type: "character_greetings", id: greetingsId, path: greetingsPath });
+  const profile: ProjectProfile = { ...config.card, include_worldbook: config.worldbook.source === "project_draft", worldbook_name: config.worldbook.name };
+  const greetings: ProjectGreetings = { first_mes: config.card.first_mes, alternate_greetings: config.card.alternate_greetings };
   const assets = extractThirdPartyAssetsFromCharacterCard({ card: raw, worldbookDraft: draft, idPrefix: uniqueImportedId(filePath, "assets") });
   for (const [index, entry] of assets.retainedWorldbookEntries.entries()) {
     const id = uniqueImportedId(filePath, `${index}-${entry.comment}`);
-    const { path: slicePath } = await upsertDraftSlice(createDraftSlice({ type: "worldbook_entry", id, title: entry.comment, data: entry }));
-    written.push({ type: "worldbook_entry", id, path: slicePath });
+    const { path: slicePath } = await upsertDraftSlice(slug, createDraftSlice({ type: "entry", id, title: entry.comment, data: entry }));
+    written.push({ type: "entry", id, path: slicePath });
   }
   for (const slice of assets.draftSlices) {
-    const { path: slicePath } = await upsertDraftSlice(slice);
+    const { path: slicePath } = await upsertDraftSlice(slug, slice);
     written.push({ type: slice.type, id: slice.id, path: slicePath });
   }
   return {
@@ -90,6 +87,7 @@ async function importCharacterCard(filePath: string, raw: Record<string, unknown
       ...assets.summary,
     },
     record: { path: filePath, type: "character_card", importedAt: nowIso(), worldbookEntryCount: assets.retainedWorldbookEntries.length, hasMvu: assets.summary.detected_mvu, hasHtml: assets.summary.detected_html, hasEjs: assets.summary.detected_ejs },
+    projectPatch: { profile, greetings, extraRegexScripts: assets.extraRegexScripts },
   };
 }
 

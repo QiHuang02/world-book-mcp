@@ -1,25 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { createDerivativeExtractionTemplate, derivativeOutlineToExtraction, validateDerivativeExtractionOutline } from "../src/core/derivative-outline.js";
+import { registerTools } from "../src/tools/register.js";
 
-describe("derivative outline", () => {
-  it("creates a full character/world extraction template", () => {
-    const outline = createDerivativeExtractionTemplate({ title: "测试", focus: ["characters", "world"] });
-    expect(outline.characters[0].dimensions).toHaveLength(8);
-    expect(outline.world_dimensions).toHaveLength(5);
-  });
-
-  it("validates chapter line ranges", () => {
-    const outline = createDerivativeExtractionTemplate();
-    outline.chapter_index[0].endLine = 0;
-    const result = validateDerivativeExtractionOutline(outline);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((issue) => issue.field?.includes("chapter_index"))).toBe(true);
-  });
-
-  it("converts outline to extraction result", () => {
-    const outline = createDerivativeExtractionTemplate({ title: "测试" });
-    outline.characters[0].dimensions[1].extracted_result = "异色瞳";
-    const extraction = derivativeOutlineToExtraction("project_x", outline);
-    expect(extraction.characters[0].appearance).toContain("异色瞳");
+describe("delegated derivative extraction workflow", () => {
+  it("does not register derivative extraction tools from MCP core", () => {
+    const names: string[] = [];
+    registerTools({ tool: (name: string) => { names.push(name); } } as never);
+    expect(names).not.toContain("create_derivative_extraction_template");
+    expect(names).not.toContain("submit_derivative_extraction_outline");
+    expect(names).not.toContain("validate_derivative_extraction_outline");
   });
 });

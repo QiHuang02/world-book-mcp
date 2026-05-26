@@ -8,6 +8,7 @@ import { MVU_OUTPUT_FORMAT_TAG, MVU_UPDATE_RULES_TAG } from "./mvu-assets.js";
 export interface ThirdPartyAssetExtractionResult {
   draftSlices: DraftSlice[];
   retainedWorldbookEntries: WorldbookDraftEntry[];
+  extraRegexScripts: RegexScriptAsset[];
   summary: {
     detected_mvu: boolean;
     detected_html: boolean;
@@ -57,42 +58,33 @@ export function extractThirdPartyAssetsFromCharacterCard(input: { card: Record<s
 
   if (schemaScript || initvar || updateRules || outputFormat || mvuRegexes.length > 0 || mvuEntries.length > 0) {
     draftSlices.push(createDraftSlice({
-      type: "mvu_schema",
-      id: `${input.idPrefix}-mvu-schema`,
-      title: "导入 MVU schema",
-      data: { enabled: true, style: "zod", schema_script: schemaScript, output_format: outputFormat, variable_list_path: variableListPath },
-    }));
-    draftSlices.push(createDraftSlice({
-      type: "mvu_update_rules",
-      id: `${input.idPrefix}-mvu-update-rules`,
-      title: "导入 MVU update rules",
-      data: { enabled: true, initvar, update_rules: updateRules, hide_regex: mvuRegexes.some((script) => script.promptOnly), beautify_regex: mvuRegexes.some((script) => !script.promptOnly) },
+      type: "mvu",
+      id: "mvu",
+      title: "导入 MVU 配置",
+      data: { enabled: true, style: "zod", schema_script: schemaScript, initvar, update_rules: updateRules, output_format: outputFormat, variable_list_path: variableListPath, hide_regex: mvuRegexes.some((script) => script.promptOnly), beautify_regex: mvuRegexes.some((script) => !script.promptOnly) },
     }));
   }
 
   const statusbarDisplay = htmlRegexes.find((script) => !script.promptOnly && /<|wbm-statusbar|Status/i.test(script.replaceString));
   const statusbarHide = htmlRegexes.find((script) => script.promptOnly);
-  if (statusbarDisplay) {
+  if (statusbarDisplay || htmlRegexes.length > 0) {
     draftSlices.push(createDraftSlice({
-      type: "html_statusbar",
-      id: `${input.idPrefix}-html-statusbar`,
-      title: "导入 HTML 状态栏",
-      data: { enabled: true, target: "statusbar", theme: "custom", html: statusbarDisplay.replaceString, hide_regex: Boolean(statusbarHide), source: "third_party" },
-    }));
-  }
-
-  for (const [index, script] of [...mvuRegexes, ...htmlRegexes, ...thirdPartyRegexes].entries()) {
-    draftSlices.push(createDraftSlice({
-      type: "html_regex",
-      id: `${input.idPrefix}-regex-${index + 1}`,
-      title: script.scriptName,
-      data: regexToDraft(script, isMvuRegex(script) ? "mvu" : isHtmlRegex(script) ? "html" : "third_party"),
+      type: "html",
+      id: "html",
+      title: "导入 HTML 美化配置",
+      data: {
+        enabled: true,
+        target: statusbarDisplay ? "statusbar" : "global",
+        theme: "custom",
+        statusbar: { enabled: Boolean(statusbarDisplay), html: statusbarDisplay?.replaceString ?? "", hide_regex: Boolean(statusbarHide) },
+        global: { enabled: htmlRegexes.length > 0, regex_scripts: htmlRegexes.map((script) => regexToDraft(script)) },
+      },
     }));
   }
 
   for (const [index, entry] of ejsEntries.entries()) {
     draftSlices.push(createDraftSlice({
-      type: "ejs_entry",
+      type: "ejs",
       id: `${input.idPrefix}-ejs-${index + 1}`,
       title: entry.comment,
       data: {
@@ -116,6 +108,7 @@ export function extractThirdPartyAssetsFromCharacterCard(input: { card: Record<s
   return {
     draftSlices,
     retainedWorldbookEntries: retained,
+    extraRegexScripts: thirdPartyRegexes,
     summary: {
       detected_mvu: Boolean(schemaScript || initvar || updateRules || outputFormat || mvuRegexes.length || mvuEntries.length),
       detected_html: Boolean(statusbarDisplay || htmlRegexes.length),
@@ -199,7 +192,7 @@ function extractVariableListPath(content: string): string | undefined {
   return content.match(/format_message_variable::([^}\s<]+)/)?.[1];
 }
 
-function regexToDraft(script: RegexScriptAsset, source: "html" | "mvu" | "third_party") {
+function regexToDraft(script: RegexScriptAsset) {
   return {
     name: script.scriptName,
     findRegex: script.findRegex,
@@ -208,7 +201,6 @@ function regexToDraft(script: RegexScriptAsset, source: "html" | "mvu" | "third_
     promptOnly: script.promptOnly,
     placement: script.placement,
     runOnEdit: script.runOnEdit,
-    source,
   };
 }
 

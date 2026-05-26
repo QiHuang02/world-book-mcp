@@ -26,7 +26,7 @@ function assertNotInDeniedDir(resolved: string): void {
   const relative = path.relative(ROOT_DIR, resolved);
   // 已经过 assertInside(EXPORTS_DIR/CARDS_DIR/ROOT_DIR) 校验，这里只关心仓库内的子路径。
   if (relative.startsWith("..") || path.isAbsolute(relative)) return;
-  const segments = relative.split(/[\/]+/).filter(Boolean);
+  const segments = relative.split(/[\\/]+/).filter(Boolean);
   if (segments.length === 0) return;
   for (const denied of DENY_RELATIVE_DIRS) {
     const deniedSegments = denied.split("/").filter(Boolean);
@@ -99,4 +99,40 @@ export async function writeTextFileSafely(filePath: string, content: string, opt
     if (fileWriteQueues.get(resolved) === next) fileWriteQueues.delete(resolved);
   }));
   return next;
+}
+
+export function resolveBackupPath(filePath: string, date = new Date()): string {
+  const resolved = path.isAbsolute(filePath) ? filePath : path.resolve(ROOT_DIR, filePath);
+  const ext = path.extname(resolved);
+  const base = path.basename(resolved, ext);
+  const stamp = date.toISOString().replace(/[:.]/g, "-");
+  const backupDir = assertInside(path.resolve(ROOT_DIR, ".worldbook"), path.resolve(ROOT_DIR, ".worldbook", "backups"));
+  return assertInside(backupDir, path.resolve(backupDir, `${sanitizeFilename(base)}.${stamp}.bak${ext || ".txt"}`));
+}
+
+export async function backupIfExists(filePath: string): Promise<string | undefined> {
+  try {
+    await fs.access(filePath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
+  const backupPath = resolveBackupPath(filePath);
+  await fs.mkdir(path.dirname(backupPath), { recursive: true });
+  await fs.copyFile(filePath, backupPath);
+  return backupPath;
+}
+
+export async function writeTempThenCommit(input: { targetPath: string; content: string; tempId?: string; commit: () => Promise<void> }): Promise<void> {
+  const target = path.resolve(input.targetPath);
+  const temp = path.resolve(path.dirname(target), `.${path.basename(target)}.${input.tempId ?? process.pid}.tmp`);
+  await fs.mkdir(path.dirname(target), { recursive: true });
+  await fs.writeFile(temp, input.content, { encoding: "utf8", flag: "w" });
+  try {
+    await input.commit();
+    await fs.rename(temp, target);
+  } catch (error) {
+    await fs.rm(temp, { force: true });
+    throw error;
+  }
 }

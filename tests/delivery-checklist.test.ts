@@ -45,6 +45,12 @@ describe("createDeliveryChecklist", () => {
     expect(result.items.some((item) => item.section === "character_card" && item.status === "blocking")).toBe(true);
   });
 
+  it("does not include content lint or writing optimization items", () => {
+    const result = createDeliveryChecklist({ project: baseProject(), export_target: "worldbook" });
+    expect(result.items.some((item) => item.section === "content_lint")).toBe(false);
+    expect(result.items.some((item) => item.section === "writing_optimization")).toBe(false);
+  });
+
   it("blocks export when there are pending decisions", () => {
     const project = baseProject({
       pendingDecisions: [{

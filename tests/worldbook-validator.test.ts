@@ -26,10 +26,10 @@ describe("validateWorldbookDraft", () => {
     expect(result.errors.some((issue) => issue.field === "keys")).toBe(true);
   });
 
-  it("warns about forbidden content", () => {
-    const result = validateWorldbookDraft([makeEntry({ content: "<character>\n一抹笑意\n</character>" })]);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((issue) => issue.message.includes("一抹"))).toBe(true);
+  it("does not reject subjective banned terms", () => {
+    const result = validateWorldbookDraft([makeEntry({ content: "<character>\n一抹笑意、嘴角上扬、眸光\n</character>", scanDepth: 2 })]);
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
   });
 
   it("warns about duplicate comments", () => {

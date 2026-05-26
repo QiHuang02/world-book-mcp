@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { z, ZodTypeAny } from "zod";
 
-function parseJsonLike<T = unknown>(text: string): T {
+export function parseJsonLike<T = unknown>(text: string): T {
   try {
     return JSON.parse(text) as T;
   } catch (error) {
@@ -15,6 +15,8 @@ function parseJsonLike<T = unknown>(text: string): T {
 export function toPrettyJson(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
+
+export const stringifyPrettyJson = toPrettyJson;
 
 export async function readJsonFile<T = unknown>(filePath: string): Promise<T>;
 export async function readJsonFile<TSchema extends ZodTypeAny>(filePath: string, schema: TSchema): Promise<z.infer<TSchema>>;

@@ -41,7 +41,7 @@ export function toUiPath(path: string): string {
   return path === "stat_data" || path.startsWith("stat_data.") ? path : `stat_data.${path}`;
 }
 
-function fromUiPath(path: string): string {
+export function fromUiPath(path: string): string {
   return path.startsWith("stat_data.") ? path.slice("stat_data.".length) : path;
 }
 

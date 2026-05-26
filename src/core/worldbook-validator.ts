@@ -1,5 +1,4 @@
 import type { WorldbookDraftEntry } from "../schemas/worldbook-draft.js";
-import { lintContent } from "./content-lint.js";
 
 export interface ValidationIssue {
   entry?: string;
@@ -121,17 +120,6 @@ export function validateWorldbookDraft(entries: WorldbookDraftEntry[]): Validati
       issues.push({ entry: entry.comment, field: "order", severity: "warning", message: `order 与 ${previous} 在同一 position 中重复` });
     } else {
       orderSeen.set(orderKey, entry.comment);
-    }
-
-    const lint = lintContent(entry.content);
-    for (const lintIssue of lint.issues) {
-      issues.push({
-        entry: entry.comment,
-        field: "content",
-        severity: lintIssue.severity,
-        message: lintIssue.term ? `文本问题：${lintIssue.term}` : lintIssue.message,
-        suggestion: lintIssue.suggestion,
-      });
     }
   }
 

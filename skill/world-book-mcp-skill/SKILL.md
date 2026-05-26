@@ -1,11 +1,25 @@
 ---
 name: world-book-mcp-skill
-description: Use the world-book-mcp MCP server to create, modify, validate, and export SillyTavern world book JSON and chara_card_v3 character card JSON through the new .worldbook/plan.md + .worldbook/draft/ workflow, including existing JSON slicing, MVU/ZOD, HTML status bars, EJS dynamic entries, and silent MCP tool logs. Invoke whenever the user mentions SillyTavern, 世界书, 酒馆, 角色卡, chara_card_v3, MVU, HTML美化, EJS, draft, plan.md, init_project, create_draft_slice, update_draft_field, validate_draft, generate_json, or modifying existing Tavern JSON.
+description: Use when the user mentions SillyTavern, 世界书, 酒馆, 角色卡, chara_card_v3, world book JSON, character card JSON, MVU, HTML美化, EJS dynamic entries, or any world-book-mcp MCP tool (init_project, create_draft_slice, update_draft_field, validate_draft, generate_json, update_character_profile, update_character_greetings). Also use when asked to modify, import, or export existing Tavern world book / character card JSON files.
 ---
 
 # world-book-mcp 创作项目主线
 
-`world-book-mcp` 是 SillyTavern 世界书与 `chara_card_v3` 角色卡的创作项目编排器。它负责把需求、用户决策、draft 切片、MVU/EJS/HTML 资产和导出前校验串成同一条主线。
+`world-book-mcp` 是 SillyTavern 世界书与 `chara_card_v3` 角色卡的底层项目编排器。MCP server 只负责需求记录、project 元数据、draft 切片、MVU/EJS/HTML 资产、结构/协议/工程安全校验和导出。所有内容审美、八股禁词、文风优化、角色辨识度、世界观方法论、二创提取策略由本 skill 执行。
+
+## 适用判定
+
+**适用场景：**
+- 从零创建 SillyTavern 世界书或角色卡
+- 修改已有世界书/角色卡 JSON
+- 二创材料转化为世界书条目
+- 添加或修改 MVU 变量系统、HTML 状态栏、EJS 动态条目
+- 校验或导出世界书/角色卡 JSON
+
+**不适用场景：**
+- 纯内容讨论（不涉及 MCP 工具调用）— 按 `references/content-rules.md` 做内容建议即可
+- 只读取 JSON 内容而不修改 — 直接用 `query_json`
+- 非 SillyTavern 格式的 JSON
 
 ## 绝对主线
 
@@ -15,78 +29,117 @@ description: Use the world-book-mcp MCP server to create, modify, validate, and 
 init_project
 → requirements / request_user_decision / record_user_decision
 → update_plan
+→ update_character_profile / update_character_greetings（角色卡需要时）
 → create_draft_slice / update_draft_field(s)
 → validate_draft(scope)
+→ build_assets（有 MVU/EJS/HTML 时）
+→ skill 内容自查（content-rules.md）
 → review_project
 → check_delivery
 → generate_json
 ```
 
-`init_project` 是固定入口。修改已有 JSON 时也先调用 `init_project(scan_existing=true, import_strategy="auto")`，由 MCP 自动切片到 `.worldbook/draft/`。
+`init_project` 是固定入口。修改已有 JSON 时也先调用 `init_project(scan_existing=true, import_strategy=”auto”)`，由 MCP 自动导入：世界书条目切为 `entry`，角色卡 profile/greetings 写入 project 元数据，MVU/HTML/EJS 资产切为 `mvu/html/ejs`。
 
-## 强制路由
+## 当前数据模型
 
-- 原创角色卡：`character_profile` + `character_greetings` + 世界书条目，必要时加 MVU/HTML/EJS。
-- 纯世界书：只创建 `worldbook_entry`，但仍需记录 plan、需求边界和导出目标。
-- 二创/材料转化：先整理来源事实和 sourceRefs，再写 draft；不补原文未提及内容。
-- 修改已有 JSON：先导入切片，再只改相关 draft，不直接编辑最终 JSON。
-- MVU/EJS/HTML 局部任务：只改对应 draft slice，但必须跑对应 scope 校验和 `build_assets`。
-- 多阶段 EJS 人设：角色性格随变量变化时，使用 controller + stage 结构或单条目 if/else。详见 `references/multi-stage-ejs.md`。
-- 内容审查：优先 `validate_draft(scope="content")`、`review_project`、`check_delivery`。
+v2 工作区结构：
+
+```text
+.worldbook/
+  workspace.json
+  projects/<slug>/
+    project.json
+    plan.md
+    slices/
+      entries/*.json
+      assets/*.json
+  shared/{entries,assets}/
+  logs/*.jsonl
+```
+
+当前 draft_type：
+
+| draft_type | 含义 | id |
+|---|---|---|
+| `entry` | 世界书条目 | 自定义 |
+| `mvu` | MVU 资产（单例） | `”mvu”` |
+| `html` | HTML/regex 资产（单例） | `”html”` |
+| `ejs` | EJS 动态条目 | 自定义 |
+
+旧文档名映射（凭 token 名猜不准时先查 `references/tool-reference.md`）：`worldbook_entry→entry`，`character_profile→update_character_profile`，`character_greetings→update_character_greetings`，`mvu_schema/mvu_update_rules→mvu`，`html_statusbar/html_regex→html`，`ejs_entry→ejs`。
+
+## 任务路由
+
+按阶段×来源×范围三维路由，详见 `references/task-routing.md` 和 `references/workflows.md`。
+
+核心规则：
+- 原创角色卡：`update_character_profile(description=””)` + `update_character_greetings` + `entry` 角色条目
+- 纯世界书：只创建 `entry`，仍需 plan 和导出目标
+- 二创/材料转化：宿主 AI 整理来源事实和 sourceRefs，不补原文未提及内容
+- 修改已有 JSON：先导入切片，只改 project 元数据或相关 draft，**绝不直接编辑最终 JSON**
+- MVU/EJS/HTML 局部任务：只改对应 slice，但必须跑对应 scope 校验 + `build_assets`
+- 内容审查：`validate_draft(scope=”content”)` 仅返回 delegated info；实际检查由宿主 AI 按 `references/content-rules.md` 执行
 
 ## 需求对齐
 
-不确定的关键设定不要编造。使用：
+不确定的关键设定不要编造。流程：
 
 ```text
-request_user_decision → record_user_decision → update_plan(mode="append_decision")
+request_user_decision → record_user_decision → update_plan(mode=”append_decision”)
 ```
 
-必须记录到 plan：任务类型、输出目标、卡型（单角色/多角色）、是否启用 MVU/HTML/EJS、世界观边界、角色列表、用户禁忌、导出文件名、未决问题。
+必须记录到 plan：任务类型、输出目标、卡型、是否启用 MVU/HTML/EJS、世界观边界、角色列表、用户禁忌、导出文件名、未决问题。
+
+原创或设定不足时按主题逐轮推进：输出目标 → 卡型范围 → 世界观 → 人物设定 → 互动/开场 → 可选 MVU/EJS/HTML。每轮只问一个主题；用户信息足够时也要做缺口复核。MVU/EJS/HTML 仅在用户提及或任务明确需要时启用，不主动推销；EJS 必须依赖 MVU。
+
+稳定决策 id 与详细流程见 `references/requirements.md`。
 
 ## draft 创作规范
 
-`.worldbook/draft/` 是唯一真实工作区。常用切片：
+`.worldbook/projects/<slug>/slices/` 是真实工作区。
 
-- `worldbook_entry`：世界观、角色、物品、能力、场景、事件、NPC。
-- `character_profile`：角色卡 profile；description 默认应为空。
-- `character_greetings`：first_mes / alternate_greetings。
-- `mvu_schema`、`mvu_update_rules`：MVU ZOD、initvar、update_rules。
-- `html_statusbar`、`html_regex`：HTML 状态栏与正则资产。
-- `ejs_entry`：controller / stage / inline / helper 动态条目。 多阶段人设使用 controller + stage 结构，详见 `multi-stage-ejs.md`。
+- 角色卡 profile/greetings：写 project 元数据，不作为 draft slice。`description` 默认应为空。
+- 世界书条目：`create_draft_slice(draft_type=”entry”, id=...)` — 建议数据库式 XML 包裹 YAML：具体、短句、可触发、可维护。
+- MVU：`create_draft_slice(draft_type=”mvu”, id=”mvu”)`；变量级改动优先用 MVU variable tools。
+- HTML：`create_draft_slice(draft_type=”html”, id=”html”)`；状态栏写 `statusbar.*`，全局正则写 `global.regex_scripts`。
+- EJS：`create_draft_slice(draft_type=”ejs”, id=...)`；stage/helper 条目默认禁用或按需启用。
 
-世界书条目建议数据库式 XML 包裹 YAML：具体、短句、可触发、可维护。绿灯条目必须有 keys，物品/能力/场景/事件建议 `scanDepth=2`；条目默认双递归：`preventRecursion=true` 和 `excludeRecursion=true`。
+绿灯条目必须有 keys；物品/能力/场景/事件建议 `scanDepth=2`；条目默认双递归：`preventRecursion=true` 和 `excludeRecursion=true`。
 
-## MVU / EJS / HTML 一致性
+条目编排详细方法论见 `references/composition.md`，角色结构见 `references/character-creation.md`，世界观见 `references/worldbuilding-methodology.md`。
 
-- MVU 必须使用 `export const Schema = z.object(...)` 和 `registerMvuSchema(Schema)`。
-- MVU schema / initvar / update_rules 路径必须一致。
-- `_` 前缀是只读变量，不得被 AI 更新；`$` 前缀是 hidden 变量，不得输出或被 EJS/HTML 暴露。
-- EJS 必须依赖 MVU；路径写 `stat_data.xxx`，不得只写 `stat_data` 或 `角色A.好感度`。
-- EJS 的 `variable_paths`、`getvar(...)`、`_.get(stat_data, ...)` 必须与 MVU schema 对齐。
-- `getwi(...)` 引用的 stage/helper 条目必须存在；stage 默认 `enabled=false`。
-- HTML 状态栏必须有 `.wbm-statusbar` 作用域，禁止 `body/html/*` 全局选择器和外部 URL。
-- 多阶段 EJS 人设：变量声明用 `var` + `typeof` 防重复；条件边界无重叠无遗漏；底色和通用衍生放条件外；stage 条目 `enabled=false`。
-- 启用 MVU 或 HTML 状态栏时，开场白必须包含 `<StatusPlaceHolderImpl/>`。
+## 内容规则由 skill 执行
+
+交付前必须按 `references/content-rules.md` 检查：量子词、破折号、八股微表情、声线标签、极端情绪、廉价比喻、模糊修饰、抽象性格标签、外貌辨识度、关系证据、第四面墙、替 user 行动等。MCP 不再注册 `lint_worldbook_content`、`lint_project_content`、`create_writing_optimization_report`。
+
+## MVU / EJS / HTML 一致性（红线）
+
+详见 `references/assets-consistency.md`。核心红线：
+
+- MVU 必须含 `export const Schema = z.object(...)` + `registerMvuSchema(Schema)`；schema/initvar/update_rules 路径一致
+- `_` 前缀只读（AI 不得更新），`$` 前缀 hidden（不得输出或被 EJS/HTML 暴露）
+- EJS 必须依赖 MVU；路径写 `stat_data.xxx`；`variable_paths` 与 `getvar(...)` 对齐 MVU schema
+- `getwi(...)` 引用条目必须存在；stage 默认 `enabled=false`
+- HTML 状态栏必须有 `.wbm-statusbar` 作用域，禁止全局选择器和外部 URL
+- 启用 MVU 或 HTML 状态栏时，所有开场白必须含 `<StatusPlaceHolderImpl/>`
 
 局部资产修改后固定运行：
 
 ```text
-validate_draft(scope="mvu" | "ejs" | "html")
-build_assets(target="mvu" | "ejs" | "html" | "all")
+validate_draft(scope=”mvu” | “ejs” | “html”)
+build_assets(target=”mvu” | “ejs” | “html” | “all”)
 ```
 
 ## 开场白规范
 
-first_mes 必填。不得替 `{{user}}` / `<user>` 说话、行动、决定外貌、性别、房间、身份或后续选择。结尾应给 user 明确可行动方向。alternate greeting 可用 `<UpdateVariable><initvar>...</initvar></UpdateVariable>` 覆盖分支初始变量，但必须确认 YAML 可解析，并在 plan 中说明。
+first_mes 必填。不得替 `{{user}}` / `<user>` 说话、行动、决定外貌、性别、房间、身份或后续选择。结尾应给 user 明确可行动方向。详见 `references/first-message.md`。
 
 ## 校验与交付 gate
 
-`validate_draft` 统一返回 section 化 report。scope：
+`validate_draft` 统一返回 section 化 report。scope：`all | plan | worldbook | character_card | mvu | ejs | html | assets | content | delivery | style | chapter`（详见 `references/tool-reference.md` 的 scope→sections 映射）。
 
-```text
-all | plan | worldbook | character_card | mvu | ejs | html | assets | content | delivery | style | chapter
-```
+`content` / `style` / `chapter` scope 仅作兼容或 delegated 提示；不做内容质量判断。
 
 导出前必须：
 
@@ -100,27 +153,62 @@ generate_json(project_id, target)
 
 ## 禁止事项
 
-- 不绕过 `init_project` 开完整项目。
-- 不直接修改最终 JSON。
-- 不跳过 plan 记录用户决策。
-- 不把长篇原文塞进 MCP；只保存结构化提取结果和 draft。
-- 不把大段人设塞进 character card description。
-- 不让 EJS 脱离 MVU。
-- 不让 HTML 污染全局 CSS 或依赖外链。
-- 不在成品条目里写“这是角色卡/世界书/AI/模型/玩家正在使用”。
+- 不绕过 `init_project` 开完整项目
+- 不直接修改最终 JSON
+- 不跳过 plan 记录用户决策
+- 不把长篇原文塞进 MCP；只保存结构化提取结果和 draft
+- 不把大段人设塞进 character card description
+- 不让 EJS 脱离 MVU
+- 不让 HTML 污染全局 CSS 或依赖外链
+- 不在成品条目里写”这是角色卡/世界书/AI/模型/玩家正在使用”
+- 不使用旧 draft_type 调 MCP；旧名只用于迁移映射说明
+- 不调用已迁移的 MCP 工具：`lint_worldbook_content`、`lint_project_content`、`create_writing_optimization_report`、extraction/worldbuilding/style/chapter 专用工具
 
-详见 `references/`：task-routing、requirements、composition、content-rules、first-message、assets-consistency、conversion、workflows、config-rules、tool-reference、worldbuilding-methodology、character-creation、derivative-extraction、style-extraction-guide、rephrase-guide。
+## 常见错误
 
-`tool-reference.md` 列出每个 MCP 工具的常用参数、`field_path` 速查与各 `scope` 实际产出的 section keys，凭 token 名猜不准时优先查它。
+| 错误 | 正确 |
+|------|------|
+| 跳过 `init_project` 直接创建 draft | 始终从 `init_project` 开始；修改已有 JSON 也用 `scan_existing=true` |
+| 直接编辑导出的 JSON 文件 | 改 project metadata 或 draft slice，再重新 `generate_json` |
+| 把角色性格/外貌全塞进 `description` | profile `description` 默认留空；复杂设定进 `entry` |
+| `validate_draft(scope=”content”)` 不报错就当内容合格 | MCP 不做内容质量判断；宿主 AI 必须按 `content-rules.md` 人工审查 |
+| 用旧 draft_type 名（`worldbook_entry`、`mvu_schema` 等）调 MCP | 使用当前名：`entry`、`mvu`、`html`、`ejs` |
+| EJS 路径写 `角色A.好感度` 而不带 `stat_data.` 前缀 | 必须写完整路径：`stat_data.角色A.好感度` |
+| 手写整段 schema_script 而不用 MVU variable tools | 变量级改动优先用 `upsert_mvu_variable` / `remove_mvu_variable` |
+| pending decision 未解决就进入 delivery | 导出前运行 `list_user_decisions(only_pending=true)` 确认全部解决 |
+| `getwi()` 引用不存在的条目 | controller 引用的 stage 条目必须已创建（即使 `enabled=false`） |
+| 二创时补全原文没有的信息 | 标记 `原文未提及`，不推断不补全 |
 
-`worldbuilding-methodology.md` 指导世界观设计：类型判定（A/B/C）、维度取舍、总纲零度写作、条目分类与蓝绿灯配置。
+## Red Flags — 停下来检查
 
-`character-creation.md` 指导角色人物设定：XML+YAML 结构、性格调色盘、三面性方法、性格独立原则、开场白创作。
+出现以下想法时对照上表：
 
-`derivative-extraction.md` 指导二创信息提取：从小说/网络资源系统性提取角色维度、世界观、事件，标注章节行号，禁词剔除，outline 输出。
+- “这个项目很简单，不用 init_project 也行”
+- “我就直接改一下 JSON 文件，不改 schema”
+- “content scope 过了，内容应该没问题”
+- “我把性格写进 description 更省事”
+- “这条目不用 keys 也能工作”
+- “先跳过 plan，后面再补”
+- “force=true 导出算了，blocking 不重要”
+- “这个旧 draft_type 名我记得，不用查文档”
 
-`style-extraction-guide.md` 指导文风提取：从源材料分析叙事视角、句长节奏、描写重心等维度，转化为可执行的风格条目和禁词条目。
+**以上所有想法都意味着：停手，回到主线流程。**
 
-`rephrase-guide.md` 指导二次解释：作者对角色深层逻辑的注释，防止 AI 误解角色性格，引导用户自己创作。
+## reference 索引
 
-`multi-stage-ejs.md` 指导多阶段 EJS 人设：角色性格随 MVU 变量变化的条件渲染，controller + stage 结构，调色盘分阶段输出，条件边界校验。
+| 文件 | 内容 |
+|------|------|
+| `tool-reference.md` | MCP 工具参数、旧名映射、field_path 速查、scope→sections 映射、共享切片 |
+| `task-routing.md` | 任务路由：阶段×来源×范围三维判断、常见任务速查 |
+| `workflows.md` | 各场景完整工作流（原创角色卡、纯世界书、二创、修改已有、断点续作、资产局部） |
+| `requirements.md` | 需求对齐：主题式提问流程、决策 id、plan 字段、需求自查 |
+| `content-rules.md` | 内容审美：禁词库、八股微表情、具体性、第四面墙、自查流程 |
+| `composition.md` | 条目编排：规划表、条目创作循环、DoubleCheck、常见调整 |
+| `assets-consistency.md` | MVU/EJS/HTML 一致性红线、格式规范、tavern_helper 序列化 |
+| `first-message.md` | 开场白规范：禁止项、推荐模式、MVU/HTML 要求 |
+| `worldbuilding-methodology.md` | 世界观设计：类型判定 A/B/C、维度取舍、总纲零度写作、条目配置 |
+| `character-creation.md` | 角色设定：XML+YAML 结构、性格调色盘、三面性方法、性格独立原则 |
+| `derivative-extraction.md` | 二创提取：角色维度、世界观提取、禁词剔除、sourceRefs |
+| `style-extraction-guide.md` | 文风提取：采样分析、正负面规则、转化为世界书条目 |
+| `rephrase-guide.md` | 二次解释：防止 AI 误解角色性格、引导用户创作 |
+| `multi-stage-ejs.md` | 多阶段 EJS：controller+stage 结构、条件渲染、调色盘分阶段 |

@@ -1,6 +1,6 @@
 # 世界观设计方法论
 
-本文指导如何从零设计世界观并转化为世界书条目。设计阶段只输出结构化概念，不写条目内容；条目化由 `create_draft_slice` + `update_draft_field` 完成。
+本文指导如何从零设计世界观并转化为世界书条目。设计阶段只输出结构化概念，不写条目内容；条目化由 `create_draft_slice(draft_type="entry")` + `update_draft_field(s)` 完成。
 
 ## 一、世界观类型判定
 
@@ -63,7 +63,7 @@ update_plan(mode="replace_section", section="5. 世界观设定", content="类�
 【地理】雨隐村被永不停歇的雨水环抱，铁灰色的塔楼刺破灰暗的天际线，整座城市在细密的水幕中静默地呼吸着。
 ```
 
-**MCP 对接**：总纲写入 plan 后，用 `create_draft_slice(draft_type="worldbook_entry", id="world-summary")` 创建总纲条目。
+**MCP 对接**：总纲写入 plan 后，用 `create_draft_slice(draft_type="entry", id="world-summary")` 创建总纲条目。
 
 ## 四、从总纲到世界书条目
 
@@ -117,9 +117,9 @@ update_plan(mode="replace_section", section="5. 世界观设定", content="类�
 ```text
 init_project
 → update_plan：记录世界观类型、维度选择、总纲
-→ create_draft_slice(worldbook_entry, id="world-summary")
-→ update_draft_field(content=总纲内容, constant=true, position="before_char", order=1)
-→ 按条目规划表逐条 create_draft_slice + update_draft_fields
+→ create_draft_slice(draft_type="entry", id="world-summary")
+→ update_draft_fields(draft_type="entry", id="world-summary", changes={ content: 总纲内容, entryType:"world_summary", constant:true, position:"before_char", order:1 })
+→ 按条目规划表逐条创建 entry slice + update_draft_fields
 → validate_draft(scope="worldbook")
 ```
 

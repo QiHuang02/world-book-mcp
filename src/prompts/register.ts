@@ -3,22 +3,6 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 export function registerPrompts(server: McpServer): void {
   server.prompt(
-    "extract_facts_for_worldbook",
-    { topic: z.string().optional() },
-    ({ topic }) => ({
-      messages: [
-        {
-          role: "user",
-          content: {
-            type: "text",
-            text: `请根据 create_extraction_outline 的 schema，从素材中提取世界书事实。主题：${topic ?? "未指定"}。只提取来源中明确出现的信息，未知内容留空，不要补完。`,
-          },
-        },
-      ],
-    }),
-  );
-
-  server.prompt(
     "draft_entries_from_material",
     { project_id: z.string().optional() },
     ({ project_id }) => ({
@@ -27,7 +11,7 @@ export function registerPrompts(server: McpServer): void {
           role: "user",
           content: {
             type: "text",
-            text: `请根据用户材料、skill 配置规则和现有 draft 需求规划并起草世界书条目。项目：${project_id ?? "未指定"}。先创建 draft 切片模板，再逐字段写入 entry_type / keys / content；条目内容优先使用 XML 包裹 YAML。`,
+            text: `请根据用户材料、skill 配置规则和现有 draft 需求规划并起草世界书条目。项目：${project_id ?? "未指定"}。先创建 draft 切片模板，再逐字段写入 entryType / keys / content；条目内容优先使用 XML 包裹 YAML。`,
           },
         },
       ],
@@ -43,7 +27,7 @@ export function registerPrompts(server: McpServer): void {
           role: "user",
           content: {
             type: "text",
-            text: "请根据 validate_worldbook_draft 返回的 errors 和 warnings 修复草稿。必须先修复 error，再处理 warning。不要改变已经正确的设定事实。",
+            text: "请根据 validate_draft 返回的结构、协议和资产 errors/warnings 修复草稿。必须先修复 error，再处理 warning。内容审美、禁词和写作质量判断由 skill 层单独执行，不属于 MCP validation。",
           },
         },
       ],

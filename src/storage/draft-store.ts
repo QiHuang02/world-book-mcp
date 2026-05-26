@@ -3,35 +3,31 @@ import path from "node:path";
 import { DraftSliceDataSchemas, DraftSliceSchema, type DraftSlice, type DraftType } from "../schemas/draft-slice.js";
 import { nowIso } from "../utils/ids.js";
 import { readJsonFile, writeJsonFile } from "../utils/json.js";
-import { assertInside, ROOT_DIR, sanitizeFilename } from "./path-policy.js";
-
-const DRAFT_WORKSPACE_DIR = path.resolve(ROOT_DIR, ".worldbook", "draft");
+import { assertInside, sanitizeFilename } from "./path-policy.js";
+import { projectSlicesDir } from "./workspace-store.js";
 
 const DRAFT_TYPE_DIRS: Record<DraftType, string> = {
-  worldbook_entry: "worldbook",
-  character_profile: "character-card",
-  character_greetings: "character-card",
-  mvu_schema: "mvu",
-  mvu_update_rules: "mvu",
-  html_statusbar: "html",
-  html_regex: "html",
-  ejs_entry: "ejs",
-  style_profile: "style",
-  chapter_outline: "chapter",
+  entry: "entries",
+  mvu: "assets",
+  html: "assets",
+  ejs: "assets",
 };
 
 const UNIQUE_DRAFT_DIRS = Array.from(new Set(Object.values(DRAFT_TYPE_DIRS)));
 
-export function draftTypeDir(type: DraftType): string {
-  return assertInside(DRAFT_WORKSPACE_DIR, path.resolve(DRAFT_WORKSPACE_DIR, DRAFT_TYPE_DIRS[type]));
+export function draftTypeDir(slug: string, type: DraftType): string {
+  const slicesDir = projectSlicesDir(slug);
+  return assertInside(slicesDir, path.resolve(slicesDir, DRAFT_TYPE_DIRS[type]));
 }
 
-export function draftSlicePath(type: DraftType, id: string): string {
-  return assertInside(draftTypeDir(type), path.resolve(draftTypeDir(type), `${sanitizeFilename(id)}.json`));
+export function draftSlicePath(slug: string, type: DraftType, id: string): string {
+  const dir = draftTypeDir(slug, type);
+  return assertInside(dir, path.resolve(dir, `${sanitizeFilename(id)}.json`));
 }
 
-export async function ensureDraftDirs(): Promise<void> {
-  await Promise.all(UNIQUE_DRAFT_DIRS.map((dir) => fs.mkdir(path.resolve(DRAFT_WORKSPACE_DIR, dir), { recursive: true })));
+export async function ensureDraftDirs(slug: string): Promise<void> {
+  const slicesDir = projectSlicesDir(slug);
+  await Promise.all(UNIQUE_DRAFT_DIRS.map((dir) => fs.mkdir(path.resolve(slicesDir, dir), { recursive: true })));
 }
 
 export function createDraftSlice(input: { type: DraftType; id: string; title?: string; data: unknown; enabled?: boolean }): DraftSlice {
@@ -49,55 +45,52 @@ export function createDraftSlice(input: { type: DraftType; id: string; title?: s
   });
 }
 
-export async function readDraftSlice(type: DraftType, id: string): Promise<DraftSlice> {
-  return readJsonFile(draftSlicePath(type, id), DraftSliceSchema);
+export async function readDraftSlice(slug: string, type: DraftType, id: string): Promise<DraftSlice> {
+  return readJsonFile(draftSlicePath(slug, type, id), DraftSliceSchema);
 }
 
-export async function writeDraftSlice(slice: DraftSlice): Promise<string> {
-  await ensureDraftDirs();
+export async function writeDraftSlice(slug: string, slice: DraftSlice): Promise<string> {
+  await ensureDraftDirs(slug);
   const parsed = DraftSliceSchema.parse({ ...slice, data: DraftSliceDataSchemas[slice.type].parse(slice.data) });
-  const outputPath = draftSlicePath(parsed.type, parsed.id);
+  assertSingletonAssetId(parsed);
+  const outputPath = draftSlicePath(slug, parsed.type, parsed.id);
   await writeJsonFile(outputPath, parsed);
   return outputPath;
 }
 
-export async function upsertDraftSlice(slice: DraftSlice): Promise<{ path: string; slice: DraftSlice }> {
-  // 同一 (type, id) 的读 → 改 revision → 写需要串行化，避免并发 update_draft_field 调用
-  // 出现 "后写覆盖前写 + revision 重复" 的情况。client 仍可使用 expected_slice_revision
-  // 做协议层防御，这里是结构层兜底。
-  return enqueueDraftWrite(slice.type, slice.id, async () => {
+export async function upsertDraftSlice(slug: string, slice: DraftSlice): Promise<{ path: string; slice: DraftSlice }> {
+  return enqueueDraftWrite(slug, slice.type, slice.id, async () => {
     let next = slice;
     try {
-      const existing = await readDraftSlice(slice.type, slice.id);
+      const existing = await readDraftSlice(slug, slice.type, slice.id);
       next = DraftSliceSchema.parse({ ...slice, createdAt: existing.createdAt, updatedAt: nowIso(), revision: existing.revision + 1 });
     } catch (error) {
-      // Only a missing file means this is a create path; parse/schema errors must surface.
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
-    return { path: await writeDraftSlice(next), slice: next };
+    return { path: await writeDraftSlice(slug, next), slice: next };
   });
 }
 
 export async function updateDraftSliceWithRevisionCheck(
-  type: DraftType, id: string,
+  slug: string, type: DraftType, id: string,
   expectedRevision: number | undefined,
   mutator: (slice: DraftSlice) => DraftSlice,
 ): Promise<{ path: string; slice: DraftSlice }> {
-  return enqueueDraftWrite(type, id, async () => {
-    const existing = await readDraftSlice(type, id);
+  return enqueueDraftWrite(slug, type, id, async () => {
+    const existing = await readDraftSlice(slug, type, id);
     if (expectedRevision !== undefined && existing.revision !== expectedRevision) {
       throw new Error(`draft slice revision 冲突：expected=${expectedRevision}, actual=${existing.revision}`);
     }
     const next = mutator(existing);
     const parsed = DraftSliceSchema.parse({ ...next, createdAt: existing.createdAt, updatedAt: nowIso(), revision: existing.revision + 1 });
-    return { path: await writeDraftSlice(parsed), slice: parsed };
+    return { path: await writeDraftSlice(slug, parsed), slice: parsed };
   });
 }
 
 const draftWriteQueues = new Map<string, Promise<unknown>>();
 
-function enqueueDraftWrite<T>(type: DraftType, id: string, operation: () => Promise<T>): Promise<T> {
-  const key = `${type}::${id}`;
+function enqueueDraftWrite<T>(slug: string, type: DraftType, id: string, operation: () => Promise<T>): Promise<T> {
+  const key = `${slug}::${type}::${id}`;
   const previous = draftWriteQueues.get(key) ?? Promise.resolve();
   const next = previous.catch(() => undefined).then(operation);
   draftWriteQueues.set(key, next.finally(() => {
@@ -106,12 +99,12 @@ function enqueueDraftWrite<T>(type: DraftType, id: string, operation: () => Prom
   return next;
 }
 
-export async function listDraftSlices(type?: DraftType): Promise<DraftSlice[]> {
-  await ensureDraftDirs();
+export async function listDraftSlices(slug: string, type?: DraftType): Promise<DraftSlice[]> {
+  await ensureDraftDirs(slug);
   const types = type ? [type] : Object.keys(DRAFT_TYPE_DIRS) as DraftType[];
   const slices: DraftSlice[] = [];
   for (const currentType of types) {
-    const dir = draftTypeDir(currentType);
+    const dir = draftTypeDir(slug, currentType);
     const files = await fs.readdir(dir).catch(() => [] as string[]);
     for (const file of files.filter((item) => item.endsWith(".json")).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"))) {
       const slice = await readJsonFile(path.join(dir, file), DraftSliceSchema);
@@ -121,12 +114,18 @@ export async function listDraftSlices(type?: DraftType): Promise<DraftSlice[]> {
   return slices;
 }
 
-export async function deleteDraftSlice(type: DraftType, id: string): Promise<string> {
-  const outputPath = draftSlicePath(type, id);
+export async function deleteDraftSlice(slug: string, type: DraftType, id: string): Promise<string> {
+  const outputPath = draftSlicePath(slug, type, id);
   try {
     await fs.unlink(outputPath);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
   return outputPath;
+}
+
+function assertSingletonAssetId(slice: DraftSlice): void {
+  if ((slice.type === "mvu" || slice.type === "html") && slice.id !== slice.type) {
+    throw new Error(`${slice.type} 是每项目唯一资产切片，id 必须为 ${slice.type}`);
+  }
 }

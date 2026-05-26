@@ -28,10 +28,12 @@ describe("validateProject", () => {
     expect(Object.keys(report.sections).sort()).toEqual(["pending_decisions", "plan"]);
   });
 
-  it("content scope returns content_lint + writing_optimization (no content key)", () => {
+  it("content scope returns delegated info only", () => {
     const report = validateProject(baseProject(), { scope: "content" });
-    expect(Object.keys(report.sections).sort()).toEqual(["content_lint", "writing_optimization"]);
-    expect(report.sections.content).toBeUndefined();
+    expect(Object.keys(report.sections)).toEqual(["content_policy_delegated"]);
+    expect(report.sections.content_policy_delegated?.infos.some((issue) => issue.code === "content.scope.delegated")).toBe(true);
+    expect(report.sections.content_lint).toBeUndefined();
+    expect(report.sections.writing_optimization).toBeUndefined();
   });
 
   it("does not duplicate pending decisions inside plan section", () => {
@@ -88,7 +90,28 @@ describe("validateProject", () => {
     expect(report.sections.plan?.errors.some((issue) => issue.code === "plan.name.empty")).toBe(true);
   });
 
-  it("recommends record_user_decision when pending decisions exist", () => {
+  it("does not reject subjective banned terms in structurally valid draft", () => {
+    const project = baseProject({
+      draft: [{
+        comment: "条目",
+        entryType: "other",
+        keys: ["条目"],
+        secondaryKeys: [],
+        content: "<entry>\ntext: 一抹笑意停在嘴角上扬的眸光里\n</entry>",
+        constant: false,
+        position: "after_char",
+        order: 1,
+        enabled: true,
+        scanDepth: 2,
+        preventRecursion: true,
+        excludeRecursion: true,
+      }],
+    });
+    const report = validateProject(project, { scope: "worldbook" });
+    expect(report.sections.worldbook?.errors).toHaveLength(0);
+  });
+
+  it("recommends update_plan record_decision when pending decisions exist", () => {
     const project = baseProject({
       pendingDecisions: [{
         id: "card_type",
@@ -100,22 +123,22 @@ describe("validateProject", () => {
       }],
     });
     const report = validateProject(project, { scope: "all" });
-    expect(report.recommendations.some((line) => line.includes("record_user_decision"))).toBe(true);
+    expect(report.recommendations.some((line) => line.includes("update_plan"))).toBe(true);
   });
 });
 
 describe("sectionsForScope", () => {
-  it("delivery scope covers all blocking sections", () => {
+  it("delivery scope covers structural blocking sections only", () => {
     const keys = sectionsForScope("delivery");
     expect(keys).toContain("plan");
     expect(keys).toContain("pending_decisions");
     expect(keys).toContain("worldbook");
     expect(keys).toContain("character_card");
-    expect(keys).toContain("content_lint");
-    expect(keys).toContain("writing_optimization");
+    expect(keys).not.toContain("content_lint");
+    expect(keys).not.toContain("writing_optimization");
   });
 
-  it("content scope explicitly maps to content_lint + writing_optimization", () => {
-    expect([...sectionsForScope("content")].sort()).toEqual(["content_lint", "writing_optimization"]);
+  it("content scope explicitly maps to delegated section", () => {
+    expect([...sectionsForScope("content")]).toEqual(["content_policy_delegated"]);
   });
 });

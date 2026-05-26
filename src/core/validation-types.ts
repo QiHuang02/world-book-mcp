@@ -33,12 +33,12 @@ export type ProjectValidationScope = "all" | "plan" | "worldbook" | "character_c
  *
  * - `plan` 同时写入 `plan` 与 `pending_decisions`：plan 只检查项目元数据，pending_decisions
  *   作为未解决决策的唯一来源（warning），交付期由 delivery checklist 升级为 blocking。
- * - `content` 写入 `content_lint` 与 `writing_optimization`，没有同名 `content` section。
- * - `delivery` 包含 plan/worldbook/character_card/mvu/ejs/html/content 全部相关 section，
- *   并参与 ready_to_export 真值判断。
+ * - `content` 保持输入兼容，但只返回 `content_policy_delegated`：内容审美、禁词、八股文与写作质量检查
+ *   已迁移到 skill 层，MCP 不再执行文本质量判断。
+ * - `delivery` 只包含结构、协议、资产与导出安全相关 section，并参与 ready_to_export 真值判断。
  */
 export const SCOPE_SECTIONS: Record<ProjectValidationScope, readonly string[]> = {
-  all: ["plan", "pending_decisions", "worldbook", "character_card", "mvu", "ejs", "html", "content_lint", "writing_optimization", "assets", "style", "chapter"],
+  all: ["plan", "pending_decisions", "worldbook", "character_card", "mvu", "ejs", "html", "assets", "style", "chapter"],
   plan: ["plan", "pending_decisions"],
   worldbook: ["worldbook"],
   character_card: ["character_card"],
@@ -46,8 +46,8 @@ export const SCOPE_SECTIONS: Record<ProjectValidationScope, readonly string[]> =
   ejs: ["ejs"],
   html: ["html"],
   assets: ["assets"],
-  content: ["content_lint", "writing_optimization"],
-  delivery: ["plan", "pending_decisions", "worldbook", "character_card", "mvu", "ejs", "html", "content_lint", "writing_optimization"],
+  content: ["content_policy_delegated"],
+  delivery: ["plan", "pending_decisions", "worldbook", "character_card", "mvu", "ejs", "html"],
   style: ["style"],
   chapter: ["chapter"],
 };

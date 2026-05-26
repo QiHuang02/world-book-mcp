@@ -1,75 +1,242 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { migrateLegacyWorkspaceIfNeeded } from "../core/workspace-migrator.js";
 import { ProjectSchema, type Project } from "../schemas/project.js";
+import { WorkspaceSchema, type Workspace, type WorkspaceProjectEntry } from "../schemas/workspace.js";
 import { createId, nowIso } from "../utils/ids.js";
 import { readJsonFile, toPrettyJson, writeJsonFile } from "../utils/json.js";
 import { assertInside, ROOT_DIR, sanitizeFilename, writeTextFileSafely } from "./path-policy.js";
 import { ensureDraftDirs } from "./draft-store.js";
 import { ensureLogDir, LATEST_LOG_PATH, currentSessionId } from "./tool-log.js";
-import { ensurePlanFile, PLAN_PATH } from "./plan-store.js";
 
 export const WORKSPACE_DIR = path.resolve(ROOT_DIR, ".worldbook");
-export const WORKSPACE_PROJECT_PATH = path.resolve(WORKSPACE_DIR, "project.json");
-export const WORKSPACE_DRAFT_DIR = path.resolve(WORKSPACE_DIR, "draft");
+export const WORKSPACE_JSON_PATH = path.resolve(WORKSPACE_DIR, "workspace.json");
+const PROJECTS_DIR = path.resolve(WORKSPACE_DIR, "projects");
+
+// ─── slug 工具 ───────────────────────────────────────────────────────────────
+
+export function resolveProjectSlug(name: string): string {
+  // 中文/特殊字符 → 下划线，保留字母数字和连字符
+  const base = name
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fff-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  // 如果全是中文/非 ASCII，用 sanitizeFilename 兜底
+  return base || sanitizeFilename(name);
+}
+
+// ─── 路径工具 ─────────────────────────────────────────────────────────────────
+
+export function projectDir(slug: string): string {
+  return assertInside(PROJECTS_DIR, path.resolve(PROJECTS_DIR, slug));
+}
+
+export function projectJsonPath(slug: string): string {
+  return path.resolve(projectDir(slug), "project.json");
+}
+
+export function projectPlanPath(slug: string): string {
+  return path.resolve(projectDir(slug), "plan.md");
+}
+
+export function projectSlicesDir(slug: string): string {
+  return path.resolve(projectDir(slug), "slices");
+}
+
+// ─── workspace.json CRUD ──────────────────────────────────────────────────────
+
+export async function loadWorkspace(): Promise<Workspace> {
+  await migrateLegacyWorkspaceIfNeeded();
+  try {
+    return await readJsonFile(WORKSPACE_JSON_PATH, WorkspaceSchema);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return { version: 2, revision: 0, projects: [] };
+    }
+    throw error;
+  }
+}
+
+export async function saveWorkspace(workspace: Workspace, options: { bumpRevision?: boolean } = {}): Promise<void> {
+  await fs.mkdir(WORKSPACE_DIR, { recursive: true });
+  const next = WorkspaceSchema.parse({ ...workspace, revision: options.bumpRevision ? workspace.revision + 1 : workspace.revision });
+  await writeJsonFile(WORKSPACE_JSON_PATH, next);
+}
+
+export async function listProjectSlugs(): Promise<string[]> {
+  const workspace = await loadWorkspace();
+  return workspace.projects.map((p) => p.slug);
+}
+
+export function findProjectEntry(workspace: Workspace, slugOrId: string): WorkspaceProjectEntry | undefined {
+  return workspace.projects.find((p) => p.slug === slugOrId);
+}
+
+// ─── 多项目初始化 ─────────────────────────────────────────────────────────────
 
 export type InitWorkspaceIfExists = "error" | "return_existing" | "overwrite";
 export type InitProjectKind = "worldbook" | "character_card" | "mixed";
+
+export interface WorkspacePaths {
+  workspace_dir: string;
+  workspace_json: string;
+  project_dir: string;
+  project_json: string;
+  plan_md: string;
+  slices_dir: string;
+  logs_dir: string;
+  latest_log: string;
+}
+
+export async function initWorkspaceProject(input: {
+  name: string;
+  projectId?: string;
+  slug?: string;
+  kind?: InitProjectKind;
+  ifExists?: InitWorkspaceIfExists;
+}): Promise<{ project: Project; created: boolean; workspace: WorkspacePaths; slug: string }> {
+  const ifExists = input.ifExists ?? "error";
+  const kind = input.kind ?? "worldbook";
+  const slug = input.slug ?? resolveProjectSlug(input.name);
+
+  const workspace = await loadWorkspace();
+  const existingEntry = findProjectEntry(workspace, slug);
+
+  if (existingEntry && ifExists === "error") {
+    throw new Error(`项目 "${slug}" 已存在；如需复用请设置 if_exists=return_existing，如需重建请设置 if_exists=overwrite`);
+  }
+
+  if (existingEntry && ifExists === "return_existing") {
+    const project = await readProjectJson(slug);
+    await ensureProjectDirs(slug);
+    return { project, created: false, workspace: workspacePaths(slug), slug };
+  }
+
+  if (existingEntry && ifExists === "overwrite") {
+    await clearProjectData(slug);
+  }
+
+  await ensureProjectDirs(slug);
+  const timestamp = nowIso();
+  const project: Project = {
+    id: input.projectId ?? createId("project"),
+    slug,
+    name: input.name,
+    output_type: kind,
+    pendingDecisions: [],
+    recordedDecisions: [],
+    revision: 0,
+    plan: { enabled_assets: {} },
+    imports: [],
+    extraRegexScripts: [],
+    logs: { session_id: currentSessionId(), latest_log_path: LATEST_LOG_PATH },
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+  await writeProjectJson(slug, project);
+
+  // 更新 workspace.json
+  const entry: WorkspaceProjectEntry = { slug, name: input.name, output_type: kind };
+  if (existingEntry) {
+    workspace.projects = workspace.projects.map((p) => p.slug === slug ? entry : p);
+  } else {
+    workspace.projects.push(entry);
+  }
+  if (!workspace.default_project) workspace.default_project = slug;
+  await saveWorkspace(workspace, { bumpRevision: true });
+  await ensureLogDir();
+
+  return { project, created: true, workspace: workspacePaths(slug), slug };
+}
+
+// ─── 项目 JSON 读写 ──────────────────────────────────────────────────────────
+
+export async function readProjectJson(slug: string): Promise<Project> {
+  const filePath = projectJsonPath(slug);
+  const project = await readJsonFile(filePath, ProjectSchema);
+  const { draft: _legacyDraft, ...metadata } = project;
+  return metadata;
+}
+
+export async function writeProjectJson(slug: string, project: Project): Promise<void> {
+  await ensureProjectDirs(slug);
+  const { draft: _draft, ...metadata } = project;
+  await writeJsonFile(projectJsonPath(slug), metadata);
+}
+
+// ─── 按 project_id 查找 slug ─────────────────────────────────────────────────
+
+export async function findSlugByProjectId(projectId: string): Promise<string | undefined> {
+  const workspace = await loadWorkspace();
+  for (const entry of workspace.projects) {
+    try {
+      const project = await readProjectJson(entry.slug);
+      if (project.id === projectId) return entry.slug;
+    } catch {
+      // 跳过无法读取的项目
+    }
+  }
+  return undefined;
+}
+
+export async function requireSlugByProjectId(projectId: string): Promise<string> {
+  const slug = await findSlugByProjectId(projectId);
+  if (!slug) throw new Error(`未找到 project_id=${projectId} 对应的项目`);
+  return slug;
+}
+
+// ─── 目录管理 ─────────────────────────────────────────────────────────────────
+
+export async function ensureProjectDirs(slug: string): Promise<void> {
+  const dir = projectDir(slug);
+  await fs.mkdir(dir, { recursive: true });
+  await ensureDraftDirs(slug);
+  await ensurePlanFileForProject(slug);
+}
+
+async function ensurePlanFileForProject(slug: string): Promise<void> {
+  const planPath = projectPlanPath(slug);
+  try {
+    await fs.writeFile(planPath, DEFAULT_PLAN, { encoding: "utf8", flag: "wx" });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+  }
+}
+
+async function clearProjectData(slug: string): Promise<void> {
+  const dir = projectDir(slug);
+  await fs.rm(dir, { recursive: true, force: true });
+}
+
+export function workspacePaths(slug: string): WorkspacePaths {
+  return {
+    workspace_dir: WORKSPACE_DIR,
+    workspace_json: WORKSPACE_JSON_PATH,
+    project_dir: projectDir(slug),
+    project_json: projectJsonPath(slug),
+    plan_md: projectPlanPath(slug),
+    slices_dir: projectSlicesDir(slug),
+    logs_dir: path.dirname(LATEST_LOG_PATH),
+    latest_log: LATEST_LOG_PATH,
+  };
+}
+
+// ─── 旧版兼容：ensureWorkspaceDirs（供 tool-log 等使用） ──────────────────────
+
+export async function ensureWorkspaceDirs(): Promise<void> {
+  await fs.mkdir(WORKSPACE_DIR, { recursive: true });
+  await migrateLegacyWorkspaceIfNeeded();
+  await ensureLogDir();
+}
+
+// ─── 根目录模板 JSON ─────────────────────────────────────────────────────────
 
 export interface RootTemplateResult {
   created: boolean;
   reason: "created" | "existing_tavern_json";
   path?: string;
   existing_files?: string[];
-}
-
-export async function initWorkspaceProject(input: { name: string; projectId?: string; ifExists?: InitWorkspaceIfExists }): Promise<{ project: Project; created: boolean; workspace: WorkspacePaths }> {
-  const ifExists = input.ifExists ?? "error";
-  const existing = await loadWorkspaceProjectIfExists();
-  if (existing && ifExists === "error") {
-    throw new Error(".worldbook/project.json 已存在；如需复用请设置 if_exists=return_existing，如需重建请设置 if_exists=overwrite");
-  }
-  if (existing && ifExists === "return_existing") {
-    await ensureWorkspaceDirs();
-    return { project: existing, created: false, workspace: workspacePaths() };
-  }
-
-  if (existing && ifExists === "overwrite") {
-    await clearWorkspaceData();
-  }
-
-  await ensureWorkspaceDirs();
-  const timestamp = nowIso();
-  const project: Project = {
-    id: input.projectId ?? createId("project"),
-    name: input.name,
-    pendingDecisions: [],
-    recordedDecisions: [],
-    revision: 0,
-    plan: { enabled_assets: {} },
-    imports: [],
-    logs: { session_id: currentSessionId(), latest_log_path: LATEST_LOG_PATH },
-    createdAt: existing?.createdAt ?? timestamp,
-    updatedAt: timestamp,
-  };
-  await writeWorkspaceProject(project);
-  return { project, created: true, workspace: workspacePaths() };
-}
-
-export async function isWorkspaceProject(projectId: string): Promise<boolean> {
-  const project = await loadWorkspaceProjectIfExists();
-  return project?.id === projectId;
-}
-
-export async function loadWorkspaceProjectIfMatches(projectId: string): Promise<Project | undefined> {
-  const project = await loadWorkspaceProjectIfExists();
-  if (!project || project.id !== projectId) return undefined;
-  return project;
-}
-
-export async function writeWorkspaceProject(project: Project): Promise<void> {
-  await ensureWorkspaceDirs();
-  const { draft: _draft, ...metadata } = project;
-  await writeJsonFile(WORKSPACE_PROJECT_PATH, metadata);
 }
 
 export async function ensureRootTemplateJson(input: { name: string; kind?: InitProjectKind }): Promise<RootTemplateResult> {
@@ -102,9 +269,6 @@ export async function findRootTavernJsonFiles(): Promise<string[]> {
     if (!file.isFile() || !file.name.endsWith(".json")) continue;
     const filePath = path.resolve(ROOT_DIR, file.name);
     try {
-      // 不再维护"已知项目配置 JSON"的黑名单（package.json/tsconfig.json/...）；
-      // 直接交给 isTavernJson 做正向识别。结构上不像酒馆 JSON 的文件会被忽略，
-      // 解析失败的 JSON 也只是落入 catch 分支，IO 成本可以接受。
       const parsed = await readJsonFile(filePath);
       if (isTavernJson(parsed)) result.push(filePath);
     } catch {
@@ -114,49 +278,43 @@ export async function findRootTavernJsonFiles(): Promise<string[]> {
   return result.sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
 }
 
-export function workspacePaths(): WorkspacePaths {
-  return {
-    workspace_dir: WORKSPACE_DIR,
-    project_json: WORKSPACE_PROJECT_PATH,
-    draft_dir: WORKSPACE_DRAFT_DIR,
-    plan_md: PLAN_PATH,
-    logs_dir: path.dirname(LATEST_LOG_PATH),
-    latest_log: LATEST_LOG_PATH,
-  };
-}
+// ─── 内部工具 ─────────────────────────────────────────────────────────────────
 
-export interface WorkspacePaths {
-  workspace_dir: string;
-  project_json: string;
-  draft_dir: string;
-  plan_md: string;
-  logs_dir: string;
-  latest_log: string;
-}
+const DEFAULT_PLAN = `# World Book MCP Plan
 
-export async function ensureWorkspaceDirs(): Promise<void> {
-  await fs.mkdir(WORKSPACE_DRAFT_DIR, { recursive: true });
-  await ensureDraftDirs();
-  await ensurePlanFile();
-  await ensureLogDir();
-}
+## 1. 用户原始需求
 
-async function clearWorkspaceData(): Promise<void> {
-  await fs.rm(WORKSPACE_DRAFT_DIR, { recursive: true, force: true });
-  await fs.rm(PLAN_PATH, { force: true }).catch(() => undefined);
-  await ensureDraftDirs();
-}
+## 2. 任务类型与输出目标
 
-export async function loadWorkspaceProjectIfExists(): Promise<Project | undefined> {
-  try {
-    const project = await readJsonFile(WORKSPACE_PROJECT_PATH, ProjectSchema);
-    const { draft: _legacyDraft, ...metadata } = project;
-    return metadata;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-    throw error;
-  }
-}
+## 3. 已导入资产
+
+## 4. 用户决策记录
+
+| 问题 | 用户回答 | 说明 |
+|---|---|---|
+
+## 5. 世界观设定
+
+## 6. 角色设定
+
+## 7. 事件 / 场景 / 地点
+
+## 8. 物品 / 能力 / 装备
+
+## 9. MVU 设计
+
+## 10. HTML 美化设计
+
+## 11. EJS 动态内容设计
+
+## 12. 文风要求
+
+## 13. Draft 切片计划
+
+## 14. 校验计划
+
+## 15. 导出计划
+`;
 
 async function nextAvailableRootTemplateFilename(name: string): Promise<string> {
   const safeName = sanitizeFilename(name);

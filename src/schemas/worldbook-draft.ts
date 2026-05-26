@@ -101,6 +101,20 @@ export const WorldbookDraftFieldValueSchemas = {
   scan_depth: z.number().int().min(0).nullable(),
 } satisfies Record<z.infer<typeof WorldbookDraftFieldSchema>, z.ZodTypeAny>;
 
+export const CreateWorldbookDraftEntriesInputSchema = z.object({
+  project_id: z.string(),
+  entries: z.array(CreateWorldbookDraftTemplateInputSchema).min(1),
+}).superRefine((value, context) => {
+  const seen = new Set<string>();
+  value.entries.forEach((entry, index) => {
+    const comment = entry.comment.trim();
+    if (seen.has(comment)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["entries", index, "comment"], message: `comment 重复: ${comment}` });
+    }
+    seen.add(comment);
+  });
+});
+
 export type EntryType = z.infer<typeof EntryTypeSchema>;
 export type PositionName = z.infer<typeof PositionNameSchema>;
 export type WorldbookDraftEntry = z.infer<typeof WorldbookDraftEntrySchema>;

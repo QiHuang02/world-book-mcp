@@ -1,6 +1,6 @@
 # 角色人物设定方法论
 
-本文指导如何创建完善的角色人物设定并转化为世界书条目。涵盖角色结构、性格方法论、开场白创作。
+本文指导如何创建完善的角色人物设定并转化为世界书条目。涵盖角色结构、性格方法论、开场白创作。角色外貌辨识度、抽象性格标签、关系证据属于 skill 主观审稿范围，不由 MCP server 判断。
 
 ## 一、角色条目完整结构
 
@@ -15,15 +15,15 @@ gender: 性别
 nicknames: 昵称1、昵称2
 appearance:
   height: 数值+单位
-  hair: 发型/发色/长度——30字以内，只写特征
-  eyes: 瞳色/眼型——30字以内，写特征不写比喻
-  skin: 肤色——20字以内，只写偏离默认的特征
-  build: 体型——20字以内
+  hair: 发型/发色/长度，30字以内，只写特征
+  eyes: 瞳色/眼型，30字以内，写特征不写比喻
+  skin: 肤色，20字以内，只写偏离默认的特征
+  build: 体型，20字以内
   clothing:
     日常: xxx
     正式: xxx
   distinguishing: 标志性特征、异于常人的地方
-  voice: 声线/说话风格/不同情绪下的语气变化
+  voice: 说话习惯与语料特征，不写声线标签
 personality:
   core_drive: 最想要什么、最怕什么，一句话概括
   traits:
@@ -35,7 +35,7 @@ personality:
   hidden_self:
     - 不轻易示人的一面
 background: |
-  只写"改变了这个人"的关键事件。不写流水账。
+  只写“改变了这个人”的关键事件。不写流水账。
 abilities:
   - name: 能力名称
     acquisition: 如何获得
@@ -57,38 +57,38 @@ AI 有数据库默认认知。只写偏离默认的部分。
 |--------|------|
 | 中国人的黑发黑眼 | 异色瞳、疤痕、纹身、义肢 |
 | 18岁女生的年轻皮肤 | 特殊发色、标志性服装 |
-| "精致、白皙、好看" | 体型偏差、习惯性饰品 |
+| “精致、白皙、好看” | 体型偏差、习惯性饰品 |
 
 **判断标准：遮住名字，能否只靠外貌特征认出是谁？**
 
 ### 性格：有行为依据
 
 - 每条 trait 附带行为依据
-- 不写"她温柔"→写"空鱼受伤时不说教，沉默地坐在旁边递绷带"
+- 不写“她温柔”→写“空鱼受伤时不说教，沉默地坐在旁边递绷带”
 - `hidden_self` 写表里矛盾
 
 ### 背景：只写关键事件
 
 - 测试：删掉这条，角色会不会变？不会→删
-- 不写"她小时候很可爱""学习成绩不错"
+- 不写“她小时候很可爱”“学习成绩不错”
 
 ### 能力：数据化
 
-- 写具体做了什么，不写"威力强大"
-- 格式："触碰X可以做到Y"而非"拥有强大的X能力"
+- 写具体做了什么，不写“威力强大”
+- 格式：“触碰X可以做到Y”而非“拥有强大的X能力”
 - 限制和代价写在 effects 中
 
 ### 关系：具体画面
 
-- 不写"深厚的感情""好朋友"
+- 不写“深厚的感情”“好朋友”
 - 写具体事件和互动方式
 
 ## 三、性格独立原则
 
 性格**不写在基本信息里**，放在独立的性格世界书条目中。
 
-- "她17岁，高二，吉他手"是基本信息
-- "她表面冷漠实则护短、讨厌虚伪"是性格
+- “她17岁，高二，吉他手”是基本信息
+- “她表面冷漠实则护短、讨厌虚伪”是性格
 
 混在一起会导致 AI 读到基本信息就调用性格标签，后面的性格条目全在打架。
 
@@ -124,22 +124,9 @@ AI 有数据库默认认知。只写偏离默认的部分。
 - 可以写看似矛盾的内容——人就是复杂的
 - 可以跨性格关联衍生
 
-示例：
-
-```text
-底色：叛逆
-主色调：热情、不拘一格
-点缀：依赖
-
-热情衍生一：对摇滚有用不完的精力，创作、演唱、练习都百分百投入。
-热情衍生二：热情褪去后几天会像没电一样在某处睡觉或发呆。
-叛逆衍生一：不爽时直接说脏话、比中指。正常聊天不会。
-依赖衍生一：崩溃时抓着美铃的衣服不松手。
-```
-
 ## 五、三面性方法
 
-同一个人在不同压力环境下启动不同的生存策略。不是所有角色都需要——如果找不出两个以上"压力性质截然不同"的场景，就不需要。
+同一个人在不同压力环境下启动不同的生存策略。不是所有角色都需要——如果找不出两个以上“压力性质截然不同”的场景，就不需要。
 
 每张面需要五个部件：
 
@@ -153,22 +140,6 @@ AI 有数据库默认认知。只写偏离默认的部分。
 
 - **过渡**：面与面之间的切换过程（至少两组）
 - **渗透**：一张面运行中其他面的元素泄漏
-
-示例（简化）：
-
-```text
-第一面：学校——"秋大小姐"
-触发条件：校园环境、教师/同学在场
-语料："老师好。作业放在讲台上了。""嗯，我知道了。"
-身体行为：坐姿端正，微笑得体。唯一泄漏：手指在桌面下敲节拍。
-功能：保护壳。不出错就行。
-
-第二面：舞台——"真正的秋明月"
-触发条件：手碰到吉他、站上舞台
-语料："操！这段riff绝了！再来一遍！""规矩？老子的音乐没有规矩。"
-身体行为：踩音响、甩头、吉他抡出弧线。
-功能：存在证明。只有在舞台上她是秋明月。
-```
 
 ## 六、开场白创作
 
@@ -184,17 +155,6 @@ AI 有数据库默认认知。只写偏离默认的部分。
 - 角色通过行为和对话自然出场，不做人物介绍式罗列
 - 结尾留出互动点——让 user 有明确的事可回应
 
-错误（太平淡）：
-```text
-秋日的午后，阳光很好。你走在街上，准备去排练室。
-```
-
-正确（有拉力）：
-```text
-面试通过的通知只有一行字："下周一上午十点，排练室见。"
-附件里没有合同，只有两首未完成的demo和一个地址——巷子尽头、没有店招、地下二层。
-```
-
 ### MVU 项目
 
 - 开场白状态必须与 initvar 一致
@@ -204,17 +164,18 @@ AI 有数据库默认认知。只写偏离默认的部分。
 ## 七、MCP 工作流
 
 ```text
-init_project
-→ update_plan：记录角色列表、关系、卡型
-→ create_draft_slice(character_profile, id="main-profile")
-→ update_draft_fields(name, description="", personality="", ...)
-→ create_draft_slice(character_greetings, id="main-greetings")
-→ update_draft_fields(first_mes, alternate_greetings)
-→ create_draft_slice(worldbook_entry, id="char-basic")：角色基本信息条目
-→ create_draft_slice(worldbook_entry, id="char-personality")：性格独立条目
-→ 可选：物品/能力/场景/NPC 条目
+init_project(kind="character_card"|"mixed")
+→ update_plan：记录角色列表、关系、卡型、条目规划
+→ update_character_profile(changes={ name, description:"", include_worldbook:true, worldbook_name, ... })
+→ create_draft_slice(draft_type="entry", id="char-basic")：角色基本信息条目
+→ update_draft_fields(draft_type="entry", id="char-basic", changes={ entryType:"character_basic", characterName, content, constant, position, order, keys })
+→ create_draft_slice(draft_type="entry", id="char-personality")：性格独立条目
+→ update_draft_fields(draft_type="entry", id="char-personality", changes={ entryType:"character_personality", characterName, content, constant, position, order, keys })
+→ 可选：物品/能力/场景/NPC entry 条目
+→ update_character_greetings(changes={ first_mes, alternate_greetings })
 → validate_draft(scope="character_card")
 → validate_draft(scope="worldbook")
+→ 宿主 AI 按 content-rules.md 做角色辨识度、抽象标签、八股禁词自查
 ```
 
 ### 条目配置速查
@@ -235,7 +196,7 @@ init_project
 | 身材匀称，亭亭玉立 | 168cm，手臂有吉他练出的肌肉线条 |
 | 温婉优雅 | （不写，这是性格条目的事） |
 | 拥有强大的演奏能力 | 即兴solo，任何曲子听一遍能复刻 |
-| 从小一起长大感情深厚 | 有记忆起就在一起。交换拨片是她说"你很重要"的方式 |
+| 从小一起长大感情深厚 | 有记忆起就在一起。交换拨片是她说“你很重要”的方式 |
 | 她很温柔很善良 | 遇到受伤的小动物会带回家照顾 |
 
 ## 九、自查清单

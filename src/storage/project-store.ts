@@ -1,8 +1,18 @@
 import { ProjectSchema, type Project } from "../schemas/project.js";
 import { createId, nowIso } from "../utils/ids.js";
-import { ensureWorkspaceDirs, initWorkspaceProject, isWorkspaceProject, loadWorkspaceProjectIfExists, loadWorkspaceProjectIfMatches, writeWorkspaceProject } from "./workspace-store.js";
+import {
+  ensureProjectDirs,
+  initWorkspaceProject,
+  loadWorkspace,
+  readProjectJson,
+  requireSlugByProjectId,
+  writeProjectJson,
+} from "./workspace-store.js";
 
 export async function ensureStorage(): Promise<void> {
+  // 在新架构中，存储初始化由 initWorkspaceProject 按需完成
+  // 这里只确保 workspace 目录存在
+  const { ensureWorkspaceDirs } = await import("./workspace-store.js");
   await ensureWorkspaceDirs();
 }
 
@@ -12,29 +22,27 @@ export async function createProject(name: string, projectId?: string): Promise<P
 }
 
 export async function loadProject(projectId: string): Promise<Project> {
-  const workspaceProject = await loadWorkspaceProjectIfMatches(projectId);
-  if (workspaceProject) return workspaceProject;
-  const error = new Error(`未找到 .worldbook/project.json 或 project_id 不匹配: ${projectId}`) as NodeJS.ErrnoException;
-  error.code = "ENOENT";
-  throw error;
+  const slug = await requireSlugByProjectId(projectId);
+  return readProjectJson(slug);
+}
+
+export async function loadProjectWithSlug(projectId: string): Promise<{ project: Project; slug: string }> {
+  const slug = await requireSlugByProjectId(projectId);
+  const project = await readProjectJson(slug);
+  return { project, slug };
 }
 
 const projectQueues = new Map<string, Promise<unknown>>();
 
 export async function updateProject(projectId: string, mutator: (project: Project) => Project | Promise<Project>, options: { expectedRevision?: number } = {}): Promise<Project> {
   return enqueueProjectWrite(projectId, async () => {
-    const project = await loadProject(projectId);
+    const { project, slug } = await loadProjectWithSlug(projectId);
     if (options.expectedRevision !== undefined && project.revision !== options.expectedRevision) {
       throw new Error(`project revision conflict: expected ${options.expectedRevision}, current ${project.revision}`);
     }
     const next = await mutator(project);
-    // mutator 返回值里的 id 会被显式覆盖回原来的 project.id —— 这是不可变项目 id 的故意保护：
-    // 即使外部不小心修改了 id，存盘时也只承认初始化时的 id；revision 单调递增，updatedAt 用本次写入时间。
     const updated = ProjectSchema.parse({ ...next, id: project.id, revision: project.revision + 1, updatedAt: nowIso() });
-    if (!await isWorkspaceProject(project.id)) {
-      throw new Error(`project_id 不匹配，当前工作区不是 ${project.id}`);
-    }
-    await writeWorkspaceProject(updated);
+    await writeProjectJson(slug, updated);
     return updated;
   });
 }
@@ -51,9 +59,6 @@ function enqueueProjectWrite<T>(projectId: string, operation: () => Promise<T>):
 /**
  * 包装 updateProject 的常见模式：mutator 同时返回 { project, ...extra }，外部既要把 project 写回工作区，
  * 又要把 extra 字段返回给 caller。
- *
- * 用法：
- *   const { project, decision } = await withProjectMutation(projectId, (project) => requestUserDecision(project, input));
  */
 export async function withProjectMutation<T extends { project: Project }>(
   projectId: string,
@@ -69,9 +74,17 @@ export async function withProjectMutation<T extends { project: Project }>(
 }
 
 export async function listProjects(): Promise<Project[]> {
-  const project = await loadWorkspaceProjectIfExists();
-  if (!project) return [];
-  return [await loadProject(project.id)];
+  const workspace = await loadWorkspace();
+  const projects: Project[] = [];
+  for (const entry of workspace.projects) {
+    try {
+      const project = await readProjectJson(entry.slug);
+      projects.push(project);
+    } catch {
+      // 跳过无法读取的项目
+    }
+  }
+  return projects;
 }
 
 export function summarizeProject(project: Project, includeContent = false): unknown {
@@ -92,8 +105,12 @@ export function summarizeProject(project: Project, includeContent = false): unkn
     importedWorldbookPath: project.importedWorldbookPath,
     importedCharacterCardPath: project.importedCharacterCardPath,
     revision: project.revision,
+    has_profile: Boolean(project.profile),
+    has_greetings: Boolean(project.greetings),
     has_character_card_config: Boolean(project.characterCardConfig),
     character_card_name: project.characterCardConfig?.card.name,
+    profile: includeContent ? project.profile : undefined,
+    greetings: includeContent ? project.greetings : undefined,
     has_mvu_config: Boolean(project.mvuConfig),
     mvu_enabled: project.mvuConfig?.enabled,
     has_html_beautify_config: Boolean(project.htmlBeautifyConfig),
@@ -101,11 +118,13 @@ export function summarizeProject(project: Project, includeContent = false): unkn
     html_beautify_target: project.htmlBeautifyConfig?.target,
     has_ejs_config: Boolean(project.ejsConfig),
     ejs_enabled: project.ejsConfig?.enabled,
+    extra_regex_script_count: project.extraRegexScripts?.length ?? 0,
     ejs_template_type: project.ejsConfig?.template_type,
     characterCardConfig: includeContent ? project.characterCardConfig : undefined,
     mvuConfig: includeContent ? project.mvuConfig : undefined,
     htmlBeautifyConfig: includeContent ? project.htmlBeautifyConfig : undefined,
     ejsConfig: includeContent ? project.ejsConfig : undefined,
+    extraRegexScripts: includeContent ? project.extraRegexScripts : undefined,
     draft: includeContent ? project.draft : undefined,
     createdAt: project.createdAt,
     updatedAt: project.updatedAt,

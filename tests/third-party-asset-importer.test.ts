@@ -43,10 +43,9 @@ describe("third-party asset importer", () => {
     expect(result.summary.detected_html).toBe(true);
     expect(result.summary.detected_ejs).toBe(true);
     expect(result.retainedWorldbookEntries.map((entry) => entry.comment)).toEqual(["角色设定"]);
-    expect(result.draftSlices.some((slice) => slice.type === "mvu_schema")).toBe(true);
-    expect(result.draftSlices.some((slice) => slice.type === "mvu_update_rules")).toBe(true);
-    expect(result.draftSlices.some((slice) => slice.type === "html_statusbar")).toBe(true);
-    expect(result.draftSlices.some((slice) => slice.type === "ejs_entry")).toBe(true);
+    expect(result.draftSlices.some((slice) => slice.type === "mvu")).toBe(true);
+    expect(result.draftSlices.some((slice) => slice.type === "html")).toBe(true);
+    expect(result.draftSlices.some((slice) => slice.type === "ejs")).toBe(true);
   });
 
   it("strips `---` and XML wrappers when extracting MVU update_rules / output_format", () => {
@@ -59,12 +58,10 @@ describe("third-party asset importer", () => {
       ],
     });
 
-    const updateRulesSlice = result.draftSlices.find((slice) => slice.type === "mvu_update_rules");
-    const schemaSlice = result.draftSlices.find((slice) => slice.type === "mvu_schema");
-    expect(updateRulesSlice).toBeDefined();
-    expect(schemaSlice).toBeDefined();
-    const updateRules = (updateRulesSlice!.data as { update_rules: string }).update_rules;
-    const outputFormat = (schemaSlice!.data as { output_format: string }).output_format;
+    const mvuSlice = result.draftSlices.find((slice) => slice.type === "mvu");
+    expect(mvuSlice).toBeDefined();
+    const updateRules = (mvuSlice!.data as { update_rules: string }).update_rules;
+    const outputFormat = (mvuSlice!.data as { output_format: string }).output_format;
     expect(updateRules.startsWith("---")).toBe(false);
     expect(updateRules.includes("<variable_update_rules>")).toBe(false);
     expect(updateRules).toContain("变量更新规则:");

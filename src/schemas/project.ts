@@ -5,16 +5,31 @@ import { DerivativeExtractionOutlineSchema } from "./derivative-outline.js";
 import { ExtractionResultSchema } from "./extraction.js";
 import { StyleProfileSchema } from "./style-profile.js";
 import { WorldbookDraftEntrySchema } from "./worldbook-draft.js";
-import { CharacterCardConfigSchema } from "./character-card.js";
+import { CharacterCardBaseSchema, CharacterCardConfigSchema } from "./character-card.js";
 import { MvuConfigSchema } from "./mvu.js";
 import { HtmlBeautifyConfigSchema } from "./html-beautify.js";
 import { EjsConfigSchema } from "./ejs.js";
+
+const ExtraRegexScriptSchema = z.object({
+  scriptName: z.string().min(1),
+  findRegex: z.string(),
+  replaceString: z.string().default(""),
+  trimStrings: z.array(z.string()).default([]),
+  placement: z.array(z.number().int()).default([2]),
+  disabled: z.boolean().default(false),
+  markdownOnly: z.boolean().default(true),
+  promptOnly: z.boolean().default(false),
+  runOnEdit: z.boolean().default(false),
+  substituteRegex: z.number().int().default(0),
+  minDepth: z.number().nullable().default(null),
+  maxDepth: z.number().nullable().default(null),
+});
 
 export const ProjectPlanMetadataSchema = z.object({
   task_type: z.enum(["original", "derivative", "mixed", "modify_existing"]).optional(),
   output_target: z.enum(["worldbook", "character_card", "both"]).optional(),
   export_filename: z.string().optional(),
-  strict_review: z.boolean().optional(),
+  strict_review: z.union([z.boolean(), z.enum(["off", "standard", "strict"])]).optional(),
   enabled_assets: z.object({
     mvu: z.boolean().optional(),
     html: z.boolean().optional(),
@@ -37,6 +52,16 @@ export const ProjectLogMetadataSchema = z.object({
   latest_log_path: z.string(),
 }).optional();
 
+export const ProjectProfileSchema = CharacterCardBaseSchema.extend({
+  include_worldbook: z.boolean().default(true),
+  worldbook_name: z.string().optional(),
+});
+
+export const ProjectGreetingsSchema = z.object({
+  first_mes: z.string().default(""),
+  alternate_greetings: z.array(z.string()).default([]),
+});
+
 export const WorldbuildingSummarySchema = z.object({
   world_type: z.enum(["A_realistic_background", "B_small_world", "C_large_world"]),
   title: z.string().min(1),
@@ -52,7 +77,13 @@ export const WorldbuildingSummarySchema = z.object({
 
 export const ProjectSchema = z.object({
   id: z.string(),
+  slug: z.string().optional(),
   name: z.string(),
+  output_type: z.enum(["worldbook", "character_card", "mixed"]).optional(),
+  profile: ProjectProfileSchema.optional(),
+  greetings: ProjectGreetingsSchema.optional(),
+  style: StyleProfileSchema.optional(),
+  chapters: ChapterOutlineSchema.optional(),
   extraction: ExtractionResultSchema.optional(),
   derivativeOutline: DerivativeExtractionOutlineSchema.optional(),
   styleProfile: StyleProfileSchema.optional(),
@@ -68,6 +99,7 @@ export const ProjectSchema = z.object({
   mvuConfig: MvuConfigSchema.optional(),
   htmlBeautifyConfig: HtmlBeautifyConfigSchema.optional(),
   ejsConfig: EjsConfigSchema.optional(),
+  extraRegexScripts: z.array(ExtraRegexScriptSchema).optional().default([]),
   plan: ProjectPlanMetadataSchema,
   imports: z.array(ProjectImportRecordSchema).default([]),
   logs: ProjectLogMetadataSchema,
@@ -75,6 +107,8 @@ export const ProjectSchema = z.object({
   updatedAt: z.string(),
 });
 
+export type ProjectProfile = z.infer<typeof ProjectProfileSchema>;
+export type ProjectGreetings = z.infer<typeof ProjectGreetingsSchema>;
 export type WorldbuildingSummary = z.infer<typeof WorldbuildingSummarySchema>;
 export type ProjectPlanMetadata = z.infer<typeof ProjectPlanMetadataSchema>;
 export type ProjectImportRecord = z.infer<typeof ProjectImportRecordSchema>;
