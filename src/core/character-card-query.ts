@@ -15,7 +15,7 @@ export async function queryCharacterCard(input: { path: string; mode: CharacterC
         spec_version: card.spec_version,
         greeting_count: 1 + (card.data?.alternate_greetings?.length ?? 0),
         worldbook_name: card.data?.character_book?.name,
-        worldbook_entry_count: card.data?.character_book?.entries?.length ?? 0,
+        entry_count: card.data?.character_book?.entries?.length ?? 0,
         tags: card.data?.tags ?? card.tags ?? [],
       };
     case "worldbook_entries":

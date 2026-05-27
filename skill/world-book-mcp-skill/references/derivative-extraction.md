@@ -27,8 +27,8 @@
 ```text
 init_project(scan_existing=true)
 → update_plan：记录素材来源、任务类型、输出目标、sourceRefs 与提取维度
-→ 宿主 AI 按本文件整理提取表
-→ create_draft_slice(draft_type="entry") / update_draft_fields 写入条目
+→ 按本文件整理提取表
+→ create_draft_slice(draft_type="entry") 后使用 update_entry_content / update_entry_config 写入条目
 ```
 
 ## 三、网络搜索结果处理
@@ -139,12 +139,13 @@ init_project(scan_existing=true)
 ```text
 init_project
 → update_plan：记录素材来源、任务类型、输出目标、sourceRefs、章节行号索引
-→ 宿主 AI 阅读源材料，按本文件维度提取
+→ 阅读源材料，按本文件维度提取
 → update_plan：写入提取摘要、planned entries、原创补写边界
 → create_draft_slice(draft_type="entry") 逐条创建世界书条目
+→ 使用 update_entry_content / update_entry_config 填写条目正文与配置
 → 如需角色卡：update_character_profile + update_character_greetings
-→ validate_draft(scope="all")
-→ 宿主 AI 按 content-rules.md 做禁词/八股/具体性自查
+→ validate_project(scope="all")
+→ 按 content-rules.md 做禁词/八股/具体性自查
 → generate_json
 ```
 

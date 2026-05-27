@@ -6,6 +6,7 @@ import { registerLintReviewTools } from "./lint-review-tools.js";
 import { registerMvuVariableTools } from "./mvu-variable-tools.js";
 import { registerPlanTools } from "./plan-tools.js";
 import { registerProjectTools } from "./project-tools.js";
+import { registerRegexTools } from "./regex-tools.js";
 import { registerSharedTools } from "./shared-tools.js";
 
 export function registerTools(server: McpServer): void {
@@ -14,6 +15,7 @@ export function registerTools(server: McpServer): void {
   registerCharacterCardTools(server);
   registerDraftTools(server);
   registerMvuVariableTools(server);
+  registerRegexTools(server);
   registerExportTools(server);
   registerSharedTools(server);
   registerLintReviewTools(server);

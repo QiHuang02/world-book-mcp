@@ -1,77 +1,49 @@
-import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { importExistingTavernJsonFiles } from "../core/project-initializer.js";
-import { aggregateProjectDraft, hydrateProjectDraft, projectWithAggregate } from "../core/project-draft-aggregate.js";
+import { importExistingJson, scanImportCandidates } from "../core/import-existing-json.js";
+import { recomputeProjectKindFromSlices } from "../core/project-kind.js";
+import { listDraftSlices } from "../storage/draft-store.js";
 import { listProjects, loadProject, loadProjectWithSlug, summarizeProject, updateProject } from "../storage/project-store.js";
 import { ensureRootTemplateJson, initWorkspaceProject } from "../storage/workspace-store.js";
 import { logToolCall } from "../storage/tool-log.js";
-import type { ProjectImportRecord } from "../schemas/project.js";
 import { toolText } from "./helpers.js";
+import { GetProjectInputSchema, ImportExistingJsonInputSchema, InitProjectInputSchema } from "./project-tool-schemas.js";
 
 export function registerProjectTools(server: McpServer): void {
-  server.tool("init_project", {
-    name: z.string().min(1),
-    kind: z.enum(["worldbook", "character_card", "mixed"]).default("worldbook"),
-    project_id: z.string().optional(),
-    if_exists: z.enum(["error", "return_existing", "overwrite"]).default("error"),
-    scan_existing: z.boolean().default(true),
-    import_strategy: z.enum(["auto", "ask", "none"]).default("auto"),
-  }, async (input) => toolText(await logToolCall("init_project", input, async () => {
-    const { project, created, workspace, slug } = await initWorkspaceProject({ name: input.name, projectId: input.project_id, kind: input.kind, ifExists: input.if_exists });
-    const rootTemplate = await ensureRootTemplateJson({ name: input.name, kind: input.kind });
-    let imports: Awaited<ReturnType<typeof importExistingTavernJsonFiles>> | undefined;
-    const effectiveImportStrategy = input.import_strategy === "none" ? "none" : "auto";
-    if (input.scan_existing && effectiveImportStrategy === "auto") {
-      imports = await importExistingTavernJsonFiles(slug);
-      if (imports.records.length > 0) {
-        await updateProject(project.id, (latest) => ({
-          ...latest,
-          imports: imports!.records,
-          ...imports!.projectPatch,
-          ...rootTemplateImportPaths(rootTemplate.path, imports!.records),
-        }));
+  server.tool("init_project", InitProjectInputSchema.shape, async (input) => toolText(await logToolCall("init_project", input, async () => {
+    const parsed = InitProjectInputSchema.parse(input);
+    const scanExisting = parsed.source === "modify_existing" ? true : parsed.scan_existing ?? false;
+    const importStrategy = parsed.source === "modify_existing" ? parsed.import_strategy ?? "auto" : parsed.import_strategy ?? "none";
+    const { project, created, workspace, slug } = await initWorkspaceProject({ name: parsed.name, output: parsed.output, source: parsed.source, assets: parsed.assets, opening: parsed.opening, projectId: parsed.project_id, ifExists: parsed.if_exists });
+    const rootTemplate = parsed.source === "modify_existing" ? undefined : await ensureRootTemplateJson({ name: parsed.name, output: parsed.output });
+    let importResult: Awaited<ReturnType<typeof importExistingJson>> | undefined;
+    if (scanExisting) {
+      if (importStrategy === "ask") {
+        const candidates = await scanImportCandidates();
+        return { ok: candidates.length <= 1, project_id: project.id, slug, created, workspace, import_candidates: candidates, next_actions: ["选择候选 JSON 后调用 import_existing_json(path=...)"] };
       }
+      importResult = await importExistingJson(project, slug, { set_as_import_target: true });
+      if (importResult.candidates) return { ok: false, project_id: project.id, slug, created, workspace, import_candidates: importResult.candidates, warnings: importResult.warnings, next_actions: ["选择候选 JSON 后调用 import_existing_json(path=...)"] };
+      const slices = await listDraftSlices(slug);
+      await updateProject(project.id, (latest) => ({ ...importResult!.project, kind: recomputeProjectKindFromSlices(importResult!.project, slices), revision: latest.revision }));
     }
     const latest = await loadProject(project.id);
-    const aggregate = await aggregateProjectDraft(latest, slug);
-    const summarized = projectWithAggregate(latest, aggregate);
-    return {
-      project_id: latest.id,
-      name: latest.name,
-      slug,
-      kind: input.kind,
-      revision: latest.revision,
-      created,
-      workspace,
-      root_template: rootTemplate,
-      import_strategy: input.import_strategy,
-      effective_import_strategy: effectiveImportStrategy,
-      imports: imports?.summaries ?? [],
-      project: summarizeProject(summarized, false),
-      next_actions: [
-        "向用户确认任务类型、输出目标、MVU/HTML/EJS、文风与导出文件名",
-        "调用 update_plan 写入 plan.md",
-        "调用 create_draft_slice / update_draft_field 继续创建和填写 draft",
-      ],
-    };
+    return { ok: true, project_id: latest.id, name: latest.name, slug, revision: latest.revision, created, workspace, root_template: rootTemplate, imports: importResult?.created_slices ?? [], project: summarizeProject(latest, false), next_actions: ["调用 update_plan 记录需求", "调用 create_draft_slice 创建源切片", "调用语义化编辑工具填写内容"] };
   })));
 
-  server.tool("list_projects", {}, async () => toolText(await logToolCall("list_projects", {}, async () => {
-    const projects = await listProjects();
-    return { projects: projects.map((project) => summarizeProject(project, false)) };
+  server.tool("import_existing_json", ImportExistingJsonInputSchema.shape, async (input) => toolText(await logToolCall("import_existing_json", input, async () => {
+    const parsed = ImportExistingJsonInputSchema.parse(input);
+    const { project, slug } = await loadProjectWithSlug(parsed.project_id);
+    if (parsed.expected_project_revision !== undefined && project.revision !== parsed.expected_project_revision) throw new Error(`project revision conflict: expected ${parsed.expected_project_revision}, current ${project.revision}`);
+    const result = await importExistingJson(project, slug, parsed);
+    if (result.candidates) return { ok: false, candidates: result.candidates, warnings: result.warnings };
+    const slices = await listDraftSlices(slug);
+    const saved = await updateProject(project.id, () => ({ ...result.project, kind: recomputeProjectKindFromSlices(result.project, slices) }));
+    return { ok: true, project_id: project.id, import_record: result.importRecord, created_slices: result.created_slices, summary: result.summary, warnings: result.warnings, revision: saved.revision, next_tools: ["list_draft_slices", "validate_project(scope='all')"] };
   })));
 
-  server.tool("get_project", { project_id: z.string(), include_content: z.boolean().default(false) }, async (input) => toolText(await logToolCall("get_project", input, async () => {
-    const { project: loaded, slug } = await loadProjectWithSlug(input.project_id);
-    const { project } = await hydrateProjectDraft(loaded, slug);
-    return summarizeProject(project, input.include_content);
+  server.tool("list_projects", {}, async () => toolText(await logToolCall("list_projects", {}, async () => ({ projects: (await listProjects()).map((project) => summarizeProject(project, false)) }))));
+  server.tool("get_project", GetProjectInputSchema.shape, async (input) => toolText(await logToolCall("get_project", input, async () => {
+    const parsed = GetProjectInputSchema.parse(input);
+    return summarizeProject(await loadProject(parsed.project_id), parsed.include_content);
   })));
-}
-
-function rootTemplateImportPaths(templatePath: string | undefined, records: ProjectImportRecord[]): Pick<Awaited<ReturnType<typeof loadProject>>, "importedWorldbookPath" | "importedCharacterCardPath"> {
-  if (!templatePath) return {};
-  const templateRecord = records.find((record) => record.path === templatePath);
-  if (!templateRecord) return {};
-  if (templateRecord.type === "worldbook") return { importedWorldbookPath: templatePath };
-  return { importedCharacterCardPath: templatePath };
 }

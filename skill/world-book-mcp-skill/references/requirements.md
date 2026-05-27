@@ -21,7 +21,7 @@ MVU/EJS/HTML 不主动建议；只有用户提到、现有 JSON 已包含、或�
 
 完整项目应记录到 `plan.md`：
 
-- 任务类型：original / derivative / mixed / modify_existing。
+- 来源类型：original / derivative / modify_existing / composite。
 - 输出目标：worldbook / character_card / both。
 - 卡型：单角色卡 / 多角色卡 / 群像世界书。
 - 角色列表、称呼、关系、冲突。
@@ -48,7 +48,7 @@ request_user_decision
 
 不确定时写 pending decision，不把猜测写进成品 project metadata 或 draft。
 
-**交付影响**：pending decisions 会进入 `validate_draft(scope="plan")`、`review_project` 和 `check_delivery`。导出前应全部解决；不要用猜测替代用户决策。
+**交付影响**：pending decisions 会进入 `validate_project(scope="plan")`、`review_project` 和 `check_delivery`。导出前应全部解决；不要用猜测替代用户决策。
 
 **冲突处理**：同一 id 需要重问时，先 `clear_user_decision`。已记录决策和当前需求冲突时，先清除再记录新答案。
 
@@ -60,10 +60,11 @@ request_user_decision
 | first_mes / alternate_greetings | `update_character_greetings` |
 | 世界观/角色/物品/场景/事件 | `create_draft_slice(draft_type="entry")` |
 | MVU 变量方案 | `create_draft_slice(draft_type="mvu", id="mvu")` + MVU variable tools |
-| HTML 状态栏/全局正则 | `create_draft_slice(draft_type="html", id="html")` |
+| HTML 状态栏 | `create_draft_slice(draft_type="html", id="html")` |
+| 通用/第三方 regex | `create_draft_slice(draft_type="regex", id="...")` + regex tools |
 | EJS 动态内容 | `create_draft_slice(draft_type="ejs")` |
-| 文风画像 | 宿主 AI 按 `style-extraction-guide.md` 分析后写入 plan 或 `entry` slices |
-| 章节提取 | 宿主 AI 按 `derivative-extraction.md` 分析后写入 plan 或 `entry` slices |
+| 文风画像 | 按 `style-extraction-guide.md` 分析后写入 plan 或 `entry` slices |
+| 章节提取 | 按 `derivative-extraction.md` 分析后写入 plan 或 `entry` slices |
 
 ## 需求自查
 

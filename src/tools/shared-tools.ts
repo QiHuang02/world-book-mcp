@@ -1,5 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { ListSharedInputSchema, ShareSliceInputSchema, UseSharedInputSchema } from "../schemas/shared.js";
+import { ListSharedInputSchema, ShareSliceInputSchema, UseSharedInputSchema } from "./shared-tool-schemas.js";
 import { loadProjectWithSlug } from "../storage/project-store.js";
 import { listShared, shareSlice, useShared } from "../storage/shared-store.js";
 import { logToolCall } from "../storage/tool-log.js";

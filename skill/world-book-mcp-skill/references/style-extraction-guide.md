@@ -71,7 +71,7 @@
 句长节奏: 动作段落极短句（3-8字），过渡段落中等句（15-25字）
 对白规则: 不加语气修饰，不在对话后解释心理
 描写重心: 动作和对话为主，环境烘托情绪，极少直接心理描写
-禁止:
+规避表达:
   - 破折号因果解释
   - “似乎”“仿佛”“好像”等模糊词
   - 八股微表情（嘴角上扬、眼中闪过）
@@ -104,11 +104,12 @@ excludeRecursion: true
 ## 四、MCP 落地流程
 
 ```text
-宿主 AI 分析源材料，填写文风画像（可写在 plan）
+分析源材料，填写文风画像（可写在 plan）
 → create_draft_slice(draft_type="entry", id="style-guide")
-→ update_draft_fields(..., changes={ entryType:"other", content:<style_guide>, constant:true, position:"before_char", order })
+→ update_entry_content(id="style-guide", content=<style_guide>)
+→ update_entry_config(id="style-guide", changes={ entryType:"other", constant:true, position:"before_char", order })
 → 如需禁词条目，再创建 entry slice 写入 <forbidden_patterns>
-→ validate_draft(scope="worldbook")
+→ validate_project(scope="worldbook")
 ```
 
 ## 五、禁词条目
@@ -117,7 +118,7 @@ excludeRecursion: true
 
 ```yaml
 <forbidden_patterns>
-禁止使用:
+规避表达:
   - 一丝、一缕、一抹
   - 似乎、仿佛、宛如、好像
   - 嘴角微微上扬、眼中闪过

@@ -1,4 +1,5 @@
 export type ValidationSeverity = "error" | "warning" | "info";
+export type ValidationStatus = "ok" | "warning" | "blocking" | "skipped";
 
 export interface ValidationIssue {
   code: string;
@@ -8,9 +9,12 @@ export interface ValidationIssue {
   suggestion?: string;
   related_tools?: string[];
   entry?: string;
+  related_slice?: { type: string; id: string };
+  related_artifact?: { build_id?: string; target?: string; path?: string };
 }
 
 export interface ValidationSection<TSummary = unknown> {
+  status: ValidationStatus;
   ok: boolean;
   errors: ValidationIssue[];
   warnings: ValidationIssue[];
@@ -20,63 +24,37 @@ export interface ValidationSection<TSummary = unknown> {
 
 export interface ProjectValidationReport {
   ok: boolean;
+  ready_to_build: boolean;
   ready_to_export: boolean;
+  project_id: string;
   scope_used: ProjectValidationScope;
+  generated_at: string;
+  build?: { build_id?: string; manifest_path?: string; stale?: boolean; stale_reasons?: string[] };
+  summary: { blocking_count: number; warning_count: number; info_count: number; skipped_count: number };
   sections: Record<string, ValidationSection>;
   recommendations: string[];
+  next_actions: Array<{ tool: string; reason: string }>;
+  strict?: { mode: string; upgraded_count: number; upgraded: Array<{ section: string; code: string; field: string; message: string }> };
 }
 
-export type ProjectValidationScope = "all" | "plan" | "worldbook" | "character_card" | "mvu" | "ejs" | "html" | "assets" | "content" | "delivery" | "style" | "chapter";
+export type ProjectValidationScope = "all" | "project" | "plan" | "worldbook" | "character_card" | "opening" | "mvu" | "html" | "regex" | "ejs" | "assets" | "build" | "delivery" | "content";
 
-/**
- * 每个 scope 实际产出的 section keys。供调用方查阅。
- *
- * - `plan` 同时写入 `plan` 与 `pending_decisions`：plan 只检查项目元数据，pending_decisions
- *   作为未解决决策的唯一来源（warning），交付期由 delivery checklist 升级为 blocking。
- * - `content` 保持输入兼容，但只返回 `content_policy_delegated`：内容审美、禁词、八股文与写作质量检查
- *   已迁移到 skill 层，MCP 不再执行文本质量判断。
- * - `delivery` 只包含结构、协议、资产与导出安全相关 section，并参与 ready_to_export 真值判断。
- */
-export const SCOPE_SECTIONS: Record<ProjectValidationScope, readonly string[]> = {
-  all: ["plan", "pending_decisions", "worldbook", "character_card", "mvu", "ejs", "html", "assets", "style", "chapter"],
-  plan: ["plan", "pending_decisions"],
-  worldbook: ["worldbook"],
-  character_card: ["character_card"],
-  mvu: ["mvu"],
-  ejs: ["ejs"],
-  html: ["html"],
-  assets: ["assets"],
-  content: ["content_policy_delegated"],
-  delivery: ["plan", "pending_decisions", "worldbook", "character_card", "mvu", "ejs", "html"],
-  style: ["style"],
-  chapter: ["chapter"],
-};
+export const ALL_SECTION_KEYS = ["project", "plan", "pending_decisions", "worldbook", "character_card", "opening", "mvu", "html", "regex", "ejs", "assets", "build", "delivery", "content_policy_delegated"] as const;
 
 export function issue(input: Omit<ValidationIssue, "code"> & { code?: string }): ValidationIssue {
-  return { code: input.code ?? defaultCode(input.severity, input.field), ...input };
-}
-
-export function section<TSummary>(input: {
-  errors?: ValidationIssue[];
-  warnings?: ValidationIssue[];
-  infos?: ValidationIssue[];
-  summary: TSummary;
-  ok?: boolean;
-}): ValidationSection<TSummary> {
-  const errors = input.errors ?? [];
-  const warnings = input.warnings ?? [];
-  const infos = input.infos ?? [];
-  return { ok: input.ok ?? errors.length === 0, errors, warnings, infos, summary: input.summary };
+  return { ...input, code: input.code ?? defaultCode(input.severity, input.field) };
 }
 
 export function normalizeIssue(input: {
   field?: string;
   entry?: string;
-  severity: "error" | "warning" | "info";
+  severity: ValidationSeverity;
   message: string;
   suggestion?: string;
   related_tools?: string[];
   code?: string;
+  related_slice?: { type: string; id: string };
+  related_artifact?: { build_id?: string; target?: string; path?: string };
 }): ValidationIssue {
   return issue({
     code: input.code,
@@ -86,7 +64,28 @@ export function normalizeIssue(input: {
     message: input.message,
     suggestion: input.suggestion,
     related_tools: input.related_tools,
+    related_slice: input.related_slice,
+    related_artifact: input.related_artifact,
   });
+}
+
+export function section<TSummary>(input: {
+  errors?: ValidationIssue[];
+  warnings?: ValidationIssue[];
+  infos?: ValidationIssue[];
+  summary: TSummary;
+  ok?: boolean;
+  status?: ValidationStatus;
+}): ValidationSection<TSummary> {
+  const errors = input.errors ?? [];
+  const warnings = input.warnings ?? [];
+  const infos = input.infos ?? [];
+  const status = input.status ?? (errors.length > 0 ? "blocking" : warnings.length > 0 ? "warning" : "ok");
+  return { status, ok: input.ok ?? status !== "blocking", errors, warnings, infos, summary: input.summary };
+}
+
+export function skipped<TSummary>(summary: TSummary, message?: string): ValidationSection<TSummary> {
+  return section({ status: "skipped", ok: true, summary, infos: message ? [normalizeIssue({ code: "section.skipped", field: "scope", severity: "info", message })] : [] });
 }
 
 export function splitIssues(issues: ValidationIssue[]): Pick<ValidationSection, "errors" | "warnings" | "infos"> {
@@ -101,16 +100,13 @@ export function sectionFromIssues<TSummary>(issues: ValidationIssue[], summary: 
   return section({ ...splitIssues(issues), summary });
 }
 
-/** 把一个 section 包装成兼容旧 `valid` 字段的对象，给仍然以 `valid` 为契约的 validator 出口使用。 */
-export function withValid<T extends ValidationSection>(value: T): T & { valid: boolean } {
-  return { ...value, valid: value.ok };
+export function sectionStatus(value: ValidationSection | undefined, fallback: ValidationStatus = "warning"): ValidationStatus {
+  if (!value) return fallback;
+  return value.status;
 }
 
-export function sectionStatus(section: ValidationSection | undefined, fallback: "ok" | "warning" | "blocking" = "warning"): "ok" | "warning" | "blocking" {
-  if (!section) return fallback;
-  if (section.errors.length > 0) return "blocking";
-  if (section.warnings.length > 0) return "warning";
-  return "ok";
+export function withValid<T extends ValidationSection>(value: T): T & { valid: boolean } {
+  return { ...value, valid: value.ok };
 }
 
 function defaultCode(severity: ValidationSeverity, field: string): string {

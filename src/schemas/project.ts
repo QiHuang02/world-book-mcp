@@ -1,50 +1,66 @@
 import { z } from "zod";
-import { ChapterOutlineSchema } from "./chapter-outline.js";
 import { PendingDecisionSchema, RecordedDecisionSchema } from "./decision.js";
-import { DerivativeExtractionOutlineSchema } from "./derivative-outline.js";
-import { ExtractionResultSchema } from "./extraction.js";
-import { StyleProfileSchema } from "./style-profile.js";
-import { WorldbookDraftEntrySchema } from "./worldbook-draft.js";
-import { CharacterCardBaseSchema, CharacterCardConfigSchema } from "./character-card.js";
-import { MvuConfigSchema } from "./mvu.js";
-import { HtmlBeautifyConfigSchema } from "./html-beautify.js";
-import { EjsConfigSchema } from "./ejs.js";
+import { CharacterCardBaseSchema } from "./character-card.js";
+import { ProjectOutputKindSchema, ProjectSourceKindSchema } from "./workspace.js";
+import { RegexAssetSourceSchema } from "./regex.js";
 
-const ExtraRegexScriptSchema = z.object({
-  scriptName: z.string().min(1),
-  findRegex: z.string(),
-  replaceString: z.string().default(""),
-  trimStrings: z.array(z.string()).default([]),
-  placement: z.array(z.number().int()).default([2]),
-  disabled: z.boolean().default(false),
-  markdownOnly: z.boolean().default(true),
-  promptOnly: z.boolean().default(false),
-  runOnEdit: z.boolean().default(false),
-  substituteRegex: z.number().int().default(0),
-  minDepth: z.number().nullable().default(null),
-  maxDepth: z.number().nullable().default(null),
+export const AssetKindStateSchema = z.object({
+  planned: z.boolean().default(false),
+  enabled: z.boolean().default(false),
+  imported: z.boolean().default(false),
+  generated: z.boolean().default(false),
+  slice_count: z.number().int().nonnegative().default(0),
+});
+
+export const RegexAssetKindStateSchema = AssetKindStateSchema.extend({
+  sources: z.array(RegexAssetSourceSchema).default([]),
+});
+
+export const ProjectKindSchema = z.object({
+  output: ProjectOutputKindSchema,
+  source: ProjectSourceKindSchema,
+  assets: z.object({
+    mvu: AssetKindStateSchema,
+    html: AssetKindStateSchema,
+    regex: RegexAssetKindStateSchema,
+    ejs: AssetKindStateSchema,
+  }),
+});
+
+export const OpeningDesignSchema = z.object({
+  mode: z.enum(["first_meeting", "established_relationship", "event_hook", "crisis_or_mission", "daily_interaction", "custom"]),
+  user_role: z.enum(["unspecified", "observer", "invited", "collaborator", "opponent", "event_trigger"]),
+  premise: z.string().min(1),
+  user_constraints: z.array(z.string()).default([]),
+  notes: z.string().optional(),
 });
 
 export const ProjectPlanMetadataSchema = z.object({
-  task_type: z.enum(["original", "derivative", "mixed", "modify_existing"]).optional(),
-  output_target: z.enum(["worldbook", "character_card", "both"]).optional(),
   export_filename: z.string().optional(),
   strict_review: z.union([z.boolean(), z.enum(["off", "standard", "strict"])]).optional(),
-  enabled_assets: z.object({
-    mvu: z.boolean().optional(),
-    html: z.boolean().optional(),
-    ejs: z.boolean().optional(),
-  }).default({}),
-}).default({ enabled_assets: {} });
+}).default({});
 
 export const ProjectImportRecordSchema = z.object({
+  importId: z.string().min(1),
   path: z.string(),
   type: z.enum(["worldbook", "character_card"]),
   importedAt: z.string(),
-  worldbookEntryCount: z.number().int().nonnegative().optional(),
-  hasMvu: z.boolean().optional(),
-  hasHtml: z.boolean().optional(),
-  hasEjs: z.boolean().optional(),
+  sourceHash: z.string(),
+  sourceBytes: z.number().int().nonnegative(),
+  summary: z.object({
+    entryCount: z.number().int().nonnegative().default(0),
+    regexScriptCount: z.number().int().nonnegative().default(0),
+    hasCharacterProfile: z.boolean().default(false),
+    hasGreetings: z.boolean().default(false),
+    hasMvu: z.boolean().default(false),
+    hasHtml: z.boolean().default(false),
+    hasRegex: z.boolean().default(false),
+    hasEjs: z.boolean().default(false),
+  }),
+  exportTarget: z.object({
+    worldbookPath: z.string().optional(),
+    characterCardPath: z.string().optional(),
+  }).optional(),
 });
 
 export const ProjectLogMetadataSchema = z.object({
@@ -62,54 +78,45 @@ export const ProjectGreetingsSchema = z.object({
   alternate_greetings: z.array(z.string()).default([]),
 });
 
-export const WorldbuildingSummarySchema = z.object({
-  world_type: z.enum(["A_realistic_background", "B_small_world", "C_large_world"]),
-  title: z.string().min(1),
-  summary: z.string().default(""),
-  geography: z.string().optional(),
-  history: z.string().optional(),
-  factions: z.string().optional(),
-  rules: z.string().optional(),
-  society: z.string().optional(),
-  technology: z.string().optional(),
-  boundaries: z.string().optional(),
-});
-
 export const ProjectSchema = z.object({
+  schemaVersion: z.literal(3),
   id: z.string(),
-  slug: z.string().optional(),
+  slug: z.string(),
   name: z.string(),
-  output_type: z.enum(["worldbook", "character_card", "mixed"]).optional(),
+  kind: ProjectKindSchema,
+  opening: OpeningDesignSchema.optional(),
+  plan: ProjectPlanMetadataSchema,
   profile: ProjectProfileSchema.optional(),
   greetings: ProjectGreetingsSchema.optional(),
-  style: StyleProfileSchema.optional(),
-  chapters: ChapterOutlineSchema.optional(),
-  extraction: ExtractionResultSchema.optional(),
-  derivativeOutline: DerivativeExtractionOutlineSchema.optional(),
-  styleProfile: StyleProfileSchema.optional(),
-  chapterOutline: ChapterOutlineSchema.optional(),
-  worldbuildingSummary: WorldbuildingSummarySchema.optional(),
-  draft: z.array(WorldbookDraftEntrySchema).optional(),
-  importedWorldbookPath: z.string().optional(),
+  imports: z.array(ProjectImportRecordSchema).default([]),
   pendingDecisions: z.array(PendingDecisionSchema).default([]),
   recordedDecisions: z.array(RecordedDecisionSchema).default([]),
-  revision: z.number().int().nonnegative().default(0),
-  characterCardConfig: CharacterCardConfigSchema.optional(),
-  importedCharacterCardPath: z.string().optional(),
-  mvuConfig: MvuConfigSchema.optional(),
-  htmlBeautifyConfig: HtmlBeautifyConfigSchema.optional(),
-  ejsConfig: EjsConfigSchema.optional(),
-  extraRegexScripts: z.array(ExtraRegexScriptSchema).optional().default([]),
-  plan: ProjectPlanMetadataSchema,
-  imports: z.array(ProjectImportRecordSchema).default([]),
   logs: ProjectLogMetadataSchema,
+  revision: z.number().int().nonnegative().default(0),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
 
+export type AssetKindState = z.infer<typeof AssetKindStateSchema>;
+export type RegexAssetKindState = z.infer<typeof RegexAssetKindStateSchema>;
+export type ProjectKind = z.infer<typeof ProjectKindSchema>;
+export type OpeningDesign = z.infer<typeof OpeningDesignSchema>;
 export type ProjectProfile = z.infer<typeof ProjectProfileSchema>;
 export type ProjectGreetings = z.infer<typeof ProjectGreetingsSchema>;
-export type WorldbuildingSummary = z.infer<typeof WorldbuildingSummarySchema>;
 export type ProjectPlanMetadata = z.infer<typeof ProjectPlanMetadataSchema>;
 export type ProjectImportRecord = z.infer<typeof ProjectImportRecordSchema>;
 export type Project = z.infer<typeof ProjectSchema>;
+
+export function defaultProjectKind(input: { output: z.infer<typeof ProjectOutputKindSchema>; source: z.infer<typeof ProjectSourceKindSchema>; assets?: Partial<Record<"mvu" | "html" | "regex" | "ejs", boolean>> }): ProjectKind {
+  const asset = (planned = false): AssetKindState => ({ planned, enabled: false, imported: false, generated: false, slice_count: 0 });
+  return ProjectKindSchema.parse({
+    output: input.output,
+    source: input.source,
+    assets: {
+      mvu: asset(Boolean(input.assets?.mvu)),
+      html: asset(Boolean(input.assets?.html)),
+      regex: { ...asset(Boolean(input.assets?.regex)), sources: [] },
+      ejs: asset(Boolean(input.assets?.ejs)),
+    },
+  });
+}

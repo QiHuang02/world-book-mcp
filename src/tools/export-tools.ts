@@ -1,81 +1,55 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { buildCharacterCardJsonFromProject } from "../core/character-card-project-builder.js";
-import { queryCharacterCard } from "../core/character-card-query.js";
-import { createDeliveryChecklist } from "../core/delivery-checklist.js";
-import { buildProjectAssets } from "../core/project-assets.js";
+import { buildProjectRun, loadFreshBuild } from "../core/build-pipeline.js";
+import { exportFromBuild } from "../core/export-final.js";
 import { hydrateProjectDraft } from "../core/project-draft-aggregate.js";
 import { validateProject } from "../core/project-validator.js";
-import { buildWorldbookJson } from "../core/worldbook-builder.js";
-import { queryWorldbook } from "../core/worldbook-query.js";
-import { BuildAssetsInputSchema, GenerateJsonInputSchema, QueryJsonInputSchema, ValidateDraftInputSchema } from "../schemas/draft-slice.js";
-import { assertInside, CARDS_DIR, EXPORTS_DIR, resolveCardExportPath, resolveExportPath, writeTextFileSafely } from "../storage/path-policy.js";
-import { loadProject, loadProjectWithSlug } from "../storage/project-store.js";
+import { applyStrictReview, normalizeStrictMode } from "../core/strict-review.js";
+import { BuildAssetsInputSchema, GenerateJsonInputSchema, QueryJsonInputSchema, ValidateProjectInputSchema } from "./export-tool-schemas.js";
+import { loadProjectWithSlug } from "../storage/project-store.js";
 import { logToolCall } from "../storage/tool-log.js";
-import { toPrettyJson } from "../utils/json.js";
+import { assertProjectRevisionValue } from "../storage/version-manager.js";
+import { queryCharacterCard } from "../core/character-card-query.js";
+import { queryWorldbook } from "../core/worldbook-query.js";
 import { toolText } from "./helpers.js";
 
 export function registerExportTools(server: McpServer): void {
-  server.tool("validate_draft", ValidateDraftInputSchema.shape, async (input) => toolText(await logToolCall("validate_draft", input, async () => {
-    const parsed = ValidateDraftInputSchema.parse(input);
-    const { project: loaded, slug } = await loadProjectWithSlug(parsed.project_id);
-    const { project } = await hydrateProjectDraft(loaded, slug);
-    return { project_id: parsed.project_id, ...validateProject(project, { scope: parsed.scope, strict: parsed.strict }) };
+  server.tool("validate_project", ValidateProjectInputSchema.shape, async (input) => toolText(await logToolCall("validate_project", input, async () => {
+    const parsed = ValidateProjectInputSchema.parse(input);
+    const { project, slug } = await loadProjectWithSlug(parsed.project_id);
+    const hydrated = await hydrateProjectDraft(project, slug);
+    const build = parsed.scope === "build" || parsed.scope === "delivery" || parsed.scope === "all" ? await loadFreshBuild({ slug, build_id: parsed.build_id }) : undefined;
+    return applyStrictReview(validateProject(hydrated.project, { scope: parsed.scope, build }), parsed.strict_review);
   })));
 
   server.tool("build_assets", BuildAssetsInputSchema.shape, async (input) => toolText(await logToolCall("build_assets", input, async () => {
     const parsed = BuildAssetsInputSchema.parse(input);
-    const { project: loaded, slug } = await loadProjectWithSlug(parsed.project_id);
-    const { project, extraRegexScripts } = await hydrateProjectDraft(loaded, slug);
-    const assets = buildProjectAssets(project, parsed.target, extraRegexScripts);
-    const validation = validateProject(project, { scope: "assets" });
-    return { ok: validation.ready_to_export, project_id: parsed.project_id, validation, assets };
+    const { project, slug } = await loadProjectWithSlug(parsed.project_id);
+    assertProjectRevisionValue(project, parsed.expected_project_revision);
+    const result = await buildProjectRun({ project, slug, target: parsed.target, include_previews: parsed.include_previews, requested_by: "build_assets", strict_review: normalizeStrictMode(parsed.strict_review), force: parsed.force });
+    return { ok: result.ok, project_id: parsed.project_id, build_id: result.manifest.build_id, status: result.manifest.status, manifest_path: result.manifest_path, artifacts: result.artifacts.map((artifact) => ({ target: artifact.target, path: artifact.path, sha256: artifact.sha256, summary: artifact.summary })), previews: result.previews, validation: result.manifest.validation, next_tools: ["validate_project(scope='delivery', build_id=...)", "generate_json(build_id=...)"] };
   })));
 
   server.tool("generate_json", GenerateJsonInputSchema.shape, async (input) => toolText(await logToolCall("generate_json", input, async () => {
     const parsed = GenerateJsonInputSchema.parse(input);
-    const { project: loaded, slug } = await loadProjectWithSlug(parsed.project_id);
-    const { project, extraRegexScripts } = await hydrateProjectDraft(loaded, slug);
-    const target = parsed.target ?? project.plan.output_target;
-    if (!target) throw new Error("未指定导出目标，请在 generate_json.target 或 plan.output_target 中指定 worldbook/character_card/both");
-
-    const targets = target === "both" ? ["worldbook", "character_card"] as const : [target] as const;
-    const checklists = targets.map((item) => createDeliveryChecklist({ project, export_target: item, strict_review: parsed.strict_review }));
-    const blocking = checklists.find((checklist) => !checklist.ready_to_export);
-    if (blocking && !parsed.force) return { ok: false, error: "delivery gate 未通过，默认拒绝导出；如确需导出请显式传 force=true", checklist: blocking, checklists };
-
-    const outputs: Array<{ target: string; path: string; name: string; entry_count?: number }> = [];
-    if (target === "worldbook" || target === "both") {
-      const name = project.plan.export_filename ?? project.name;
-      const book = buildWorldbookJson({ name, entries: project.draft ?? [] });
-      const outputPath = resolveWorldbookOutputPath({ explicitPath: target === "both" ? undefined : parsed.output_path, importedPath: project.importedWorldbookPath, fallbackName: name });
-      await writeTextFileSafely(outputPath, toPrettyJson(book), { overwrite: parsed.overwrite || outputPath === project.importedWorldbookPath });
-      outputs.push({ target: "worldbook", path: outputPath, name, entry_count: Object.keys(book.entries).length });
+    const { project, slug } = await loadProjectWithSlug(parsed.project_id);
+    const target = parsed.target ?? project.kind.output;
+    if (!isTargetAllowed(project.kind.output, target)) throw new Error(`target=${target} 与 project.kind.output=${project.kind.output} 不兼容`);
+    let build = parsed.build_id ? await loadFreshBuild({ slug, build_id: parsed.build_id }) : undefined;
+    if (!build?.manifest || parsed.rebuild === "always" || (!parsed.build_id && parsed.rebuild !== "never")) {
+      const run = await buildProjectRun({ project, slug, target: "all", include_previews: true, requested_by: "generate_json", strict_review: normalizeStrictMode(parsed.strict_review), force: parsed.force });
+      build = { manifest: run.manifest, stale: false, stale_reasons: [] };
     }
-    if (target === "character_card" || target === "both") {
-      if (!project.characterCardConfig) throw new Error("缺少 project.profile / characterCardConfig，无法导出角色卡");
-      const { card } = buildCharacterCardJsonFromProject(project, extraRegexScripts);
-      const outputPath = resolveCharacterCardOutputPath({ explicitPath: target === "both" ? undefined : parsed.output_path, importedPath: project.importedCharacterCardPath, fallbackName: project.characterCardConfig.card.name });
-      await writeTextFileSafely(outputPath, toPrettyJson(card), { overwrite: parsed.overwrite || outputPath === project.importedCharacterCardPath });
-      outputs.push({ target: "character_card", path: outputPath, name: card.name, entry_count: card.data.character_book.entries.length });
-    }
-    return { ok: true, project_id: parsed.project_id, forced: parsed.force, checklists, outputs };
+    if (!build.manifest) throw new Error("没有可用于导出的 build manifest");
+    if (build.stale && !parsed.force) throw new Error(`build manifest 已过期：${build.stale_reasons.join("; ")}`);
+    if (!build.manifest.delivery.ready_to_export && !parsed.force) throw new Error("delivery gate 未通过；如需强制导出请显式 force=true");
+    const exported = await exportFromBuild({ project, slug, manifest: build.manifest, target, output_path: parsed.output_path, output_paths: parsed.output_paths, overwrite: parsed.overwrite, forced: parsed.force, stale: build.stale, stale_reasons: build.stale_reasons });
+    return { ok: true, project_id: parsed.project_id, build_id: build.manifest.build_id, export_id: exported.export_record.export_id, forced: parsed.force, target, outputs: exported.export_record.outputs, export_record_path: exported.export_record_path, delivery: exported.export_record.delivery };
   })));
 
   server.tool("query_json", QueryJsonInputSchema.shape, async (input) => toolText(await logToolCall("query_json", input, async () => {
     const parsed = QueryJsonInputSchema.parse(input);
-    if (parsed.mode === "summary" || parsed.mode === "worldbook_entries" || parsed.mode === "greetings") return queryCharacterCard({ path: parsed.path, mode: parsed.mode });
-    return queryWorldbook({ path: parsed.path, mode: parsed.mode, query: parsed.query, uid: parsed.uid });
+    if (parsed.mode === "greetings" || parsed.mode === "worldbook_entries") return queryCharacterCard({ path: parsed.path, mode: parsed.mode });
+    return queryWorldbook({ path: parsed.path, mode: parsed.mode === "summary" ? "brief" : parsed.mode, query: parsed.query, uid: parsed.uid });
   })));
 }
-
-export function resolveWorldbookOutputPath(input: { explicitPath?: string; importedPath?: string; fallbackName: string }): string {
-  if (input.explicitPath?.trim()) return resolveExportPath(input.explicitPath, input.fallbackName);
-  if (input.importedPath) return assertInside(EXPORTS_DIR, input.importedPath);
-  return resolveExportPath(undefined, input.fallbackName);
-}
-
-export function resolveCharacterCardOutputPath(input: { explicitPath?: string; importedPath?: string; fallbackName: string }): string {
-  if (input.explicitPath?.trim()) return resolveCardExportPath(input.explicitPath, input.fallbackName);
-  if (input.importedPath) return assertInside(CARDS_DIR, input.importedPath);
-  return resolveCardExportPath(undefined, input.fallbackName);
-}
+function isTargetAllowed(output: "worldbook" | "character_card" | "both", target: "worldbook" | "character_card" | "both"): boolean { if (output === "both") return true; return output === target; }

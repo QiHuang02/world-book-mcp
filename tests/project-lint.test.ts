@@ -17,7 +17,7 @@ function baseProject(): Project {
 }
 
 describe("content lint delegation", () => {
-  it("keeps legacy test file as delegated compatibility coverage", () => {
+  it("reports content policy as delegated skill-layer coverage", () => {
     const report = validateProject(baseProject(), { scope: "content" });
     expect(report.sections.content_policy_delegated?.ok).toBe(true);
   });

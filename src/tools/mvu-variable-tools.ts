@@ -1,60 +1,48 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { listMvuVariables, removeMvuVariable, rewriteMvuVariables, upsertMvuVariable } from "../core/mvu-variable-editor.js";
-import { ListMvuVariablesInputSchema, MvuConfigSchema, RemoveMvuVariableInputSchema, RewriteMvuVariablesInputSchema, UpsertMvuVariableInputSchema } from "../schemas/mvu.js";
+import { updateMvuSource as updateMvuSourceSlice } from "../core/semantic-editors.js";
+import { ListMvuVariablesInputSchema, RemoveMvuVariableInputSchema, RewriteMvuVariablesInputSchema, UpdateMvuSourceInputSchema, UpsertMvuVariableInputSchema } from "./mvu-variable-tool-schemas.js";
 import { readDraftSlice, updateDraftSliceWithRevisionCheck } from "../storage/draft-store.js";
 import { loadProjectWithSlug } from "../storage/project-store.js";
 import { logToolCall } from "../storage/tool-log.js";
-import { assertProjectRevisionValue, resolveExpectedProjectRevision, versionSnapshot } from "../storage/version-manager.js";
+import { assertProjectRevisionValue, versionSnapshot } from "../storage/version-manager.js";
+import { MvuConfigSchema } from "../schemas/mvu.js";
 import { toolText } from "./helpers.js";
 
 export function registerMvuVariableTools(server: McpServer): void {
   server.tool("list_mvu_variables", ListMvuVariablesInputSchema.shape, async (input) => toolText(await logToolCall("list_mvu_variables", input, async () => {
     const parsed = ListMvuVariablesInputSchema.parse(input);
-    const { project, slug } = await loadProjectWithSlug(parsed.project_id);
+    const { slug } = await loadProjectWithSlug(parsed.project_id);
     const slice = await readDraftSlice(slug, "mvu", "mvu");
     const mvu = MvuConfigSchema.parse(slice.data);
-    const result = listMvuVariables(mvu);
-    return { ok: true, project_id: parsed.project_id, slice_id: "mvu", slice_revision: slice.revision, version: versionSnapshot({ project, slice_revision: slice.revision }), ...result };
+    const listed = listMvuVariables(mvu);
+    return { ok: true, project_id: parsed.project_id, slice: { id: slice.id, revision: slice.revision, active: slice.active }, variableListPath: mvu.variableListPath, variables: listed.variables, warnings: listed.warnings, ...(parsed.include_raw ? { raw: mvu } : {}) };
   })));
 
-  server.tool("upsert_mvu_variable", UpsertMvuVariableInputSchema.shape, async (input) => toolText(await logToolCall("upsert_mvu_variable", input, async () => {
-    const parsed = UpsertMvuVariableInputSchema.parse(input);
+  server.tool("upsert_mvu_variable", UpsertMvuVariableInputSchema.shape, async (input) => toolText(await mutateMvu("upsert_mvu_variable", input, (mvu, parsed) => upsertMvuVariable(mvu, parsed, parsed.rewrite))));
+  server.tool("remove_mvu_variable", RemoveMvuVariableInputSchema.shape, async (input) => toolText(await mutateMvu("remove_mvu_variable", input, (mvu, parsed) => removeMvuVariable(mvu, parsed.path, parsed.rewrite))));
+  server.tool("rewrite_mvu_variables", RewriteMvuVariablesInputSchema.shape, async (input) => toolText(await mutateMvu("rewrite_mvu_variables", input, (mvu, parsed) => rewriteMvuVariables(mvu, parsed.variables, parsed.rewrite))));
+  server.tool("update_mvu_source", UpdateMvuSourceInputSchema.shape, async (input) => toolText(await logToolCall("update_mvu_source", input, async () => {
+    const parsed = UpdateMvuSourceInputSchema.parse(input);
     const { project, slug } = await loadProjectWithSlug(parsed.project_id);
-    assertProjectRevisionValue(project, resolveExpectedProjectRevision(parsed));
-    const write = await updateDraftSliceWithRevisionCheck(slug, "mvu", "mvu", parsed.expected_slice_revision, (slice) => {
-      const mvu = MvuConfigSchema.parse(slice.data);
-      const result = upsertMvuVariable(mvu, parsed, { rewriteInitvar: parsed.rewrite_initvar, rewriteUpdateRules: parsed.rewrite_update_rules });
-      return { ...slice, data: result.mvu };
-    });
-    const result = listMvuVariables(MvuConfigSchema.parse(write.slice.data));
-    return { ok: true, project_id: parsed.project_id, changed_path: parsed.path.join("."), slice: { id: write.slice.id, revision: write.slice.revision, path: write.path }, version: versionSnapshot({ project, slice_revision: write.slice.revision }), variable_count: result.variables.length, next_tools: ["validate_draft(scope='mvu')", "build_assets(target='mvu')"] };
+    assertProjectRevisionValue(project, parsed.expected_project_revision);
+    const result = await updateDraftSliceWithRevisionCheck(slug, "mvu", "mvu", parsed.expected_slice_revision, (slice) => updateMvuSourceSlice(slice, parsed.changes as never));
+    return { ok: true, project_id: parsed.project_id, slice: result.slice, version: versionSnapshot({ project, slice_revision: result.slice.revision }), affected: { artifact_targets: ["mvu", "regex", "ejs", "html"] }, next_tools: ["validate_project(scope='mvu')", "build_assets(target='all')"] };
   })));
+}
 
-  server.tool("remove_mvu_variable", RemoveMvuVariableInputSchema.shape, async (input) => toolText(await logToolCall("remove_mvu_variable", input, async () => {
-    const parsed = RemoveMvuVariableInputSchema.parse(input);
+async function mutateMvu(tool: string, input: unknown, editor: (mvu: import("../schemas/mvu.js").MvuConfig, parsed: any) => ReturnType<typeof upsertMvuVariable>) {
+  return logToolCall(tool, input, async () => {
+    const schema = tool === "upsert_mvu_variable" ? UpsertMvuVariableInputSchema : tool === "remove_mvu_variable" ? RemoveMvuVariableInputSchema : RewriteMvuVariablesInputSchema;
+    const parsed = schema.parse(input) as any;
     const { project, slug } = await loadProjectWithSlug(parsed.project_id);
-    assertProjectRevisionValue(project, resolveExpectedProjectRevision(parsed));
-    let removed = false;
-    const write = await updateDraftSliceWithRevisionCheck(slug, "mvu", "mvu", parsed.expected_slice_revision, (slice) => {
+    assertProjectRevisionValue(project, parsed.expected_project_revision);
+    let edited: ReturnType<typeof upsertMvuVariable> | undefined;
+    const result = await updateDraftSliceWithRevisionCheck(slug, "mvu", "mvu", parsed.expected_slice_revision, (slice) => {
       const mvu = MvuConfigSchema.parse(slice.data);
-      const result = removeMvuVariable(mvu, parsed.path, { rewriteInitvar: parsed.rewrite_initvar, rewriteUpdateRules: parsed.rewrite_update_rules });
-      removed = Boolean(result.removed);
-      return { ...slice, data: result.mvu };
+      edited = editor(mvu, parsed);
+      return { ...slice, data: edited.mvu };
     });
-    const result = listMvuVariables(MvuConfigSchema.parse(write.slice.data));
-    return { ok: true, project_id: parsed.project_id, removed, changed_path: parsed.path.join("."), slice: { id: write.slice.id, revision: write.slice.revision, path: write.path }, version: versionSnapshot({ project, slice_revision: write.slice.revision }), variable_count: result.variables.length, next_tools: ["validate_draft(scope='mvu')", "build_assets(target='mvu')"] };
-  })));
-
-  server.tool("rewrite_mvu_variables", RewriteMvuVariablesInputSchema.shape, async (input) => toolText(await logToolCall("rewrite_mvu_variables", input, async () => {
-    const parsed = RewriteMvuVariablesInputSchema.parse(input);
-    const { project, slug } = await loadProjectWithSlug(parsed.project_id);
-    assertProjectRevisionValue(project, resolveExpectedProjectRevision(parsed));
-    const write = await updateDraftSliceWithRevisionCheck(slug, "mvu", "mvu", parsed.expected_slice_revision, (slice) => {
-      const mvu = MvuConfigSchema.parse(slice.data);
-      const result = rewriteMvuVariables(mvu, parsed.variables, { rewriteInitvar: parsed.rewrite_initvar, rewriteUpdateRules: parsed.rewrite_update_rules });
-      return { ...slice, data: result.mvu };
-    });
-    const result = listMvuVariables(MvuConfigSchema.parse(write.slice.data));
-    return { ok: true, project_id: parsed.project_id, slice: { id: write.slice.id, revision: write.slice.revision, path: write.path }, version: versionSnapshot({ project, slice_revision: write.slice.revision }), variable_count: result.variables.length, next_tools: ["validate_draft(scope='mvu')", "build_assets(target='mvu')"] };
-  })));
+    return { ok: true, project_id: parsed.project_id, slice: { id: result.slice.id, revision: result.slice.revision }, variables: edited?.variables, warnings: edited?.warnings, affected: { script_fields: ["schemaScript"], content_fields: ["initvar", "updateRules"], variable_paths: edited?.changed_path ? [edited.changed_path.join(".")] : [], artifact_targets: ["mvu", "regex", "ejs", "html"] }, version: versionSnapshot({ project, slice_revision: result.slice.revision }), next_tools: ["validate_project(scope='mvu')", "build_assets(target='all')"] };
+  });
 }

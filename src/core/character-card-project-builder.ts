@@ -1,19 +1,15 @@
 import type { Project } from "../schemas/project.js";
+import { CharacterCardConfigSchema } from "../schemas/character-card.js";
 import { buildCharacterCardJson, type CharacterCardJson } from "./character-card-builder.js";
-import { buildProjectAssets } from "./project-assets.js";
+import type { RegexScriptAsset, TavernHelperScriptAsset } from "./mvu-assets.js";
+import type { WorldbookDraftEntry } from "../schemas/worldbook-draft.js";
 
-export function buildCharacterCardJsonFromProject(project: Project, extraRegexScripts: import("./mvu-assets.js").RegexScriptAsset[] = []): { card: CharacterCardJson } {
-  if (!project.characterCardConfig) throw new Error("项目尚未保存 character card config");
-  const assets = buildProjectAssets(project, "all", extraRegexScripts);
-  return {
-    card: buildCharacterCardJson({
-      config: project.characterCardConfig,
-      worldbookEntries: project.draft,
-      worldbookName: project.characterCardConfig.worldbook.name ?? project.name,
-      // assets.regex_scripts 已经包含 mvu + html + 第三方脚本（buildProjectAssets("all") 内部合并并去重过），
-      // 因此这里只把整个集合放进 mvuAssets.regexScripts 一处，不再额外传 htmlAssets，避免双袋子重复输出。
-      mvuAssets: { worldbookEntries: assets.worldbook_entries, regexScripts: assets.regex_scripts, tavernHelperScripts: assets.tavern_helper_scripts },
-      ejsEntries: assets.ejs_entries,
-    }),
-  };
+export function characterCardConfigFromProject(project: Project) {
+  if (!project.profile) throw new Error("项目尚未保存角色卡 profile");
+  return CharacterCardConfigSchema.parse({ card: { ...project.profile, ...(project.greetings ?? {}) }, worldbook: { source: project.profile.include_worldbook === false ? "none" : "project_draft", name: project.profile.worldbook_name ?? project.profile.name } });
+}
+
+export function buildCharacterCardJsonFromProject(project: Project & { draft?: WorldbookDraftEntry[] }, assets: { regexScripts?: RegexScriptAsset[]; tavernHelperScripts?: TavernHelperScriptAsset[]; worldbookEntries?: WorldbookDraftEntry[]; ejsEntries?: WorldbookDraftEntry[] } = {}): { card: CharacterCardJson } {
+  const config = characterCardConfigFromProject(project);
+  return { card: buildCharacterCardJson({ config, worldbookEntries: [...(project.draft ?? []), ...(assets.worldbookEntries ?? [])], worldbookName: config.worldbook.name ?? project.name, mvuAssets: { worldbookEntries: [], regexScripts: assets.regexScripts ?? [], tavernHelperScripts: assets.tavernHelperScripts ?? [] }, ejsEntries: assets.ejsEntries ?? [] }) };
 }

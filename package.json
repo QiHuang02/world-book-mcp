@@ -1,6 +1,6 @@
 {
   "name": "@qihuang02/world-book-mcp",
-  "version": "0.0.7-beta.1",
+  "version": "0.1.0-beta",
   "description": "MCP server for creating and validating SillyTavern world book JSON files.",
   "repository": {
     "type": "git",
@@ -14,7 +14,7 @@
     "dev": "tsx src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
-    "test": "vitest run",
+    "test": "vitest run tests",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

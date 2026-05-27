@@ -123,6 +123,18 @@ export async function backupIfExists(filePath: string): Promise<string | undefin
   return backupPath;
 }
 
+export function assertSafeOutputPath(outputPath: string | undefined, options: { overwrite?: boolean } = {}): string {
+  const resolved = path.isAbsolute(outputPath ?? "") ? path.resolve(outputPath!) : path.resolve(ROOT_DIR, outputPath ?? "worldbook.json");
+  const inside = assertInside(ROOT_DIR, resolved);
+  assertNotInDeniedDir(inside);
+  assertNotProtectedRootFile(inside);
+  return inside;
+}
+
+export async function backupIfOverwriteTarget(filePath: string, _slug?: string): Promise<string | undefined> {
+  return backupIfExists(filePath);
+}
+
 export async function writeTempThenCommit(input: { targetPath: string; content: string; tempId?: string; commit: () => Promise<void> }): Promise<void> {
   const target = path.resolve(input.targetPath);
   const temp = path.resolve(path.dirname(target), `.${path.basename(target)}.${input.tempId ?? process.pid}.tmp`);

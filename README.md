@@ -1,25 +1,23 @@
 # world-book-mcp
 
-An MCP server for creating, modifying, validating, and exporting SillyTavern World Book JSON and `chara_card_v3` character card JSON.
+An MCP server for creating, modifying, validating, building, and exporting SillyTavern World Book JSON and `chara_card_v3` character card JSON.
 
 ## Architecture
 
-The project consists of two layers:
+The project has two layers:
 
 ```text
 ┌─────────────────────────────────────────────────────────┐
 │  Skill Layer (skill/world-book-mcp-skill/)              │
-│  Creative methodology: guides AI on worldbuilding,      │
-│  character design, style extraction, derivative         │
-│  extraction from novels/web resources, first messages   │
+│  Creative methodology: worldbuilding, character design, │
+│  style extraction, derivative extraction, first message │
 │  Output: high-quality structured content                │
 └────────────────────────────┬────────────────────────────┘
-                             │ AI calls MCP tools to write project/drafts
+                             │ Calls MCP tools to write project/slices
 ┌────────────────────────────▼────────────────────────────┐
 │  MCP Layer (src/)                                       │
-│  Engineering orchestrator: manages a multi-project      │
-│  workspace, draft slices, consistency validation,       │
-│  MVU/EJS/HTML asset builds, and SillyTavern JSON export │
+│  Engineering orchestration: v3 workspace, DraftSlice,   │
+│  validation/build/delivery, MVU/HTML/regex/EJS assets   │
 │  Output: ready-to-import SillyTavern JSON files         │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -28,38 +26,39 @@ The project consists of two layers:
 
 ```text
 User request
-→ init_project
-→ update_plan (record requirements, decisions, export target)
+→ init_project(output, source, assets?, opening?)
+→ update_plan (requirements, decisions, export target)
 → update_character_profile / update_character_greetings (for character cards)
-→ create_draft_slice / update_draft_field(s) (write entry/mvu/html/ejs)
-→ validate_draft (check consistency)
-→ build_assets (optional, preview MVU/EJS/HTML assets)
-→ review_project / check_delivery (pre-export review)
-→ generate_json (export)
+→ create_draft_slice (entry/mvu/html/regex/ejs)
+→ semantic editors (update_entry_content / update_entry_config / asset tools)
+→ validate_project(scope="all")
+→ build_assets(target="all")
+→ validate_project(scope="delivery", build_id=...)
+→ generate_json(build_id=...)
 ```
 
 ## Skill Layer — Creative Methodology
 
-`skill/world-book-mcp-skill/` contains reference documents that guide AI content creation:
+`skill/world-book-mcp-skill/` contains creation references:
 
 | Document | Content |
 |----------|---------|
 | `worldbuilding-methodology.md` | World design: A/B/C type classification, dimension selection, zero-degree writing |
 | `character-creation.md` | Character design: XML+YAML structure, personality palette, tri-faceted method |
-| `derivative-extraction.md` | Derivative extraction: systematic extraction from novels/web resources |
-| `style-extraction-guide.md` | Style extraction: analyze source material and produce style/forbidden-word entries |
-| `rephrase-guide.md` | Rephrase: author's deep annotations to prevent AI misinterpretation |
-| `content-rules.md` | Content rules: forbidden words, specificity, fourth wall |
-| `first-message.md` | First message rules: hooks, plot momentum, interaction points |
+| `derivative-extraction.md` | Derivative extraction from novels/web resources |
+| `style-extraction-guide.md` | Style extraction and expression-avoidance entries |
+| `rephrase-guide.md` | Deep character annotations to reduce misinterpretation |
+| `content-rules.md` | Specificity, fourth-wall, and user-boundary rules |
+| `first-message.md` | First-message hooks, plot momentum, interaction points |
 | `composition.md` | Entry composition: blue/green light, position, order, DoubleCheck |
-| `requirements.md` | Requirements alignment: themed questioning and user decisions |
-| `tool-reference.md` | MCP tool parameter quick reference and legacy-name mapping |
+| `requirements.md` | Requirement alignment and user decision flow |
+| `tool-reference.md` | MCP v3 tool parameter reference |
 
 ## MCP Layer — Engineering Orchestration
 
 ### Workspace Structure
 
-`init_project` creates a v2 multi-project workspace:
+`init_project` creates a v3 multi-project workspace:
 
 ```text
 .worldbook/
@@ -69,8 +68,19 @@ User request
       project.json
       plan.md
       slices/
-        entries/*.json     # draft_type="entry"
-        assets/*.json      # draft_type="mvu" | "html" | "ejs"
+        entries/*.json        # draft_type="entry"
+        assets/mvu.json       # draft_type="mvu"
+        assets/html.json      # draft_type="html"
+        assets/regex/*.json   # draft_type="regex"
+        assets/ejs/*.json     # draft_type="ejs"
+      build/
+        runs/<build_id>/
+          manifest.json
+          assets/*.json
+          exports/*.preview.json
+          export-records/*.json
+      backups/
+      logs/
   shared/
     entries/*.json
     assets/*.json
@@ -80,68 +90,66 @@ User request
     <session>.jsonl
 ```
 
-It scans existing SillyTavern JSON files in the current directory:
+Existing SillyTavern JSON can be imported with `import_existing_json`:
 
 - World Book entries → `entry` slices.
 - Character card profile / greetings → project metadata.
-- MVU / HTML / EJS / regex assets → `mvu`, `html`, and `ejs` slices.
+- Third-party regex → `regex` slices.
+- Source data is recorded in project imports and slice origins.
+
+### Project.kind
+
+```text
+Project.kind.output = worldbook | character_card | both
+Project.kind.source = original | derivative | modify_existing | composite
+Project.kind.assets = mvu | html | regex | ejs
+```
 
 ### Core Tools
 
 | Tool | Purpose |
 |------|---------|
-| `init_project` | Initialize the `.worldbook/` multi-project workspace and import existing Tavern JSON |
-| `list_projects` / `get_project` | Inspect projects and hydrated project state |
+| `init_project` | Initialize a v3 project with output/source/assets/opening |
+| `import_existing_json` | Import existing Tavern JSON into v3 slices / metadata |
+| `list_projects` / `get_project` | Inspect project state |
 | `update_plan` | Write requirements, decisions, and export targets to `plan.md` |
-| `update_character_profile` | Update character-card profile metadata; description defaults to empty |
-| `update_character_greetings` | Update first_mes / alternate_greetings |
-| `create_draft_slice` | Create an `entry/mvu/html/ejs` draft slice |
-| `update_draft_field` / `update_draft_fields` | Update draft fields, including nested dot paths |
-| `validate_draft` | Validate World Book, character card, MVU, EJS, HTML drafts |
-| `build_assets` | Preview assets that will be merged into a character card |
-| `review_project` / `check_delivery` | Pre-export review and blocking checks |
-| `generate_json` | Export World Book JSON, character card JSON, or both |
+| `create_draft_slice` / `update_slice_metadata` | Create and maintain DraftSlice envelopes |
+| `update_entry_content` / `update_entry_config` | Update World Book entry content and config |
+| `update_character_profile` / `update_character_greetings` | Update character-card metadata and greetings |
+| `list_mvu_variables` / `upsert_mvu_variable` / `remove_mvu_variable` / `rewrite_mvu_variables` | Maintain MVU variables |
+| `update_mvu_source` | Update MVU source fields as a coordinated edit |
+| `update_html_statusbar` / `update_html_config` | Maintain HTML statusbar and config |
+| `list_regex_scripts` / `upsert_regex_script` / `update_regex_script` / `remove_regex_script` / `reorder_regex_scripts` / `move_regex_script` | Maintain regex assets |
+| `update_ejs_content` / `update_ejs_config` | Maintain EJS dynamic entries |
+| `validate_project` | Validate project/plan/worldbook/character_card/opening/mvu/html/regex/ejs/assets/build/delivery/content |
+| `build_assets` | Create build manifest, asset JSON, and preview exports |
+| `review_project` / `check_delivery` | Review delivery readiness |
+| `generate_json` | Export final JSON from a fresh build preview |
 | `query_json` | Query exported JSON |
-| `share_slice` / `use_shared` / `list_shared` | Share and reuse entry/assets slices |
+| `share_slice` / `use_shared` / `list_shared` | Share and reuse slices |
 
 ### Draft Types
 
-Current `draft_type` values are limited to four kinds:
-
 - `entry` — World Book entry.
-- `mvu` — Per-project singleton MVU ZOD / initvar / update_rules / regex settings slice, id normalized to `mvu`.
-- `html` — Per-project singleton HTML status bar and global regex configuration slice, id normalized to `html`.
+- `mvu` — Per-project singleton MVU ZOD / initvar / updateRules / outputFormat slice, id fixed to `mvu`.
+- `html` — Per-project singleton HTML statusbar and regexPolicy slice, id fixed to `html`.
+- `regex` — A group of related regex scripts; scripts use stable internal `id` values.
 - `ejs` — EJS dynamic entry.
 
-Legacy-name mapping is documented in `skill/world-book-mcp-skill/references/tool-reference.md`.
-
-### MVU Variable Tools
-
-| Tool | Purpose |
-|------|---------|
-| `list_mvu_variables` | List variables in the schema |
-| `upsert_mvu_variable` | Add or modify a variable |
-| `remove_mvu_variable` | Remove a variable |
-| `rewrite_mvu_variables` | Batch rewrite variables |
-
-### Review & Lint Tools
-
-| Tool | Purpose |
-|------|---------|
-| `lint_worldbook_content` | Run forbidden-word/specificity lint on text |
-| `lint_project_content` | Run lint on the entire project |
-| `create_writing_optimization_report` | Generate a writing optimization report |
+The slice-level `active` flag controls build participation. Inner `enabled/disabled` fields control the final Tavern object state.
 
 ## Modifying Existing JSON
 
 ```text
-init_project(scan_existing=true, import_strategy="auto", if_exists="return_existing")
+init_project(output=..., source="modify_existing", opening? if character card)
+→ import_existing_json(path? when multiple candidates exist)
 → list_draft_slices / get_project / get_draft_slice
 → update_plan
-→ update_character_profile / update_character_greetings / update_draft_field(s)
-→ validate_draft
-→ review_project / check_delivery
-→ generate_json(overwrite=true)
+→ semantic editors
+→ validate_project(scope="all")
+→ build_assets(target="all")
+→ validate_project(scope="delivery", build_id=...)
+→ generate_json(build_id=..., overwrite=true)
 ```
 
 ## Logs
@@ -160,5 +168,6 @@ Long text fields are summarized with preview, length, and hash.
 ```bash
 npm install
 npm run typecheck
+npm run build
 npm test
 ```

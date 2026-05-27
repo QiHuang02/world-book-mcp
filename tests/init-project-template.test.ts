@@ -7,7 +7,6 @@ import { ROOT_DIR } from "../src/storage/path-policy.js";
 const tempFiles = [
   "初始化模板测试.json",
   "初始化模板测试.template.json",
-  "初始化模板测试.template-2.json",
   "已有世界书.json",
   "已有角色卡.json",
   "普通配置.json",
@@ -18,9 +17,9 @@ async function cleanup(): Promise<void> {
 }
 
 describe("init_project root template behavior", () => {
-  it("creates workspace draft directory and a worldbook template when no Tavern JSON exists", async () => {
+  it("creates a worldbook template when no Tavern JSON exists", async () => {
     await cleanup();
-    const result = await ensureRootTemplateJson({ name: "初始化模板测试", kind: "worldbook" });
+    const result = await ensureRootTemplateJson({ name: "初始化模板测试", output: "worldbook" });
 
     expect(result.created).toBe(true);
     expect(result.reason).toBe("created");
@@ -30,9 +29,9 @@ describe("init_project root template behavior", () => {
     await cleanup();
   });
 
-  it("creates a character card template for character_card projects", async () => {
+  it("creates a character card template for character_card output", async () => {
     await cleanup();
-    const result = await ensureRootTemplateJson({ name: "初始化模板测试", kind: "character_card" });
+    const result = await ensureRootTemplateJson({ name: "初始化模板测试", output: "character_card" });
 
     expect(result.created).toBe(true);
     const json = JSON.parse(await fs.readFile(result.path!, "utf8"));
@@ -41,9 +40,9 @@ describe("init_project root template behavior", () => {
     await cleanup();
   });
 
-  it("creates a character card with embedded worldbook template for mixed projects", async () => {
+  it("creates a character card template for both output", async () => {
     await cleanup();
-    const result = await ensureRootTemplateJson({ name: "初始化模板测试", kind: "mixed" });
+    const result = await ensureRootTemplateJson({ name: "初始化模板测试", output: "both" });
 
     expect(result.created).toBe(true);
     const json = JSON.parse(await fs.readFile(result.path!, "utf8"));
@@ -53,12 +52,12 @@ describe("init_project root template behavior", () => {
     await cleanup();
   });
 
-  it("does not create a template when a root worldbook JSON exists", async () => {
+  it("keeps existing root Tavern JSON as import candidates", async () => {
     await cleanup();
     const existing = path.resolve(ROOT_DIR, "已有世界书.json");
     await fs.writeFile(existing, JSON.stringify({ name: "已有世界书", entries: {} }), "utf8");
 
-    const result = await ensureRootTemplateJson({ name: "初始化模板测试", kind: "worldbook" });
+    const result = await ensureRootTemplateJson({ name: "初始化模板测试", output: "worldbook" });
 
     expect(result.created).toBe(false);
     expect(result.reason).toBe("existing_tavern_json");
@@ -67,30 +66,16 @@ describe("init_project root template behavior", () => {
     await cleanup();
   });
 
-  it("does not create a template when a root character card JSON exists", async () => {
+  it("ignores non-Tavern JSON files", async () => {
     await cleanup();
-    const existing = path.resolve(ROOT_DIR, "已有角色卡.json");
-    await fs.writeFile(existing, JSON.stringify({ spec: "chara_card_v3", data: { name: "已有角色卡", character_book: { entries: [] } } }), "utf8");
+    const ordinary = path.resolve(ROOT_DIR, "普通配置.json");
+    await fs.writeFile(ordinary, JSON.stringify({ cache: true }), "utf8");
 
-    const result = await ensureRootTemplateJson({ name: "初始化模板测试", kind: "worldbook" });
-
-    expect(result.created).toBe(false);
-    expect(result.existing_files?.map((file) => path.basename(file))).toContain("已有角色卡.json");
-    await cleanup();
-  });
-
-  it("does not treat ordinary JSON as Tavern JSON and avoids overwriting it", async () => {
-    await cleanup();
-    const ordinary = path.resolve(ROOT_DIR, "初始化模板测试.json");
-    await fs.writeFile(ordinary, JSON.stringify({ entries: { cache: true } }), "utf8");
-
-    const result = await ensureRootTemplateJson({ name: "初始化模板测试", kind: "worldbook" });
+    const result = await ensureRootTemplateJson({ name: "初始化模板测试", output: "worldbook" });
 
     expect(result.created).toBe(true);
-    expect(path.basename(result.path!)).toBe("初始化模板测试.template.json");
-    expect(JSON.parse(await fs.readFile(ordinary, "utf8"))).toEqual({ entries: { cache: true } });
     const tavernFiles = await findRootTavernJsonFiles();
-    expect(tavernFiles.map((file) => path.basename(file))).toContain("初始化模板测试.template.json");
+    expect(tavernFiles.map((file) => path.basename(file))).toContain("初始化模板测试.json");
     await cleanup();
   });
 });

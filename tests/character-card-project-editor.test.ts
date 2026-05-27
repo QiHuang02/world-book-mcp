@@ -37,7 +37,7 @@ describe("character card project editor", () => {
 
   it("updates greetings separately and hydrates characterCardConfig", async () => {
     await cleanupWorkspace();
-    const { project, slug } = await initWorkspaceProject({ name: "角色卡编辑", kind: "character_card", ifExists: "error" });
+    const { project, slug } = await initWorkspaceProject({ name: "角色卡编辑", output: "character_card", source: "original", opening: { mode: "event_hook", user_role: "unspecified", premise: "角色B在门口遇见 user。", user_constraints: [] }, ifExists: "error" });
     const withProfile = applyCharacterProfileUpdate(project, { name: "角色B", include_worldbook: false });
     const withGreetings = applyCharacterGreetingsUpdate(withProfile, { first_mes: "夜里，角色B站在门口，看向你。", alternate_greetings: ["雨声落在窗边，你听见角色B开口。", "清晨，角色B把一封信递给你。"] });
     await writeProjectJson(slug, withGreetings);

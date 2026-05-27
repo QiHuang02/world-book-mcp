@@ -2,31 +2,60 @@ import { z } from "zod";
 import { EjsEntryConfigSchema } from "./ejs.js";
 import { HtmlBeautifyConfigSchema } from "./html-beautify.js";
 import { MvuConfigSchema } from "./mvu.js";
+import { RegexSliceDataSchema } from "./regex.js";
 import { WorldbookDraftEntrySchema } from "./worldbook-draft.js";
 
-export const DraftTypeSchema = z.enum(["entry", "mvu", "html", "ejs"]);
+export const DraftTypeSchema = z.enum(["entry", "mvu", "html", "regex", "ejs"]);
 
-export const EntrySliceDataSchema = WorldbookDraftEntrySchema;
-export const MvuSliceDataSchema = MvuConfigSchema;
-export const HtmlSliceDataSchema = HtmlBeautifyConfigSchema;
-export const EjsSliceDataSchema = EjsEntryConfigSchema.extend({
-  source: z.enum(["imported", "generated", "manual"]).default("manual"),
-  variable_paths: z.array(z.string()).default([]),
-  template_type: z.enum(["phase_profile", "palette", "custom"]).default("custom"),
+export const ImportedSliceOriginSchema = z.object({
+  kind: z.literal("imported"),
+  importId: z.string().min(1),
+  sourcePath: z.string(),
+  sourceFormat: z.enum(["worldbook", "character_card"]),
+  importedAt: z.string(),
+  pointer: z.string().optional(),
+  uid: z.number().int().optional(),
+  entryIndex: z.number().int().nonnegative().optional(),
+  scriptName: z.string().optional(),
+  scriptIndex: z.number().int().nonnegative().optional(),
+  regexSource: z.enum(["third_party", "mvu", "html", "unknown"]).optional(),
 });
 
+export const GeneratedSliceOriginSchema = z.object({
+  kind: z.literal("generated"),
+  generator: z.enum(["template", "mvu_template", "html_template", "regex_template", "ejs_template", "import_template"]),
+  generatedAt: z.string(),
+  sourceSliceIds: z.array(z.string()).optional(),
+});
+
+export const SharedSliceOriginSchema = z.object({
+  kind: z.literal("shared"),
+  sharedId: z.string().min(1),
+  sourceProject: z.string().optional(),
+  sourceSliceId: z.string().optional(),
+  usedAt: z.string(),
+});
+
+export const SliceOriginSchema = z.discriminatedUnion("kind", [ImportedSliceOriginSchema, GeneratedSliceOriginSchema, SharedSliceOriginSchema]);
+
 export const DraftSliceDataSchemas = {
-  entry: EntrySliceDataSchema,
-  mvu: MvuSliceDataSchema,
-  html: HtmlSliceDataSchema,
-  ejs: EjsSliceDataSchema,
+  entry: WorldbookDraftEntrySchema,
+  mvu: MvuConfigSchema,
+  html: HtmlBeautifyConfigSchema,
+  regex: RegexSliceDataSchema,
+  ejs: EjsEntryConfigSchema,
 } satisfies Record<z.infer<typeof DraftTypeSchema>, z.ZodTypeAny>;
 
 export const DraftSliceSchema = z.object({
+  schemaVersion: z.literal(1),
   id: z.string().min(1),
   type: DraftTypeSchema,
   title: z.string().optional(),
-  enabled: z.boolean().default(true),
+  active: z.boolean().default(true),
+  source: z.enum(["manual", "imported", "generated", "shared"]).default("manual"),
+  origin: SliceOriginSchema.optional(),
+  tags: z.array(z.string()).default([]),
+  notes: z.string().optional(),
   data: z.unknown(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -35,95 +64,14 @@ export const DraftSliceSchema = z.object({
   const schema = DraftSliceDataSchemas[slice.type];
   const parsed = schema.safeParse(slice.data);
   if (!parsed.success) {
-    for (const issue of parsed.error.issues) {
-      context.addIssue({ ...issue, path: ["data", ...issue.path] });
-    }
+    for (const issue of parsed.error.issues) context.addIssue({ ...issue, path: ["data", ...issue.path] });
+  }
+  if (slice.source === "imported" && slice.origin?.kind !== "imported") {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["origin"], message: "source=imported 时必须提供 imported origin" });
   }
 });
 
-export const CreateDraftSliceInputSchema = z.object({
-  project_id: z.string(),
-  draft_type: DraftTypeSchema,
-  id: z.string().min(1),
-  title: z.string().optional(),
-  preset: z.string().optional(),
-  if_exists: z.enum(["error", "return_existing", "overwrite"]).default("error"),
-  expected_revision: z.number().int().nonnegative().optional(),
-  expected_project_revision: z.number().int().nonnegative().optional(),
-  expected_workspace_revision: z.number().int().nonnegative().optional(),
-  expected_slice_revision: z.number().int().nonnegative().optional(),
-});
-
-export const UpdateDraftFieldInputSchema = z.object({
-  project_id: z.string(),
-  draft_type: DraftTypeSchema,
-  id: z.string().min(1),
-  field_path: z.string().min(1),
-  value: z.unknown(),
-  expected_revision: z.number().int().nonnegative().optional(),
-  expected_project_revision: z.number().int().nonnegative().optional(),
-  expected_slice_revision: z.number().int().nonnegative().optional(),
-});
-
-export const UpdateDraftFieldsInputSchema = z.object({
-  project_id: z.string(),
-  draft_type: DraftTypeSchema,
-  id: z.string().min(1),
-  changes: z.record(z.string(), z.unknown()).refine((value) => Object.keys(value).length > 0, { message: "changes 至少需要一个字段" }),
-  expected_revision: z.number().int().nonnegative().optional(),
-  expected_project_revision: z.number().int().nonnegative().optional(),
-  expected_slice_revision: z.number().int().nonnegative().optional(),
-});
-
-export const ListDraftSlicesInputSchema = z.object({
-  project_id: z.string(),
-  draft_type: DraftTypeSchema.optional(),
-  include_content: z.boolean().default(false),
-});
-
-export const GetDraftSliceInputSchema = z.object({
-  project_id: z.string(),
-  draft_type: DraftTypeSchema,
-  id: z.string().min(1),
-});
-
-export const DeleteDraftSliceInputSchema = GetDraftSliceInputSchema.extend({
-  expected_revision: z.number().int().nonnegative().optional(),
-  expected_project_revision: z.number().int().nonnegative().optional(),
-  expected_slice_revision: z.number().int().nonnegative().optional(),
-});
-
-export const ValidateDraftInputSchema = z.object({
-  project_id: z.string(),
-  scope: z.enum(["all", "plan", "worldbook", "character_card", "mvu", "ejs", "html", "assets", "content", "delivery", "style", "chapter"]).default("all"),
-  strict: z.union([z.boolean(), z.enum(["off", "standard", "strict"])]).default(false),
-});
-
-export const BuildAssetsInputSchema = z.object({
-  project_id: z.string(),
-  target: z.enum(["mvu", "html", "ejs", "all"]).default("all"),
-});
-
-export const GenerateJsonInputSchema = z.object({
-  project_id: z.string(),
-  target: z.enum(["worldbook", "character_card", "both"]).optional(),
-  output_path: z.string().optional(),
-  overwrite: z.boolean().default(false),
-  strict_review: z.union([z.boolean(), z.enum(["off", "standard", "strict"])]).optional(),
-  force: z.boolean().default(false),
-});
-
-export const QueryJsonInputSchema = z.object({
-  path: z.string().min(1),
-  mode: z.enum(["summary", "worldbook_entries", "greetings", "search", "uid", "stats"]),
-  query: z.string().optional(),
-  uid: z.number().int().optional(),
-});
-
 export type DraftType = z.infer<typeof DraftTypeSchema>;
-export type DraftSliceDataSchemasByType = {
-  [K in DraftType]: z.infer<(typeof DraftSliceDataSchemas)[K]>;
-};
+export type SliceOrigin = z.infer<typeof SliceOriginSchema>;
+export type DraftSliceDataSchemasByType = { [K in DraftType]: z.infer<(typeof DraftSliceDataSchemas)[K]> };
 export type DraftSlice = z.infer<typeof DraftSliceSchema>;
-export type CreateDraftSliceInput = z.infer<typeof CreateDraftSliceInputSchema>;
-export type ValidateDraftScope = z.infer<typeof ValidateDraftInputSchema>["scope"];

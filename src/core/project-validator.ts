@@ -1,96 +1,46 @@
 import type { Project } from "../schemas/project.js";
-import { validateCharacterCardConfig } from "./character-card-validator.js";
-import { validateEjsConfig } from "./ejs-validator.js";
-import { validateHtmlBeautifyConfig } from "./html-beautify-validator.js";
+import type { BuildManifest } from "../schemas/build-artifact.js";
 import { analyzeMvuPaths } from "./mvu-path-analyzer.js";
 import { validateMvuConfig } from "./mvu-validator.js";
-import { normalizeIssue, section, sectionFromIssues, SCOPE_SECTIONS, type ProjectValidationReport, type ProjectValidationScope, type ValidationIssue, type ValidationSection } from "./validation-types.js";
-import { applyStrictReview, resolveStrictReviewMode, strictSectionStatus, type StrictReviewMode } from "./strict-review.js";
+import { validateHtmlBeautifyConfig } from "./html-beautify-validator.js";
+import { validateEjsConfig } from "./ejs-validator.js";
 import { validateWorldbookDraft } from "./worldbook-validator.js";
+import { validateCharacterCardConfig } from "./character-card-validator.js";
+import { normalizeIssue, section, sectionFromIssues, skipped, type ProjectValidationReport, type ProjectValidationScope, type ValidationIssue, type ValidationSection } from "./validation-types.js";
 
-export function sectionsForScope(scope: ProjectValidationScope): readonly string[] {
-  return SCOPE_SECTIONS[scope];
-}
-
-export function validateProject(project: Project, options: { scope?: ProjectValidationScope; export_target?: "worldbook" | "character_card"; strict?: boolean | StrictReviewMode; strict_review?: boolean | StrictReviewMode } = {}): ProjectValidationReport {
+export function validateProject(project: Project & { draft?: import("../schemas/worldbook-draft.js").WorldbookDraftEntry[]; characterCardConfig?: import("../schemas/character-card.js").CharacterCardConfig; mvuConfig?: import("../schemas/mvu.js").MvuConfig; htmlBeautifyConfig?: import("../schemas/html-beautify.js").HtmlBeautifyConfig; ejsConfig?: import("../schemas/ejs.js").EjsConfig }, options: { scope?: ProjectValidationScope; build?: { manifest?: BuildManifest; stale?: boolean; stale_reasons?: string[] } } = {}): ProjectValidationReport {
   const scope = options.scope ?? "all";
-  const strictMode = resolveStrictReviewMode({ strict: options.strict, strict_review: options.strict_review, project });
   const sections: Record<string, ValidationSection> = {};
-  const recommendations: string[] = [];
-  const deliveryScopes: ProjectValidationScope[] = ["plan", "worldbook", "character_card", "mvu", "ejs", "html"];
-  const include = (name: ProjectValidationScope): boolean => scope === "all" || scope === name || (scope === "delivery" && deliveryScopes.includes(name));
-
-  if (include("plan")) {
-    sections.plan = validatePlanSection(project);
-    sections.pending_decisions = validatePendingDecisionsSection(project);
-  }
-  if (include("worldbook")) sections.worldbook = validateWorldbookSection(project, options.export_target);
-  if (include("character_card")) sections.character_card = validateCharacterCardSection(project);
-  const mvuAnalysis = project.mvuConfig ? analyzeMvuPaths(project.mvuConfig) : undefined;
-  if (include("mvu")) sections.mvu = project.mvuConfig ? validateMvuConfig({ mvu: project.mvuConfig, characterCardConfig: project.characterCardConfig, analysis: mvuAnalysis }) : section({ summary: { enabled: false, schema_path_count: 0, initvar_path_count: 0, update_rule_path_count: 0, readonly_path_count: 0, hidden_path_count: 0 } });
-  if (include("ejs")) sections.ejs = project.ejsConfig ? validateEjsConfig({ ejs: project.ejsConfig, mvu: project.mvuConfig, mvuAnalysis }) : section({ summary: { enabled: false, template_type: "none", entry_count: 0, variable_path_count: 0, content_variable_path_count: 0 } });
-  if (include("html")) sections.html = project.htmlBeautifyConfig ? validateHtmlBeautifyConfig({ html: project.htmlBeautifyConfig, mvu: project.mvuConfig, characterCardConfig: project.characterCardConfig }) : section({ summary: { enabled: false, target: "none", statusbar_enabled: false, global_enabled: false, regex_count: 0 } });
-  if (scope === "content") sections.content_policy_delegated = validateContentDelegatedSection();
-  if (include("assets")) sections.assets = validateAssetsSection(project);
-  if (include("style")) sections.style = section({ summary: { checked: false, delegated: true }, infos: [normalizeIssue({ code: "style.scope.delegated", field: "style", severity: "info", message: "style scope 的文风审美判断由 skill 层执行；MCP 仅保留结构、协议和资产校验" })] });
-  if (include("chapter")) sections.chapter = section({ summary: { checked: false, delegated: true }, infos: [normalizeIssue({ code: "chapter.scope.delegated", field: "chapter", severity: "info", message: "chapter scope 的章节创作规划由 skill 层执行；MCP 不做主观叙事质量判断" })] });
-
-  if (project.ejsConfig?.enabled && !project.mvuConfig?.enabled) recommendations.push("启用 EJS 前必须启用 MVU");
-  if (project.htmlBeautifyConfig?.enabled && !project.characterCardConfig) recommendations.push("HTML 美化资产需要通过角色卡 JSON 承载");
-  if (project.characterCardConfig && (!project.draft || project.draft.length === 0)) recommendations.push("角色卡建议嵌入世界书，先完成 draft 再导出");
-  if ((project.pendingDecisions ?? []).length > 0) recommendations.push("项目存在未解决的用户决策，建议调用 update_plan(mode=\"record_decision\")");
-
-  const ok = Object.values(sections).every((item) => item.ok);
-  const ready_to_export = deliveryReady(sections, project, options.export_target, strictMode);
-  return applyStrictReview({ ok, ready_to_export, scope_used: scope, sections, recommendations }, strictMode);
+  const needs = (name: ProjectValidationScope | "pending_decisions" | "content_policy_delegated") => scope === "all" || scope === "delivery" || scope === name;
+  if (needs("project")) sections.project = validateProjectSection(project);
+  if (needs("plan")) sections.plan = validatePlanSection(project);
+  if (needs("pending_decisions")) sections.pending_decisions = validatePendingDecisions(project);
+  if (needs("worldbook")) sections.worldbook = project.draft ? validateWorldbookDraft(project.draft) : sectionFromIssues([normalizeIssue({ code: "worldbook.empty", field: "draft", severity: "error", message: "没有 active entry slices" })], { active_entry_count: 0 });
+  if (needs("character_card")) sections.character_card = project.kind.output === "worldbook" ? skipped({ required: false }, "纯世界书项目不需要角色卡") : project.characterCardConfig ? validateCharacterCardConfig({ config: project.characterCardConfig, draft: project.draft, mvuEnabled: Boolean(project.mvuConfig), htmlStatusbarEnabled: Boolean(project.htmlBeautifyConfig && (project.htmlBeautifyConfig.target === "statusbar" || project.htmlBeautifyConfig.target === "both")) }) : sectionFromIssues([normalizeIssue({ code: "character_card.missing", field: "profile", severity: "error", message: "输出包含 character_card，但缺少 profile/greetings" })], { has_profile: false, has_first_mes: false });
+  if (needs("opening")) sections.opening = validateOpeningSection(project);
+  const analysis = project.mvuConfig ? analyzeMvuPaths(project.mvuConfig) : undefined;
+  if (needs("mvu")) sections.mvu = project.kind.assets.mvu.enabled ? project.mvuConfig ? validateMvuConfig({ mvu: project.mvuConfig, characterCardConfig: project.characterCardConfig, analysis }) : sectionFromIssues([normalizeIssue({ code: "mvu.slice.missing", field: "mvu", severity: "error", message: "kind 启用 MVU 但缺少 mvu slice" })], { enabled: true }) : skipped({ enabled: false }, "MVU 未启用");
+  if (needs("html")) sections.html = project.kind.assets.html.enabled ? project.htmlBeautifyConfig ? validateHtmlBeautifyConfig({ html: project.htmlBeautifyConfig, mvu: project.mvuConfig, characterCardConfig: project.characterCardConfig }) : sectionFromIssues([normalizeIssue({ code: "html.slice.missing", field: "html", severity: "error", message: "kind 启用 HTML 但缺少 html slice" })], { enabled: true }) : skipped({ enabled: false }, "HTML 未启用");
+  if (needs("ejs")) sections.ejs = project.kind.assets.ejs.enabled ? project.ejsConfig ? validateEjsConfig({ ejs: project.ejsConfig, mvu: project.mvuConfig }) : sectionFromIssues([normalizeIssue({ code: "ejs.slice.missing", field: "ejs", severity: "error", message: "kind 启用 EJS 但缺少 ejs slices" })], { enabled: true }) : skipped({ enabled: false }, "EJS 未启用");
+  if (needs("regex")) sections.regex = validateRegexSection(project);
+  if (needs("assets")) sections.assets = validateAssetsSection(project);
+  if (needs("build")) sections.build = validateBuildSection(options.build);
+  if (needs("delivery")) sections.delivery = validateDeliverySection(project, sections, options.build);
+  if (needs("content")) sections.content_policy_delegated = section({ status: "skipped", ok: true, infos: [normalizeIssue({ code: "content.scope.delegated", field: "content", severity: "info", message: "内容审美、禁词、文风和创作质量由 skill 规则执行，MCP 只校验结构、协议、安全和资产一致性" })], summary: { delegated: true, delegated_to: "world-book-mcp-skill", mcp_policy: "structure_protocol_safety_only" } });
+  const counts = summarize(sections);
+  const ok = counts.blocking_count === 0;
+  const ready_to_export = Boolean(sections.delivery?.ok ?? ok);
+  return { ok, ready_to_build: ok, ready_to_export, project_id: project.id, scope_used: scope, generated_at: new Date().toISOString(), build: options.build ? { build_id: options.build.manifest?.build_id, manifest_path: options.build.manifest ? `build/runs/${options.build.manifest.build_id}/manifest.json` : undefined, stale: options.build.stale, stale_reasons: options.build.stale_reasons } : undefined, summary: counts, sections, recommendations: recommendations(project, sections), next_actions: nextActions(sections) };
 }
 
-function validatePlanSection(project: Project): ValidationSection {
-  const issues: ValidationIssue[] = [];
-  if (!project.name?.trim()) issues.push(normalizeIssue({ code: "plan.name.empty", field: "name", severity: "error", message: "项目 name 不能为空" }));
-  return sectionFromIssues(issues, { pending_decision_count: project.pendingDecisions?.length ?? 0, output_target: project.plan.output_target });
-}
-
-function validatePendingDecisionsSection(project: Project): ValidationSection {
-  const pending = project.pendingDecisions ?? [];
-  return sectionFromIssues(pending.map((decision) => normalizeIssue({ code: "pending_decisions.unresolved", field: `pendingDecisions.${decision.id}`, severity: "warning", message: `未解决决策：${decision.question}`, suggestion: decision.source_tool ? `回答后调用 update_plan(mode=\"record_decision\")，然后回到 ${decision.source_tool}` : "回答后调用 update_plan(mode=\"record_decision\")" })), { count: pending.length, ids: pending.map((decision) => decision.id) });
-}
-
-function validateWorldbookSection(project: Project, exportTarget?: "worldbook" | "character_card"): ValidationSection {
-  if (!project.draft || project.draft.length === 0) {
-    const severity = exportTarget === "character_card" ? "warning" : "error";
-    return sectionFromIssues([normalizeIssue({ code: "worldbook.draft.empty", field: "draft", severity, message: "项目尚未保存 worldbook draft" })], { entry_count: 0, constant_count: 0, triggered_count: 0 });
-  }
-  const result = validateWorldbookDraft(project.draft);
-  return section({ errors: result.errors.map(normalizeIssue), warnings: result.warnings.map(normalizeIssue), infos: [], summary: result.summary });
-}
-
-function validateCharacterCardSection(project: Project): ValidationSection {
-  if (!project.characterCardConfig) return sectionFromIssues([normalizeIssue({ code: "character_card.missing", field: "characterCardConfig", severity: "error", message: "项目未配置角色卡；如只导出世界书可忽略" })], { worldbook_entry_count: 0, greeting_count: 0, description_empty: true });
-  return validateCharacterCardConfig({ config: project.characterCardConfig, draft: project.draft, mvuEnabled: project.mvuConfig?.enabled, htmlStatusbarEnabled: project.htmlBeautifyConfig?.enabled && (project.htmlBeautifyConfig.target === "statusbar" || project.htmlBeautifyConfig.target === "both") });
-}
-
-function validateContentDelegatedSection(): ValidationSection {
-  return section({
-    summary: {
-      delegated: true,
-      checked: false,
-      delegated_to: "world-book-mcp-skill",
-      mcp_policy: "structure_protocol_safety_only",
-    },
-    infos: [normalizeIssue({ code: "content.scope.delegated", field: "content", severity: "info", message: "内容审美、八股禁词、具体性和写作质量判断已迁移到 skill 层；MCP 不再执行内容 lint" })],
-  });
-}
-
-function validateAssetsSection(project: Project): ValidationSection {
-  const issues: ValidationIssue[] = [];
-  if (project.ejsConfig?.enabled && !project.mvuConfig?.enabled) issues.push(normalizeIssue({ code: "assets.ejs_requires_mvu", field: "ejsConfig", severity: "error", message: "EJS 资产依赖 MVU schema" }));
-  if (project.htmlBeautifyConfig?.enabled && !project.characterCardConfig) issues.push(normalizeIssue({ code: "assets.html_requires_card", field: "htmlBeautifyConfig", severity: "error", message: "HTML 状态栏/正则资产需要角色卡承载" }));
-  return sectionFromIssues(issues, { mvu_enabled: Boolean(project.mvuConfig?.enabled), ejs_enabled: Boolean(project.ejsConfig?.enabled), html_enabled: Boolean(project.htmlBeautifyConfig?.enabled) });
-}
-
-function deliveryReady(sections: Record<string, ValidationSection>, project: Project, exportTarget?: "worldbook" | "character_card", strictMode: StrictReviewMode = "off"): boolean {
-  const blockingSections = ["plan", "worldbook", "mvu", "ejs", "html"];
-  if (exportTarget === "character_card" || project.plan.output_target === "character_card" || project.plan.output_target === "both") blockingSections.push("character_card");
-  return blockingSections.every((name) => strictSectionStatus(name, sections[name], strictMode) !== "blocking");
-}
+function validateProjectSection(project: Project): ValidationSection { const issues: ValidationIssue[] = []; if (project.schemaVersion !== 3) issues.push(normalizeIssue({ code: "project.schema_version", field: "schemaVersion", severity: "error", message: "Project schemaVersion 必须为 3" })); if (project.kind.assets.ejs.enabled && !project.kind.assets.mvu.enabled) issues.push(normalizeIssue({ code: "project.ejs_requires_mvu", field: "kind.assets.ejs", severity: "error", message: "EJS enabled 时 MVU 必须 enabled" })); return sectionFromIssues(issues, { name: project.name, output: project.kind.output, source: project.kind.source, assets: project.kind.assets }); }
+function validatePlanSection(project: Project): ValidationSection { const issues: ValidationIssue[] = []; if ((project.kind.output === "character_card" || project.kind.output === "both") && !project.opening) issues.push(normalizeIssue({ code: "plan.opening.missing", field: "opening", severity: "error", message: "输出包含角色卡时必须记录 opening 设计" })); return sectionFromIssues(issues, { export_filename: project.plan.export_filename, strict_review: project.plan.strict_review }); }
+function validatePendingDecisions(project: Project): ValidationSection { const issues = project.pendingDecisions.map((d) => normalizeIssue({ code: "decision.pending", field: `pendingDecisions.${d.id}`, severity: "error" as const, message: `存在未决问题：${d.question}` })); return sectionFromIssues(issues, { pending_count: project.pendingDecisions.length, recorded_count: project.recordedDecisions.length }); }
+function validateOpeningSection(project: Project & { characterCardConfig?: import("../schemas/character-card.js").CharacterCardConfig }): ValidationSection { if (project.kind.output === "worldbook") return skipped({ required: false }, "纯世界书项目不需要 opening"); const issues: ValidationIssue[] = []; if (!project.opening) issues.push(normalizeIssue({ code: "opening.missing", field: "opening", severity: "error", message: "缺少开场白剧情设计" })); const first = project.characterCardConfig?.card.first_mes ?? project.greetings?.first_mes ?? ""; if (!first.trim()) issues.push(normalizeIssue({ code: "opening.first_mes.empty", field: "first_mes", severity: "error", message: "first_mes 不能为空" })); const requiresPlaceholder = project.kind.assets.mvu.enabled || project.kind.assets.html.enabled; if (requiresPlaceholder && !first.includes("<StatusPlaceHolderImpl/>")) issues.push(normalizeIssue({ code: "opening.status_placeholder.missing", field: "first_mes", severity: "error", message: "启用 MVU/HTML 状态栏时 first_mes 必须包含 <StatusPlaceHolderImpl/>" })); return sectionFromIssues(issues, { required: true, mode: project.opening?.mode, user_role: project.opening?.user_role, has_premise: Boolean(project.opening?.premise), has_first_mes: Boolean(first.trim()), requires_status_placeholder: requiresPlaceholder, first_mes_has_status_placeholder: first.includes("<StatusPlaceHolderImpl/>") }); }
+function validateRegexSection(project: Project): ValidationSection { const issues: ValidationIssue[] = []; return sectionFromIssues(issues, { enabled: project.kind.assets.regex.enabled, active_slice_count: project.kind.assets.regex.slice_count, script_count: 0, sources: project.kind.assets.regex.sources }); }
+function validateAssetsSection(project: Project): ValidationSection { const issues: ValidationIssue[] = []; if (project.kind.assets.ejs.enabled && !project.kind.assets.mvu.enabled) issues.push(normalizeIssue({ code: "assets.ejs_requires_mvu", field: "kind.assets", severity: "error", message: "EJS 资产依赖 MVU" })); return sectionFromIssues(issues, { mvu_enabled: project.kind.assets.mvu.enabled, html_enabled: project.kind.assets.html.enabled, regex_enabled: project.kind.assets.regex.enabled, ejs_enabled: project.kind.assets.ejs.enabled }); }
+function validateBuildSection(build?: { manifest?: BuildManifest; stale?: boolean; stale_reasons?: string[] }): ValidationSection { if (!build?.manifest) return sectionFromIssues([normalizeIssue({ code: "build.missing", field: "build", severity: "warning", message: "尚未生成 build manifest" })], { has_build: false, stale: true, stale_reasons: ["missing build"] }); const issues = build.stale ? [normalizeIssue({ code: "build.stale", field: "build", severity: "error", message: "build manifest 已过期" })] : []; return sectionFromIssues(issues, { has_build: true, build_id: build.manifest.build_id, stale: Boolean(build.stale), stale_reasons: build.stale_reasons ?? [], artifact_count: build.manifest.artifacts.length }); }
+function validateDeliverySection(project: Project, sections: Record<string, ValidationSection>, build?: { manifest?: BuildManifest; stale?: boolean; stale_reasons?: string[] }): ValidationSection { const blocking = Object.entries(sections).filter(([key, value]) => key !== "delivery" && value.status === "blocking").map(([key]) => key); const warnings = Object.entries(sections).filter(([key, value]) => key !== "delivery" && value.status === "warning").map(([key]) => key); const issues: ValidationIssue[] = blocking.map((key) => normalizeIssue({ code: `delivery.section.${key}`, field: key, severity: "error", message: `交付前 section=${key} 仍有 blocking` })); if (!build?.manifest) issues.push(normalizeIssue({ code: "delivery.build.missing", field: "build", severity: "error", message: "交付前必须先 build_assets(target='all')" })); if (build?.stale) issues.push(normalizeIssue({ code: "delivery.build.stale", field: "build", severity: "error", message: "交付前 build manifest 必须 fresh" })); return sectionFromIssues(issues, { export_target: project.kind.output, ready_to_export: issues.length === 0, blocking_sections: blocking, warning_sections: warnings, build_id: build?.manifest?.build_id }); }
+function summarize(sections: Record<string, ValidationSection>) { let blocking_count = 0, warning_count = 0, info_count = 0, skipped_count = 0; for (const value of Object.values(sections)) { blocking_count += value.errors.length; warning_count += value.warnings.length; info_count += value.infos.length; if (value.status === "skipped") skipped_count += 1; } return { blocking_count, warning_count, info_count, skipped_count }; }
+function recommendations(project: Project, sections: Record<string, ValidationSection>): string[] { const result: string[] = []; if (sections.build?.status === "warning") result.push("运行 build_assets(target='all') 生成 fresh manifest"); if (project.kind.assets.ejs.enabled && !project.kind.assets.mvu.enabled) result.push("启用 EJS 前先创建并启用 MVU slice"); return result; }
+function nextActions(sections: Record<string, ValidationSection>): Array<{ tool: string; reason: string }> { const actions: Array<{ tool: string; reason: string }> = []; if (sections.worldbook?.status === "blocking") actions.push({ tool: "update_entry_content/update_entry_config", reason: "修复世界书条目" }); if (sections.build?.status !== "ok") actions.push({ tool: "build_assets", reason: "生成或刷新 build manifest" }); if (sections.delivery?.status === "blocking") actions.push({ tool: "validate_project(scope='delivery')", reason: "检查交付 gate" }); return actions; }

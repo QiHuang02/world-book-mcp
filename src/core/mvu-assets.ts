@@ -2,10 +2,6 @@ import type { MvuConfig } from "../schemas/mvu.js";
 import type { WorldbookDraftEntry } from "../schemas/worldbook-draft.js";
 import { wrapWithXmlTag } from "../utils/yaml-xml.js";
 
-/**
- * MVU 世界书条目使用的 XML 包裹标签。
- * skill 约束：世界书条目里的 YAML 必须用 XML 标签包裹，不能直接用 YAML `---` 分隔符。
- */
 export const MVU_UPDATE_RULES_TAG = "variable_update_rules";
 export const MVU_OUTPUT_FORMAT_TAG = "variable_output_format";
 
@@ -24,183 +20,21 @@ export interface RegexScriptAsset {
   minDepth: number | null;
   maxDepth: number | null;
 }
-
-export interface TavernHelperScriptAsset {
-  type: "script";
-  enabled: boolean;
-  name: string;
-  id?: string;
-  content: string;
-  info: string;
-  button: { enabled: boolean; buttons: Array<{ name: string; visible: boolean }> };
-  data: Record<string, unknown>;
-}
-
-export interface MvuAssets {
-  worldbookEntries: WorldbookDraftEntry[];
-  regexScripts: RegexScriptAsset[];
-  tavernHelperScripts: TavernHelperScriptAsset[];
-}
+export interface TavernHelperScriptAsset { type: "script"; enabled: boolean; name: string; id?: string; content: string; info: string; button: { enabled: boolean; buttons: Array<{ name: string; visible: boolean }> }; data: Record<string, unknown> }
+export interface MvuAssets { worldbookEntries: WorldbookDraftEntry[]; regexScripts: RegexScriptAsset[]; tavernHelperScripts: TavernHelperScriptAsset[] }
 
 const DEFAULT_MVU_BUNDLE = "import 'https://testingcf.jsdelivr.net/gh/MagicalAstrogy/MagVarUpdate/artifact/bundle.js';";
-
-const DEFAULT_MVU_BUTTONS = [
-  { name: "重新处理变量", visible: true },
-  { name: "重新读取初始变量", visible: true },
-  { name: "清除旧楼层变量", visible: false },
-  { name: "快照楼层", visible: false },
-  { name: "重演楼层", visible: false },
-  { name: "重试额外模型解析", visible: false },
-];
+const DEFAULT_MVU_BUTTONS = [{ name: "重新处理变量", visible: true }, { name: "重新读取初始变量", visible: true }, { name: "清除旧楼层变量", visible: false }, { name: "快照楼层", visible: false }, { name: "重演楼层", visible: false }, { name: "重试额外模型解析", visible: false }];
 
 export function buildMvuAssets(mvu: MvuConfig): MvuAssets {
-  if (!mvu.enabled) return { worldbookEntries: [], regexScripts: [], tavernHelperScripts: [] };
-
-  const worldbookEntries: WorldbookDraftEntry[] = [
-    {
-      comment: "[initvar]变量初始化勿开",
-      entryType: "other",
-      keys: [],
-      secondaryKeys: [],
-      content: wrapInitvar(mvu.initvar),
-      constant: true,
-      position: "before_char",
-      order: 14720,
-      enabled: false,
-      preventRecursion: true,
-      excludeRecursion: true,
-    },
-  ];
-
-  if (mvu.variable_list_path !== null) {
-    worldbookEntries.push({
-      comment: "变量列表",
-      entryType: "other",
-      keys: [],
-      secondaryKeys: [],
-      content: `<status_current_variable>\n{{format_message_variable::${mvu.variable_list_path}}}\n</status_current_variable>`,
-      constant: true,
-      position: "at_depth",
-      order: 14720,
-      enabled: true,
-      depth: 0,
-      preventRecursion: true,
-      excludeRecursion: true,
-    });
-  }
-
-  worldbookEntries.push(
-    {
-      comment: "[mvu_update]变量更新规则",
-      entryType: "other",
-      keys: [],
-      secondaryKeys: [],
-      content: wrapWithXmlTag(mvu.update_rules, MVU_UPDATE_RULES_TAG),
-      constant: true,
-      position: "at_depth",
-      order: 14720,
-      enabled: true,
-      depth: 0,
-      preventRecursion: true,
-      excludeRecursion: true,
-    },
-    {
-      comment: "[mvu_update]变量输出格式",
-      entryType: "other",
-      keys: [],
-      secondaryKeys: [],
-      content: wrapWithXmlTag(mvu.output_format?.trim() || defaultOutputFormat(), MVU_OUTPUT_FORMAT_TAG),
-      constant: true,
-      position: "at_depth",
-      order: 14720,
-      enabled: true,
-      depth: 0,
-      preventRecursion: true,
-      excludeRecursion: true,
-    },
-  );
-
-  return {
-    worldbookEntries,
-    regexScripts: buildRegexScripts(mvu),
-    tavernHelperScripts: [
-      tavernScript("MVU", DEFAULT_MVU_BUNDLE, DEFAULT_MVU_BUTTONS),
-      tavernScript("变量结构", mvu.schema_script, []),
-    ],
-  };
+  const worldbookEntries: WorldbookDraftEntry[] = [entry("[initvar]变量初始化勿开", wrapWithXmlTag(mvu.initvar, "initvar"), false, "before_char")];
+  if (mvu.variableListPath !== null) worldbookEntries.push({ ...entry("变量列表", `<status_current_variable>\n{{format_message_variable::${mvu.variableListPath}}}\n</status_current_variable>`, true, "at_depth"), depth: 0 });
+  worldbookEntries.push({ ...entry("[mvu_update]变量更新规则", wrapWithXmlTag(mvu.updateRules, MVU_UPDATE_RULES_TAG), true, "at_depth"), depth: 0 }, { ...entry("[mvu_update]变量输出格式", wrapWithXmlTag(mvu.outputFormat?.trim() || defaultOutputFormat(), MVU_OUTPUT_FORMAT_TAG), true, "at_depth"), depth: 0 });
+  return { worldbookEntries, regexScripts: buildRegexScripts(mvu), tavernHelperScripts: [tavernScript("MVU", DEFAULT_MVU_BUNDLE, DEFAULT_MVU_BUTTONS), tavernScript("变量结构", mvu.schemaScript, [])] };
 }
 
-function buildRegexScripts(mvu: MvuConfig): RegexScriptAsset[] {
-  const scripts: RegexScriptAsset[] = [];
-  if (mvu.hide_regex) {
-    scripts.push(regexScript({
-      scriptName: "[不发送]去除变量更新",
-      findRegex: "/<UpdateVariable>(.*?)<\/UpdateVariable>/gis",
-      replaceString: "",
-      markdownOnly: false,
-      promptOnly: true,
-      placement: [1, 2],
-      minDepth: 4,
-    }));
-  }
-  // 隐藏 <StatusPlaceHolderImpl/> 占位符，避免发送给 AI 消耗 token
-  scripts.push(regexScript({
-    scriptName: "[不发送]界面占位符",
-    findRegex: "<StatusPlaceHolderImpl/>",
-    replaceString: "",
-    markdownOnly: false,
-    promptOnly: true,
-    placement: [1, 2],
-    runOnEdit: true,
-  }));
-  if (mvu.beautify_regex) {
-    scripts.push(
-      regexScript({
-        scriptName: "[美化]完整变量更新",
-        findRegex: "/<UpdateVariable>(.*?)<\/UpdateVariable>/gis",
-        replaceString: "<details><summary>变量更新完成</summary>\n$1\n</details>",
-        markdownOnly: true,
-        promptOnly: false,
-        placement: [2],
-      }),
-      regexScript({
-        scriptName: "[美化]变量更新中",
-        findRegex: "/<updatevariable>(?!.*<\/updatevariable>)\s*(.*)\s*$/gsi",
-        replaceString: "<details><summary>变量更新中...</summary>\n$1\n</details>",
-        markdownOnly: true,
-        promptOnly: false,
-        placement: [2],
-      }),
-    );
-  }
-  return scripts;
-}
-
-function regexScript(input: Partial<RegexScriptAsset> & { scriptName: string; findRegex: string; replaceString: string }): RegexScriptAsset {
-  return {
-    scriptName: input.scriptName,
-    findRegex: input.findRegex,
-    replaceString: input.replaceString,
-    trimStrings: [],
-    placement: input.placement ?? [2],
-    disabled: false,
-    markdownOnly: input.markdownOnly ?? true,
-    promptOnly: input.promptOnly ?? false,
-    runOnEdit: input.runOnEdit ?? false,
-    substituteRegex: input.substituteRegex ?? 0,
-    minDepth: input.minDepth ?? null,
-    maxDepth: input.maxDepth ?? null,
-  };
-}
-
-function tavernScript(name: string, content: string, buttons: Array<{ name: string; visible: boolean }>): TavernHelperScriptAsset {
-  return { type: "script", enabled: true, name, content, info: "", button: { enabled: true, buttons }, data: {} };
-}
-
-function wrapInitvar(initvar: string): string {
-  return wrapWithXmlTag(initvar, "initvar");
-}
-
-function defaultOutputFormat(): string {
-  return `变量输出格式:\n  rule:\n    - 你必须在回复末尾输出更新分析和实际的更新命令\n    - 更新命令遵循JSON Patch (RFC 6902)标准\n    - 支持操作: replace/delta/insert/remove\n    - 不要更新以_开头的只读变量\n  format: |-\n    <UpdateVariable>\n    <Analysis>$(按英文输出，不超过80词)\n    - \${计算经过的时间: ...}\n    - \${判断是否允许戏剧性变化: 是/否}\n    - \${基于check分析每个变量: ...}\n    </Analysis>\n    <JSONPatch>\n    [\n      { "op": "replace", "path": "\${路径}", "value": "\${新值}" },\n      { "op": "delta", "path": "\${数值路径}", "value": \${变动值} },\n      { "op": "insert", "path": "\${对象路径/新键}", "value": "\${新值}" },\n      { "op": "remove", "path": "\${对象路径/键}" }\n    ]\n    </JSONPatch>\n    </UpdateVariable>`;
-}
+function entry(comment: string, content: string, enabled: boolean, position: WorldbookDraftEntry["position"]): WorldbookDraftEntry { return { comment, entryType: "other", keys: [], secondaryKeys: [], content, constant: true, position, order: 14720, enabled, preventRecursion: true, excludeRecursion: true }; }
+function buildRegexScripts(mvu: MvuConfig): RegexScriptAsset[] { const scripts: RegexScriptAsset[] = []; if (mvu.hideRegex) scripts.push(regexScript({ scriptName: "[不发送]去除变量更新", findRegex: "/<UpdateVariable>(.*?)<\/UpdateVariable>/gis", replaceString: "", markdownOnly: false, promptOnly: true, placement: [1, 2], minDepth: 4 })); scripts.push(regexScript({ scriptName: "[不发送]界面占位符", findRegex: "<StatusPlaceHolderImpl/>", replaceString: "", markdownOnly: false, promptOnly: true, placement: [1, 2], runOnEdit: true })); if (mvu.beautifyRegex) scripts.push(regexScript({ scriptName: "[美化]完整变量更新", findRegex: "/<UpdateVariable>(.*?)<\/UpdateVariable>/gis", replaceString: "<details><summary>变量更新完成</summary>\n$1\n</details>", markdownOnly: true, promptOnly: false, placement: [2] }), regexScript({ scriptName: "[美化]变量更新中", findRegex: "/<updatevariable>(?!.*<\/updatevariable>)\s*(.*)\s*$/gsi", replaceString: "<details><summary>变量更新中...</summary>\n$1\n</details>", markdownOnly: true, promptOnly: false, placement: [2] })); return scripts; }
+function regexScript(input: Partial<RegexScriptAsset> & { scriptName: string; findRegex: string; replaceString: string }): RegexScriptAsset { return { scriptName: input.scriptName, findRegex: input.findRegex, replaceString: input.replaceString, trimStrings: [], placement: input.placement ?? [2], disabled: false, markdownOnly: input.markdownOnly ?? true, promptOnly: input.promptOnly ?? false, runOnEdit: input.runOnEdit ?? false, substituteRegex: input.substituteRegex ?? 0, minDepth: input.minDepth ?? null, maxDepth: input.maxDepth ?? null }; }
+function tavernScript(name: string, content: string, buttons: Array<{ name: string; visible: boolean }>): TavernHelperScriptAsset { return { type: "script", enabled: true, name, content, info: "", button: { enabled: true, buttons }, data: {} }; }
+function defaultOutputFormat(): string { return `变量输出格式:\n  rule:\n    - 你必须在回复末尾输出更新分析和实际的更新命令\n    - 不要更新以_开头的只读变量\n  format: |-\n    <UpdateVariable>\n    <Analysis>$(按英文输出，不超过80词)</Analysis>\n    <JSONPatch>[]</JSONPatch>\n    </UpdateVariable>`; }

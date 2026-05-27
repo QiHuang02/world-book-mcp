@@ -31,7 +31,7 @@ describe("buildProjectAssets", () => {
       { scriptName: "额外", findRegex: "/x/g", replaceString: "", trimStrings: [], placement: [2], disabled: false, markdownOnly: true, promptOnly: false, runOnEdit: false, substituteRegex: 0, minDepth: null, maxDepth: null },
     ];
     const assets = buildProjectAssets(project, "all", extraRegexScripts);
-    expect(assets.summary.worldbook_entry_count).toBeGreaterThan(0);
+    expect(assets.summary.entry_count).toBeGreaterThan(0);
     expect(assets.summary.tavern_helper_script_count).toBeGreaterThan(0);
     expect(assets.regex_scripts.filter((script) => script.scriptName === "额外")).toHaveLength(1);
   });

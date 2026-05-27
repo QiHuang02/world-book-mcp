@@ -31,8 +31,8 @@ function entrySlice(id: string, content: string) {
 describe("shared store", () => {
   it("shares a slice and uses it in another project independently", async () => {
     await cleanupWorkspace();
-    const source = await initWorkspaceProject({ name: "共享源", ifExists: "error" });
-    const target = await initWorkspaceProject({ name: "共享目标", ifExists: "error" });
+    const source = await initWorkspaceProject({ name: "共享源", output: "worldbook", source: "original", ifExists: "error" });
+    const target = await initWorkspaceProject({ name: "共享目标", output: "worldbook", source: "original", ifExists: "error" });
     await upsertDraftSlice(source.slug, entrySlice("entry-a", "源内容"));
 
     const shared = await shareSlice({ slug: source.slug, type: "entry", id: "entry-a", sharedId: "entry-shared", title: "共享条目" });
@@ -51,9 +51,9 @@ describe("shared store", () => {
 
   it("uses singleton ids for mvu/html assets", async () => {
     await cleanupWorkspace();
-    const source = await initWorkspaceProject({ name: "资产源", ifExists: "error" });
-    const target = await initWorkspaceProject({ name: "资产目标", ifExists: "error" });
-    await upsertDraftSlice(source.slug, createDraftSlice({ type: "mvu", id: "mvu", data: { enabled: true, style: "zod", schema_script: "", initvar: "", update_rules: "", variable_list_path: "stat_data", hide_regex: true, beautify_regex: true } }));
+    const source = await initWorkspaceProject({ name: "资产源", output: "worldbook", source: "original", assets: { mvu: true }, ifExists: "error" });
+    const target = await initWorkspaceProject({ name: "资产目标", output: "worldbook", source: "original", assets: { mvu: true }, ifExists: "error" });
+    await upsertDraftSlice(source.slug, createDraftSlice({ type: "mvu", id: "mvu", data: { schemaScript: "", initvar: "", updateRules: "", variableListPath: "stat_data", hideRegex: true, beautifyRegex: true } }));
 
     await shareSlice({ slug: source.slug, type: "mvu", id: "anything", sharedId: "shared-mvu" });
     const used = await useShared({ slug: target.slug, sharedId: "shared-mvu", targetId: "custom-mvu" });

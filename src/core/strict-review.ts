@@ -1,64 +1,6 @@
-import type { Project } from "../schemas/project.js";
-import type { ProjectValidationReport, ValidationIssue, ValidationSection } from "./validation-types.js";
+import type { ProjectValidationReport, ValidationIssue } from "./validation-types.js";
 
 export type StrictReviewMode = "off" | "standard" | "strict";
-
-export interface StrictReviewResult {
-  mode: StrictReviewMode;
-  upgraded_count: number;
-  upgraded: Array<{ section: string; code: string; field: string; message: string }>;
-}
-
-const STANDARD_BLOCKING_CODES = [
-  /^pending_decisions\./,
-  /^character_card\.description\.not_empty$/,
-  /^first_mes\./,
-  /^ejs\.stage\.enabled$/,
-  /^ejs\.getwi\.stage_enabled$/,
-];
-
-export function resolveStrictReviewMode(input: { strict?: boolean | StrictReviewMode; strict_review?: boolean | StrictReviewMode; project?: Project }): StrictReviewMode {
-  const raw = input.strict_review ?? input.strict ?? input.project?.plan.strict_review;
-  if (raw === true) return "standard";
-  if (raw === false || raw === undefined) return "off";
-  return raw;
-}
-
-export function applyStrictReview(report: ProjectValidationReport, mode: StrictReviewMode): ProjectValidationReport {
-  const strict = collectStrictUpgrades(report, mode);
-  const ready_to_export = report.ready_to_export && strict.upgraded_count === 0;
-  return { ...report, ready_to_export, strict };
-}
-
-export function collectStrictUpgrades(report: ProjectValidationReport, mode: StrictReviewMode): StrictReviewResult {
-  if (mode === "off") return { mode, upgraded_count: 0, upgraded: [] };
-  const upgraded: StrictReviewResult["upgraded"] = [];
-  for (const [sectionName, section] of Object.entries(report.sections)) {
-    for (const warning of section.warnings) {
-      if (shouldUpgrade(sectionName, warning, mode)) {
-        upgraded.push({ section: sectionName, code: warning.code, field: warning.field, message: warning.message });
-      }
-    }
-  }
-  return { mode, upgraded_count: upgraded.length, upgraded };
-}
-
-export function strictSectionStatus(sectionName: string, section: ValidationSection | undefined, mode: StrictReviewMode): "ok" | "warning" | "blocking" {
-  if (!section) return "warning";
-  if (section.errors.length > 0) return "blocking";
-  if (mode !== "off" && section.warnings.some((warning) => shouldUpgrade(sectionName, warning, mode))) return "blocking";
-  if (section.warnings.length > 0) return "warning";
-  return "ok";
-}
-
-function shouldUpgrade(_sectionName: string, issue: ValidationIssue, mode: StrictReviewMode): boolean {
-  if (mode === "strict") return true;
-  if (mode === "standard") return STANDARD_BLOCKING_CODES.some((pattern) => pattern.test(issue.code));
-  return false;
-}
-
-declare module "./validation-types.js" {
-  interface ProjectValidationReport {
-    strict?: StrictReviewResult;
-  }
-}
+export interface StrictReviewResult { mode: StrictReviewMode; upgraded_count: number; upgraded: Array<{ section: string; code: string; field: string; message: string }> }
+export function normalizeStrictMode(value: boolean | StrictReviewMode | undefined): StrictReviewMode { if (value === true) return "standard"; if (value === false || value === undefined) return "off"; return value; }
+export function applyStrictReview(report: ProjectValidationReport, value?: boolean | StrictReviewMode): ProjectValidationReport { const mode = normalizeStrictMode(value); if (mode === "off") return report; const upgraded: StrictReviewResult["upgraded"] = []; for (const [sectionKey, section] of Object.entries(report.sections)) { if (sectionKey === "content_policy_delegated") continue; const warnings = [...section.warnings]; if (mode === "strict" || sectionKey === "delivery") { section.errors.push(...warnings.map((warning) => ({ ...warning, severity: "error" as const, code: `${warning.code}.strict` } satisfies ValidationIssue))); section.warnings = []; if (warnings.length) section.status = "blocking"; upgraded.push(...warnings.map((w) => ({ section: sectionKey, code: w.code, field: w.field, message: w.message }))); } } report.summary.blocking_count = Object.values(report.sections).reduce((sum, s) => sum + s.errors.length, 0); report.summary.warning_count = Object.values(report.sections).reduce((sum, s) => sum + s.warnings.length, 0); report.ok = report.summary.blocking_count === 0; report.ready_to_build = report.ok; report.ready_to_export = report.ready_to_export && report.ok; report.strict = { mode, upgraded_count: upgraded.length, upgraded }; return report; }

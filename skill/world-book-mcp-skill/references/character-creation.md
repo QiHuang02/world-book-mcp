@@ -8,8 +8,7 @@
 
 ```yaml
 <character>
-name: 中文名（English Name）
-name_en: English Name
+name: 中文名
 age: 年龄 + 身份定位
 gender: 性别
 nicknames: 昵称1、昵称2
@@ -44,6 +43,14 @@ abilities:
 relationships:
   - name: 角色名或{{user}}
     detail: 具体画面而非抽象形容
+NSFW:
+  sexual_characteristics:
+    sexual_experience: 
+    sexual_orientation: 
+    sexual_role: 
+    sexual_habits:
+  fetishes:
+  boundaries:
 </character>
 ```
 
@@ -164,18 +171,20 @@ AI 有数据库默认认知。只写偏离默认的部分。
 ## 七、MCP 工作流
 
 ```text
-init_project(kind="character_card"|"mixed")
+init_project(output="character_card"|"both", source="original", opening=...)
 → update_plan：记录角色列表、关系、卡型、条目规划
 → update_character_profile(changes={ name, description:"", include_worldbook:true, worldbook_name, ... })
 → create_draft_slice(draft_type="entry", id="char-basic")：角色基本信息条目
-→ update_draft_fields(draft_type="entry", id="char-basic", changes={ entryType:"character_basic", characterName, content, constant, position, order, keys })
+→ update_entry_content(id="char-basic", content=角色基本信息)
+→ update_entry_config(id="char-basic", changes={ entryType:"character_basic", characterName, constant, position, order, keys })
 → create_draft_slice(draft_type="entry", id="char-personality")：性格独立条目
-→ update_draft_fields(draft_type="entry", id="char-personality", changes={ entryType:"character_personality", characterName, content, constant, position, order, keys })
+→ update_entry_content(id="char-personality", content=性格内容)
+→ update_entry_config(id="char-personality", changes={ entryType:"character_personality", characterName, constant, position, order, keys })
 → 可选：物品/能力/场景/NPC entry 条目
 → update_character_greetings(changes={ first_mes, alternate_greetings })
-→ validate_draft(scope="character_card")
-→ validate_draft(scope="worldbook")
-→ 宿主 AI 按 content-rules.md 做角色辨识度、抽象标签、八股禁词自查
+→ validate_project(scope="character_card")
+→ validate_project(scope="worldbook")
+→ 按 content-rules.md 做角色辨识度、抽象标签、八股禁词自查
 ```
 
 ### 条目配置速查

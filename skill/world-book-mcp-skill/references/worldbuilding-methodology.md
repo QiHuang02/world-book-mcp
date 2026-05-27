@@ -1,6 +1,6 @@
 # 世界观设计方法论
 
-本文指导如何从零设计世界观并转化为世界书条目。设计阶段只输出结构化概念，不写条目内容；条目化由 `create_draft_slice(draft_type="entry")` + `update_draft_field(s)` 完成。
+本文指导如何从零设计世界观并转化为世界书条目。设计阶段只输出结构化概念，不写条目内容；条目化由 `create_draft_slice(draft_type="entry")` + `update_entry_content` / `update_entry_config` 完成。
 
 ## 一、世界观类型判定
 
@@ -118,9 +118,10 @@ update_plan(mode="replace_section", section="5. 世界观设定", content="类�
 init_project
 → update_plan：记录世界观类型、维度选择、总纲
 → create_draft_slice(draft_type="entry", id="world-summary")
-→ update_draft_fields(draft_type="entry", id="world-summary", changes={ content: 总纲内容, entryType:"world_summary", constant:true, position:"before_char", order:1 })
-→ 按条目规划表逐条创建 entry slice + update_draft_fields
-→ validate_draft(scope="worldbook")
+→ update_entry_content(id="world-summary", content=总纲内容)
+→ update_entry_config(id="world-summary", changes={ entryType:"world_summary", constant:true, position:"before_char", order:1 })
+→ 按条目规划表逐条创建 entry slice，并分别调用 update_entry_content / update_entry_config
+→ validate_project(scope="worldbook")
 ```
 
 ## 七、自查清单

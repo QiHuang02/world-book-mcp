@@ -12,16 +12,16 @@ export const EjsEntryConfigSchema = z.object({
   enabled: z.boolean().default(true),
   depth: z.number().int().optional(),
   scanDepth: z.number().int().optional(),
+  variablePaths: z.array(z.string()).default([]),
+  templateType: z.enum(["phase_profile", "palette", "custom"]).default("custom"),
   stages: z.array(z.object({
     name: z.string().min(1),
     condition: z.string().min(1),
+    targetSliceId: z.string().min(1),
   })).optional(),
 });
 
 export const EjsConfigSchema = z.object({
-  enabled: z.boolean().default(true),
-  template_type: z.enum(["phase_profile", "palette", "custom"]).default("phase_profile"),
-  variable_paths: z.array(z.string()).default([]),
   entries: z.array(EjsEntryConfigSchema).default([]),
 });
 

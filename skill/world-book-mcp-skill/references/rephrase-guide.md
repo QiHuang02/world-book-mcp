@@ -92,8 +92,9 @@ excludeRecursion: true
 → 引导用户思考角色的深层逻辑
 → 用户提供二次解释文本
 → create_draft_slice(draft_type="entry", id="char-rephrase")
-→ update_draft_fields(draft_type="entry", id="char-rephrase", changes={ content: 用户文本, entryType:"other", position:"after_char", order: 性格order+1 })
-→ validate_draft(scope="worldbook")
+→ update_entry_content(id="char-rephrase", content=用户文本)
+→ update_entry_config(id="char-rephrase", changes={ entryType:"other", position:"after_char", order: 性格order+1 })
+→ validate_project(scope="worldbook")
 ```
 
 ## 九、引导用户的问题模板
