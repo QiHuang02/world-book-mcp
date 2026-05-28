@@ -36,9 +36,17 @@ describe("validateProject", () => {
     expect(report.sections.writing_optimization).toBeUndefined();
   });
 
-  it("does not duplicate pending decisions inside plan section", () => {
+  it("warns when plan lacks acceptance and verification steps", () => {
+    const report = validateProject(baseProject(), { scope: "plan" });
+    expect(report.sections.plan?.warnings.some((issue) => issue.code === "plan.acceptance.missing")).toBe(true);
+    expect(report.sections.plan?.warnings.some((issue) => issue.code === "plan.verification.missing")).toBe(true);
+  });
+
+  it("blocks delivery when a plan item is blocked", () => {
     const project = baseProject({
+      plan: { enabled_assets: {}, acceptance_criteria: ["验收"], verification_steps: ["验证"] },
       pendingDecisions: [{
+
         id: "card_type",
         question: "卡型？",
         options: [],

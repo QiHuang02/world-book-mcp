@@ -5,7 +5,7 @@ import { validateHtmlBeautifyConfig } from "../src/core/html-beautify-validator.
 describe("validateHtmlBeautifyConfig", () => {
   it("accepts generated statusbar template", () => {
     const { html } = createHtmlBeautifyTemplate({ target: "statusbar", theme: "minimal" });
-    const result = validateHtmlBeautifyConfig({ html, mvu: { enabled: true, style: "zod", schema_script: "registerMvuSchema", initvar: "a: 1", update_rules: "rules", variable_list_path: "stat_data", hide_regex: true, beautify_regex: true } });
+    const result = validateHtmlBeautifyConfig({ html, mvu: { enabled: true, style: "zod", schemaScript: "registerMvuSchema", initvar: "a: 1", updateRules: "rules", variableListPath: "stat_data", hideRegex: true, beautifyRegex: true } });
     expect(result.valid).toBe(true);
   });
 

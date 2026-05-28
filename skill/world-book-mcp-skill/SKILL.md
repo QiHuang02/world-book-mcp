@@ -13,6 +13,7 @@ description: Use the world-book-mcp MCP server to create, modify, validate, buil
 - 修改已有 JSON 时，也先 `init_project(source="modify_existing")`，再 `import_existing_json`，禁止直接改最终 JSON。
 - 只改局部资产时，只编辑对应 DraftSlice，但仍运行对应 scope 校验、构建和交付前校验。
 - 不确定关键设定时，用 `update_plan(mode="request_decision"|"record_decision"|"append_decision")` 留痕；不要编造核心事实。
+- 完整项目、修改既有 JSON、或涉及 MVU/HTML/regex/EJS 时，先按 `references/writing-plans.md` 写结构化 plan item、验收标准与验证步骤。
 - 工具调用日志保持静默，最终回复只给用户需要的结论、文件和验证结果；除非用户要求，不贴 raw tool JSON。
 
 ## 初始化前确认
@@ -148,16 +149,19 @@ MVU：
 - HTML/EJS 引用 MVU 变量时使用完整路径，例如 `stat_data.角色A.好感度`。
 - hidden 变量不进入 outputFormat / HTML / EJS。
 - readonly 变量可读取，但不应被 updateRules 更新。
-- MVU 包含 `export const Schema = z.object(...)` 与 `registerMvuSchema(Schema)`。
+- MVU 包含 `export const Schema = z.object(...)` 与 `$(() => registerMvuSchema(Schema))`。
+- `initvar/updateRules/outputFormat` 在 slice 内保存纯 YAML/模板文本，由 build 统一包裹成 `<initvar>`、`<variable_update_rules>`、`<variable_output_format>` 条目。
+- 变量输出格式遵循教程式 `<UpdateVariable><Analysis>...</Analysis><JSONPatch>[...]</JSONPatch></UpdateVariable>`，JSONPatch 路径使用 `/角色/变量`。
 
 HTML/EJS：
 
-- HTML slice 保存状态栏展示配置与 regexPolicy。
-- 状态栏使用 `.wbm-statusbar` 作用域；HTML/CSS 使用内联安全结构，不引用外部 URL。
+- HTML slice 保存状态栏展示配置与 regexPolicy；build 生成 `[不发送]界面占位符` 与 `[界面]状态栏` regex。
+- 状态栏使用 `.wbm-statusbar` 作用域；HTML/CSS 使用内联安全结构，不引用外部 URL、不内嵌 `<script>`。
 - 启用状态栏时，开场白包含 `<StatusPlaceHolderImpl/>`。
-- active EJS 依赖 MVU；stage 默认 `enabled=false`。
-- controller.stages 指向 role=stage 的 EJS slice。
-- EJS `variablePaths` 只引用可公开变量。
+- active EJS 依赖 MVU 与提示词模板插件；stage 默认 `enabled=false`。
+- EJS 变量读取用 `getvar('stat_data...')`，跨条目变量声明用 `if (typeof gw === 'undefined') var gw = ...`。
+- controller.stages 指向 role=stage 的 EJS slice；通过 `<%- await getwi('stage') %>` 加载，`getwi()` 前必须有 `await`。
+- EJS `variablePaths` 只引用可公开变量；绿灯预处理用 `@@preprocessing`。
 
 ## validate / build / delivery
 
@@ -208,6 +212,7 @@ generate_json(build_id=...)
 | 任务 | 优先读取 |
 |---|---|
 | 工具参数、field path、scope section | `references/tool-reference.md` |
+| 可执行计划、plan item、验收与验证 | `references/writing-plans.md` |
 | 任务分流与端到端流程 | `references/task-routing.md`、`references/workflows.md` |
 | 需求记录与条目组织 | `references/requirements.md`、`references/composition.md` |
 | 内容质量审查 | `references/content-rules.md` |

@@ -3,7 +3,7 @@ import { createEjsTemplate } from "../src/core/ejs-template.js";
 import { validateEjsConfig } from "../src/core/ejs-validator.js";
 import type { MvuConfig } from "../src/schemas/mvu.js";
 
-const mvu: MvuConfig = { enabled: true, style: "zod", schema_script: "registerMvuSchema", initvar: "a: 1", update_rules: "rules", variable_list_path: "stat_data", hide_regex: true, beautify_regex: true };
+const mvu: MvuConfig = { enabled: true, style: "zod", schemaScript: "registerMvuSchema", initvar: "a: 1", updateRules: "rules", variableListPath: "stat_data", hideRegex: true, beautifyRegex: true };
 
 describe("validateEjsConfig", () => {
   it("accepts generated template with mvu", () => {
@@ -21,7 +21,7 @@ describe("validateEjsConfig", () => {
 
   it("rejects non stat_data paths", () => {
     const { ejs } = createEjsTemplate({ templateType: "phase_profile", characterName: "角色A" });
-    const result = validateEjsConfig({ ejs: { ...ejs, variable_paths: ["角色A.好感度"] }, mvu });
+    const result = validateEjsConfig({ ejs: { ...ejs, entries: [{ ...ejs.entries[0], variablePaths: ["角色A.好感度"] }] }, mvu });
     expect(result.valid).toBe(false);
   });
 

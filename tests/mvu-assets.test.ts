@@ -40,8 +40,8 @@ describe("buildMvuAssets", () => {
     const { mvu } = createMvuTemplate({ characterNames: ["角色A"] });
     const assets = buildMvuAssets({
       ...mvu,
-      update_rules: `<${MVU_UPDATE_RULES_TAG}>\n---\n变量更新规则:\n  foo:\n    check:\n      - bar\n</${MVU_UPDATE_RULES_TAG}>`,
-      output_format: `<${MVU_OUTPUT_FORMAT_TAG}>\n---\n变量输出格式:\n  rule:\n    - bar\n</${MVU_OUTPUT_FORMAT_TAG}>`,
+      updateRules: `<${MVU_UPDATE_RULES_TAG}>\n---\n变量更新规则:\n  foo:\n    check:\n      - bar\n</${MVU_UPDATE_RULES_TAG}>`,
+      outputFormat: `<${MVU_OUTPUT_FORMAT_TAG}>\n---\n变量输出格式:\n  rule:\n    - bar\n</${MVU_OUTPUT_FORMAT_TAG}>`,
     });
 
     const updateRulesEntry = assets.worldbookEntries.find((entry) => entry.comment.includes("变量更新规则"));
@@ -61,22 +61,22 @@ describe("buildMvuAssets", () => {
     expect(variableListEntry!.content).not.toMatch(/^---/);
   });
 
-  it("strips `---` and double-wrapping from AI-supplied update_rules / output_format via schema transform", () => {
+  it("strips `---` and double-wrapping from AI-supplied updateRules / outputFormat via schema transform", () => {
     const parsed = MvuConfigSchema.parse({
       enabled: true,
       style: "zod",
-      schema_script: "export const Schema = z.object({}); registerMvuSchema(Schema);",
+      schemaScript: "export const Schema = z.object({}); registerMvuSchema(Schema);",
       initvar: "---\n<initvar>\n角色:\n  好感度: 20\n</initvar>\n---",
-      update_rules: "---\n<variable_update_rules>\n变量更新规则:\n  角色:\n    好感度:\n      check:\n        - foo\n</variable_update_rules>",
-      output_format: "---\n变量输出格式:\n  rule:\n    - bar",
+      updateRules: "---\n<variable_update_rules>\n变量更新规则:\n  角色:\n    好感度:\n      check:\n        - foo\n</variable_update_rules>",
+      outputFormat: "---\n变量输出格式:\n  rule:\n    - bar",
     });
 
     expect(parsed.initvar).toBe("角色:\n  好感度: 20");
-    expect(parsed.update_rules.startsWith("---")).toBe(false);
-    expect(parsed.update_rules.includes("<variable_update_rules>")).toBe(false);
-    expect(parsed.update_rules).toContain("变量更新规则:");
-    expect(parsed.output_format!.startsWith("---")).toBe(false);
-    expect(parsed.output_format).toContain("变量输出格式:");
+    expect(parsed.updateRules.startsWith("---")).toBe(false);
+    expect(parsed.updateRules.includes("<variable_update_rules>")).toBe(false);
+    expect(parsed.updateRules).toContain("变量更新规则:");
+    expect(parsed.outputFormat!.startsWith("---")).toBe(false);
+    expect(parsed.outputFormat).toContain("变量输出格式:");
 
     const assets = buildMvuAssets(parsed);
     for (const entry of assets.worldbookEntries) {

@@ -4,8 +4,9 @@ import { buildCharacterCardJson, type CharacterCardJson } from "./character-card
 import type { RegexScriptAsset, TavernHelperScriptAsset } from "./mvu-assets.js";
 import type { WorldbookDraftEntry } from "../schemas/worldbook-draft.js";
 
-export function characterCardConfigFromProject(project: Project) {
-  if (!project.profile) throw new Error("项目尚未保存角色卡 profile");
+export function characterCardConfigFromProject(project: Project & { characterCardConfig?: import("../schemas/character-card.js").CharacterCardConfig }) {
+  if (project.characterCardConfig) return CharacterCardConfigSchema.parse(project.characterCardConfig);
+  if (!project.profile) throw new Error("character card config missing: 项目尚未保存角色卡 profile");
   return CharacterCardConfigSchema.parse({ card: { ...project.profile, ...(project.greetings ?? {}) }, worldbook: { source: project.profile.include_worldbook === false ? "none" : "project_draft", name: project.profile.worldbook_name ?? project.profile.name } });
 }
 

@@ -19,6 +19,8 @@ init_project(name, output, source, assets?, opening?, project_id?, scan_existing
 ```text
 rewrite | replace_section | append_note | append_decision | set_export_target
 request_decision | record_decision | list_decisions | clear_decision
+upsert_plan_item | update_plan_item_status | append_acceptance | append_verification
+append_risk | append_checkpoint | summarize_plan
 ```
 
 不再使用独立 decision tools。

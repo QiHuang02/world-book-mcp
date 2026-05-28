@@ -3,6 +3,7 @@ import { PendingDecisionSchema, RecordedDecisionSchema } from "./decision.js";
 import { CharacterCardBaseSchema } from "./character-card.js";
 import { ProjectOutputKindSchema, ProjectSourceKindSchema } from "./workspace.js";
 import { RegexAssetSourceSchema } from "./regex.js";
+import { PlanItemSchema } from "./plan.js";
 
 export const AssetKindStateSchema = z.object({
   planned: z.boolean().default(false),
@@ -38,7 +39,15 @@ export const OpeningDesignSchema = z.object({
 export const ProjectPlanMetadataSchema = z.object({
   export_filename: z.string().optional(),
   strict_review: z.union([z.boolean(), z.enum(["off", "standard", "strict"])]).optional(),
-}).default({});
+  summary: z.string().optional(),
+  scope: z.array(z.string()).default([]),
+  assumptions: z.array(z.string()).default([]),
+  non_goals: z.array(z.string()).default([]),
+  plan_items: z.array(PlanItemSchema).default([]),
+  acceptance_criteria: z.array(z.string()).default([]),
+  verification_steps: z.array(z.string()).default([]),
+  risk_register: z.array(z.string()).default([]),
+}).default({ scope: [], assumptions: [], non_goals: [], plan_items: [], acceptance_criteria: [], verification_steps: [], risk_register: [] });
 
 export const ProjectImportRecordSchema = z.object({
   importId: z.string().min(1),

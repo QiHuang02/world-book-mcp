@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { analyzeMvuPaths, fromUiPath, normalizePath, toUiPath } from "../src/core/mvu-path-analyzer.js";
 
 const baseConfig = {
-  schema_script: "",
+  schemaScript: "",
   initvar: "",
-  update_rules: "",
+  updateRules: "",
 };
 
 describe("mvu-path-analyzer path helpers", () => {
@@ -39,11 +39,11 @@ describe("analyzeMvuPaths schema parsing", () => {
       });
       registerMvuSchema(Schema);
     `;
-    const result = analyzeMvuPaths({ ...baseConfig, schema_script: script });
-    const paths = result.schema_paths.map((item) => item.path).sort();
+    const result = analyzeMvuPaths({ ...baseConfig, schemaScript: script });
+    const paths = result.schemaPaths.map((item) => item.path).sort();
     expect(paths).toEqual(["hp", "stats.$hidden", "stats._internal", "stats.attack"]);
-    expect(result.readonly_paths).toContain("stats._internal");
-    expect(result.hidden_paths).toContain("stats.$hidden");
+    expect(result.readonlyPaths).toContain("stats._internal");
+    expect(result.hiddenPaths).toContain("stats.$hidden");
   });
 
   it("treats prefault default values without splitting on inner commas", () => {
@@ -54,11 +54,11 @@ describe("analyzeMvuPaths schema parsing", () => {
       });
       registerMvuSchema(Schema);
     `;
-    const result = analyzeMvuPaths({ ...baseConfig, schema_script: script });
-    const paths = result.schema_paths.map((item) => item.path).sort();
+    const result = analyzeMvuPaths({ ...baseConfig, schemaScript: script });
+    const paths = result.schemaPaths.map((item) => item.path).sort();
     expect(paths).toEqual(["config", "hp"]);
-    const configVar = result.schema_paths.find((item) => item.path === "config");
-    expect(configVar?.has_default).toBe(true);
+    const configVar = result.schemaPaths.find((item) => item.path === "config");
+    expect(configVar?.defaultValue).toEqual({ name: "x, y", count: 3 });
   });
 
   it("parses initvar as YAML leaf paths", () => {
@@ -69,13 +69,13 @@ stats:
   defense: 5
 `;
     const result = analyzeMvuPaths({ ...baseConfig, initvar });
-    expect(result.initvar_paths).toContain("hp");
-    expect(result.initvar_paths).toContain("stats.attack");
-    expect(result.initvar_paths).toContain("stats.defense");
+    expect(result.initvarPaths).toContain("hp");
+    expect(result.initvarPaths).toContain("stats.attack");
+    expect(result.initvarPaths).toContain("stats.defense");
   });
 
-  it("parses update_rules with type/range/check suffixes stripped", () => {
-    const update_rules = `
+  it("parses updateRules with type/range/check suffixes stripped", () => {
+    const updateRules = `
 变量更新规则:
   hp:
     type: number
@@ -83,17 +83,17 @@ stats:
   stats.attack:
     type: number
 `;
-    const result = analyzeMvuPaths({ ...baseConfig, update_rules });
-    expect(result.update_rule_paths).toContain("hp");
-    expect(result.update_rule_paths).toContain("stats.attack");
+    const result = analyzeMvuPaths({ ...baseConfig, updateRules });
+    expect(result.updateRulePaths).toContain("hp");
+    expect(result.updateRulePaths).toContain("stats.attack");
   });
 
   it("emits warning when schema script lacks export const Schema = z.object", () => {
     const script = `
       const X = z.object({ hp: z.number() });
     `;
-    const result = analyzeMvuPaths({ ...baseConfig, schema_script: script });
-    expect(result.schema_paths).toHaveLength(0);
-    expect(result.parse_warnings.some((issue) => issue.code === "mvu.schema.missing_schema_object")).toBe(true);
+    const result = analyzeMvuPaths({ ...baseConfig, schemaScript: script });
+    expect(result.schemaPaths).toHaveLength(0);
+    expect(result.parseWarnings.some((issue) => issue.code === "mvu.schema.missing_schema_object")).toBe(true);
   });
 });

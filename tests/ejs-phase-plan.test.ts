@@ -18,7 +18,7 @@ describe("createEjsPhasePlan", () => {
     expect(result.ejs.entries[0].constant).toBe(true);
     expect(result.ejs.entries[1].role).toBe("stage");
     expect(result.ejs.entries[1].enabled).toBe(false);
-    expect(result.ejs.variable_paths).toContain("stat_data.角色A.好感度");
+    expect(result.ejs.entries.flatMap((entry) => entry.variablePaths)).toContain("stat_data.角色A.好感度");
     expect(result.phase_table[0].condition).toContain("gw <");
     expect(result.ejs.entries[0].content).toContain("await getwi");
   });

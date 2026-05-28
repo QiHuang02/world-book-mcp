@@ -18,7 +18,8 @@ export function updateEntryConfig(slice: DraftSlice, changes: Partial<Omit<World
   assertType(slice, "entry");
   const current = WorldbookDraftEntrySchema.parse(slice.data);
   const next: Record<string, unknown> = { ...current, ...changes };
-  if (changes.characterName === null || changes.characterName === "") delete next.characterName;
+  if (typeof next.characterName === "string") next.characterName = next.characterName.trim();
+  if (changes.characterName === null || next.characterName === "") delete next.characterName;
   if (changes.depth === null) delete next.depth;
   if (changes.scanDepth === null) delete next.scanDepth;
   if (Array.isArray(next.keys)) next.keys = uniqueStrings(next.keys.map(String));

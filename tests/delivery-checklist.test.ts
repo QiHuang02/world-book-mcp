@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { createDeliveryChecklist } from "../src/core/delivery-checklist.js";
-import type { Project } from "../src/schemas/project.js";
+import { defaultProjectKind, type Project } from "../src/schemas/project.js";
 
 function baseProject(overrides: Partial<Project> = {}): Project {
   return {
+    schemaVersion: 3,
     id: "project_test",
+    slug: "project_test",
     name: "测试",
+    kind: defaultProjectKind({ output: "worldbook", source: "original" }),
     pendingDecisions: [],
     recordedDecisions: [],
     revision: 0,
@@ -26,6 +29,7 @@ describe("createDeliveryChecklist", () => {
 
   it("blocks character card export when card config missing", () => {
     const project = baseProject({
+      kind: defaultProjectKind({ output: "character_card", source: "original" }),
       draft: [{
         comment: "条目",
         entryType: "other",

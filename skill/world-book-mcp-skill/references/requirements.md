@@ -19,7 +19,7 @@ MVU/EJS/HTML 不主动建议；只有用户提到、现有 JSON 已包含、或�
 
 ## 完整规划
 
-完整项目应记录到 `plan.md`：
+完整项目应记录到 `plan.md`，并用结构化 plan item 维护执行状态：
 
 - 来源类型：original / derivative / modify_existing / composite。
 - 输出目标：worldbook / character_card / both。
@@ -31,6 +31,10 @@ MVU/EJS/HTML 不主动建议；只有用户提到、现有 JSON 已包含、或�
 - planned entries：条目名、类型、蓝/绿灯、keys、order、position、sourceRefs。
 - 角色卡元数据：profile 字段、greetings 数量、worldbook_name。
 - 未决问题与用户决策。
+- implementation tasks：稳定 id、category、target、dependsOn、status。
+- acceptance criteria：交付前用户可验收的完成条件。
+- verification steps：validate/build/delivery/generate_json 等检查步骤。
+- risks / blockers：无法确认的设定、来源不足或实现风险。
 
 `plan.md` 是 MCP 版事实源，替代上游工作流里的 `创作规划.yaml`。写 slice 前先保证 plan 的条目规划足够明确；粗略规划允许标记“待细化”，但创作该条目前必须补齐。
 

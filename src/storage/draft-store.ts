@@ -18,7 +18,7 @@ const UNIQUE_DRAFT_DIRS = Array.from(new Set(Object.values(DRAFT_TYPE_DIRS)));
 
 export function canonicalSliceId(type: DraftType, id?: string): string {
   if (type === "mvu" || type === "html") {
-    if (id && id !== type) throw new Error(`${type} 是每项目唯一资产切片，id 必须为 ${type}`);
+    // mvu/html 是单例资产；调用方传入任意 id 时规范化为固定 id，方便 share/use_shared 等复用流程。
     return type;
   }
   if (!id?.trim()) throw new Error(`draft_type=${type} 需要提供 id`);
@@ -37,7 +37,7 @@ export function draftSlicePath(slug: string, type: DraftType, id: string): strin
 
 export async function ensureDraftDirs(slug: string): Promise<void> {
   const slicesDir = projectSlicesDir(slug);
-  await Promise.all(UNIQUE_DRAFT_DIRS.map((dir) => fs.mkdir(path.resolve(slicesDir, dir), { recursive: true })));
+  for (const dir of ["entries", "assets", "assets/regex", "assets/ejs"]) await fs.mkdir(path.resolve(slicesDir, dir), { recursive: true });
 }
 
 export function createDraftSlice(input: { type: DraftType; id?: string; title?: string; data: unknown; active?: boolean; source?: DraftSlice["source"]; origin?: DraftSlice["origin"]; tags?: string[]; notes?: string }): DraftSlice {

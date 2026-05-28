@@ -11,15 +11,21 @@ export interface HtmlBeautifyAssets {
 export function buildHtmlBeautifyAssets(html: HtmlBeautifyConfig): HtmlBeautifyAssets {
   const scripts: RegexScriptAsset[] = [];
   const statusbarEnabled = html.target === "statusbar" || html.target === "both";
+  const replacement = withScopedCss(html.statusbar.html, html.statusbar.scopedCss);
   if (statusbarEnabled && html.regexPolicy.generateStatusbarRegex) {
-    scripts.push(regexScript({ scriptName: "[界面]状态栏", findRegex: "/<StatusPlaceHolderImpl\\/>/gs", replaceString: html.statusbar.html, markdownOnly: true, promptOnly: false, placement: [2], runOnEdit: true }));
+    scripts.push(regexScript({ id: "html-display-statusbar", scriptName: "[界面]状态栏", findRegex: "/<StatusPlaceHolderImpl\\/>/gs", replaceString: replacement, markdownOnly: true, promptOnly: false, placement: [2], runOnEdit: true }));
   }
   if (statusbarEnabled && html.statusbar.hideRegex && html.regexPolicy.generateHideRegex) {
-    scripts.push(regexScript({ scriptName: "[不发送]界面占位符", findRegex: "/<StatusPlaceHolderImpl\\/>/gs", replaceString: "", markdownOnly: false, promptOnly: true, placement: [2], runOnEdit: true }));
+    scripts.push(regexScript({ id: "html-hide-status-placeholder", scriptName: "[不发送]界面占位符", findRegex: "/<StatusPlaceHolderImpl\\/>/gs", replaceString: "", markdownOnly: false, promptOnly: true, placement: [2], runOnEdit: true }));
   }
   return { statusbarHtml: html.statusbar.html, scopedCss: html.statusbar.scopedCss, regexScripts: scripts, summary: { statusbar_enabled: statusbarEnabled, generated_regex_script_count: scripts.length } };
 }
 
+function withScopedCss(html: string, scopedCss?: string): string {
+  if (!scopedCss?.trim()) return html;
+  return `<style>\n${scopedCss.trim()}\n</style>\n${html}`;
+}
+
 function regexScript(input: Partial<RegexScriptAsset> & { scriptName: string; findRegex: string; replaceString: string }): RegexScriptAsset {
-  return { scriptName: input.scriptName, findRegex: input.findRegex, replaceString: input.replaceString, trimStrings: [], placement: input.placement ?? [2], disabled: false, markdownOnly: input.markdownOnly ?? true, promptOnly: input.promptOnly ?? false, runOnEdit: input.runOnEdit ?? false, substituteRegex: input.substituteRegex ?? 0, minDepth: input.minDepth ?? null, maxDepth: input.maxDepth ?? null };
+  return { id: input.id, scriptName: input.scriptName, findRegex: input.findRegex, replaceString: input.replaceString, trimStrings: [], placement: input.placement ?? [2], disabled: false, markdownOnly: input.markdownOnly ?? true, promptOnly: input.promptOnly ?? false, runOnEdit: input.runOnEdit ?? false, substituteRegex: input.substituteRegex ?? 0, minDepth: input.minDepth ?? null, maxDepth: input.maxDepth ?? null };
 }

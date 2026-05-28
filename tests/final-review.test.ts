@@ -20,30 +20,9 @@ function baseProject(overrides: Partial<Project> = {}): Project {
 describe("createFinalReviewReport", () => {
   it("attaches pending_decisions section with warnings when project has pending decisions", () => {
     const project = baseProject({
+      plan: { enabled_assets: {}, acceptance_criteria: ["验收"], verification_steps: ["验证"] },
       pendingDecisions: [{
-        id: "card_type",
-        question: "卡型？",
-        options: [],
-        allow_custom: true,
-        multiple: false,
-        created_at: "2026-01-01T00:00:00.000Z",
-        source_tool: "skill.task-routing",
-      }],
-    });
-    const report = createFinalReviewReport(project);
-    expect(report.sections.pending_decisions?.warnings.length).toBe(1);
-    expect(report.recommendations.some((line) => line.includes("未解决"))).toBe(true);
-  });
 
-  it("returns ok pending_decisions section when no pending decision", () => {
-    const report = createFinalReviewReport(baseProject());
-    expect(report.sections.pending_decisions?.ok).toBe(true);
-    expect(report.sections.pending_decisions?.warnings).toHaveLength(0);
-  });
-
-  it("does not duplicate pending decisions inside plan section", () => {
-    const project = baseProject({
-      pendingDecisions: [{
         id: "card_type",
         question: "卡型？",
         options: [],

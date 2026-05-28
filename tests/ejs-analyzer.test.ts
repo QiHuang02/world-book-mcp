@@ -6,7 +6,7 @@ function makeConfig(overrides: Partial<EjsConfig> = {}): EjsConfig {
   return {
     enabled: true,
     template_type: "custom",
-    variable_paths: [],
+    variablePaths: [],
     entries: [],
     ...overrides,
   };
@@ -26,7 +26,6 @@ describe("normalizeEjsUiPath", () => {
 describe("analyzeEjsConfig", () => {
   it("extracts getvar paths from inline content", () => {
     const config = makeConfig({
-      variable_paths: ["stat_data.hp"],
       entries: [{
         name: "controller",
         role: "controller",
@@ -36,16 +35,17 @@ describe("analyzeEjsConfig", () => {
         position: "after_char",
         order: 100,
         enabled: true,
+        variablePaths: ["stat_data.hp"],
       }],
     });
     const result = analyzeEjsConfig(config);
-    expect(result.content_variable_paths).toContain("stat_data.hp");
-    expect(result.declared_variable_paths).toContain("stat_data.hp");
+    expect(result.contentVariablePaths).toContain("stat_data.hp");
+    expect(result.declaredVariablePaths).toContain("stat_data.hp");
   });
 
   it("extracts _.get(stat_data, 'path') style accesses", () => {
     const config = makeConfig({
-      variable_paths: ["stat_data.stats.attack"],
+      variablePaths: ["stat_data.stats.attack"],
       entries: [{
         name: "controller",
         role: "controller",
@@ -58,12 +58,12 @@ describe("analyzeEjsConfig", () => {
       }],
     });
     const result = analyzeEjsConfig(config);
-    expect(result.content_variable_paths).toContain("stat_data.stats.attack");
+    expect(result.contentVariablePaths).toContain("stat_data.stats.attack");
   });
 
   it("extracts _.get(getvar('stat_data'), 'path') wrapped form", () => {
     const config = makeConfig({
-      variable_paths: ["stat_data.stats.defense"],
+      variablePaths: ["stat_data.stats.defense"],
       entries: [{
         name: "controller",
         role: "controller",
@@ -76,7 +76,7 @@ describe("analyzeEjsConfig", () => {
       }],
     });
     const result = analyzeEjsConfig(config);
-    expect(result.content_variable_paths).toContain("stat_data.stats.defense");
+    expect(result.contentVariablePaths).toContain("stat_data.stats.defense");
   });
 
   it("collects getwi references with their owning entry name", () => {
@@ -93,12 +93,12 @@ describe("analyzeEjsConfig", () => {
       }],
     });
     const result = analyzeEjsConfig(config);
-    expect(result.getwi_refs).toEqual([{ entry_name: "controller", ref: "stage_morning" }]);
+    expect(result.getwiRefs).toEqual([{ entryName: "controller", ref: "stage_morning" }]);
   });
 
   it("normalizes content paths with array indices", () => {
     const config = makeConfig({
-      variable_paths: ["stat_data.list.0"],
+      variablePaths: ["stat_data.list.0"],
       entries: [{
         name: "controller",
         role: "controller",
@@ -111,6 +111,6 @@ describe("analyzeEjsConfig", () => {
       }],
     });
     const result = analyzeEjsConfig(config);
-    expect(result.content_variable_paths).toContain("stat_data.list.0");
+    expect(result.contentVariablePaths).toContain("stat_data.list.0");
   });
 });

@@ -66,6 +66,7 @@ export interface WorkspacePaths {
   backups_dir: string;
 }
 
+
 export async function initWorkspaceProject(input: {
   name: string;
   output: ProjectOutputKind;
@@ -78,12 +79,12 @@ export async function initWorkspaceProject(input: {
 }): Promise<{ project: Project; created: boolean; workspace: WorkspacePaths; slug: string }> {
   const ifExists = input.ifExists ?? "error";
   const slug = input.slug ?? resolveProjectSlug(input.name);
+  await ensureWorkspaceDirs();
   const workspace = await loadWorkspace();
   const existing = findProjectEntry(workspace, slug);
   if (existing && ifExists === "error") throw new Error(`项目 "${slug}" 已存在；如需重建请设置 if_exists=overwrite`);
   if (existing && ifExists === "overwrite") await clearProjectData(slug);
 
-  await ensureProjectDirs(slug);
   const timestamp = nowIso();
   const project = ProjectSchema.parse({
     schemaVersion: 3,
@@ -101,6 +102,7 @@ export async function initWorkspaceProject(input: {
     createdAt: timestamp,
     updatedAt: timestamp,
   });
+  await ensureProjectDirs(slug);
   await writeProjectJson(slug, project);
 
   const entry: WorkspaceProjectEntry = { slug, project_id: project.id, name: input.name, output: input.output, source: input.source, createdAt: timestamp, updatedAt: timestamp };
@@ -172,9 +174,9 @@ export async function ensureWorkspaceDirs(): Promise<void> {
 export interface RootTemplateResult { created: boolean; reason: "created" | "existing_tavern_json"; path?: string; existing_files?: string[] }
 
 export async function ensureRootTemplateJson(input: { name: string; output?: ProjectOutputKind }): Promise<RootTemplateResult> {
-  const existingFiles = await findRootTavernJsonFiles();
+  const existingFiles = (await findRootTavernJsonFiles()).filter((file) => !path.basename(file).startsWith(sanitizeFilename(input.name)));
   if (existingFiles.length > 0) return { created: false, reason: "existing_tavern_json", existing_files: existingFiles };
-  const template = input.output === "character_card" ? characterCardTemplate(input.name) : worldbookTemplate(input.name);
+  const template = input.output === "character_card" || input.output === "both" ? characterCardTemplate(input.name) : worldbookTemplate(input.name);
   const filename = `${sanitizeFilename(input.name)}.json`;
   const outputPath = assertInside(ROOT_DIR, path.resolve(ROOT_DIR, filename));
   await writeTextFileSafely(outputPath, toPrettyJson(template), { overwrite: false });
