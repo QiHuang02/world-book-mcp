@@ -7,11 +7,14 @@ import { RegexSliceDataSchema, type RegexScriptDraft, type RegexSliceData } from
 import { WorldbookDraftEntrySchema, type WorldbookDraftEntry } from "../schemas/worldbook-draft.js";
 import { normalizeWorldbookEntryContent } from "../utils/yaml-xml.js";
 import { uniqueStrings } from "../utils/strings.js";
+import { mvuEntryKeyFromId, normalizeMvuEntryContent } from "./mvu-entry-templates.js";
 import { normalizeStatusbarHtml } from "./statusbar-html-normalizer.js";
 
 export function updateEntryContent(slice: DraftSlice, content: string): DraftSlice {
   assertType(slice, "entry");
-  const data = WorldbookDraftEntrySchema.parse({ ...(slice.data as object), content: normalizeWorldbookEntryContent(content) });
+  const mvuKey = mvuEntryKeyFromId(slice.id);
+  const normalized = mvuKey ? normalizeMvuEntryContent(mvuKey, content) : normalizeWorldbookEntryContent(content);
+  const data = WorldbookDraftEntrySchema.parse({ ...(slice.data as object), content: normalized });
   return parseSlice({ ...slice, data });
 }
 
@@ -68,11 +71,10 @@ export function updateEjsConfig(slice: DraftSlice, changes: Partial<Omit<EjsEntr
   return parseSlice({ ...slice, data: EjsEntryConfigSchema.parse(next) });
 }
 
-export function updateMvuSource(slice: DraftSlice, changes: Partial<MvuConfig> & { outputFormat?: string | null }): DraftSlice {
+export function updateMvuSource(slice: DraftSlice, changes: Partial<MvuConfig>): DraftSlice {
   assertType(slice, "mvu");
   const data = MvuConfigSchema.parse(slice.data);
   const next: Record<string, unknown> = { ...data, ...changes };
-  if (changes.outputFormat === null) delete next.outputFormat;
   return parseSlice({ ...slice, data: MvuConfigSchema.parse(next) });
 }
 

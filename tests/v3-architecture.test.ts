@@ -9,7 +9,7 @@ import { validateRegexScripts } from "../src/core/regex-validator.js";
 
 function projectBase() {
   return ProjectSchema.parse({
-    schemaVersion: 3,
+    schemaVersion: 4,
     id: "project_demo",
     slug: "demo",
     name: "Demo",
@@ -93,7 +93,7 @@ describe("v3 assets", () => {
 
   it("builds project assets without writing generated regex back to regex slices", () => {
     const project = projectBase();
-    const mvu = { ...createMvuTemplate(), schemaScript: "export const Schema = z.object({ hp: z.string().prefault('') });\nregisterMvuSchema(Schema);", initvar: "hp: ok", updateRules: "变量更新规则:\n  hp:\n    check:\n      - 根据状态更新" };
+    const mvu = { ...createMvuTemplate(), schemaScript: "export const Schema = z.object({ hp: z.string().prefault('') });\nregisterMvuSchema(Schema);" };
     const assets = buildProjectAssets({ ...project, mvuConfig: mvu }, "all", [], "2026-01-01T00:00:00.000Z");
     expect(assets.regex_scripts.some((script) => script.scriptName.includes("界面占位符"))).toBe(true);
     expect(assets.regex_artifact.summary.source_counts.mvu).toBeGreaterThan(0);

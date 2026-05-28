@@ -12,5 +12,5 @@ export function characterCardConfigFromProject(project: Project & { characterCar
 
 export function buildCharacterCardJsonFromProject(project: Project & { draft?: WorldbookDraftEntry[] }, assets: { regexScripts?: RegexScriptAsset[]; tavernHelperScripts?: TavernHelperScriptAsset[]; worldbookEntries?: WorldbookDraftEntry[]; ejsEntries?: WorldbookDraftEntry[] } = {}): { card: CharacterCardJson } {
   const config = characterCardConfigFromProject(project);
-  return { card: buildCharacterCardJson({ config, worldbookEntries: [...(project.draft ?? []), ...(assets.worldbookEntries ?? [])], worldbookName: config.worldbook.name ?? project.name, mvuAssets: { worldbookEntries: [], regexScripts: assets.regexScripts ?? [], tavernHelperScripts: assets.tavernHelperScripts ?? [] }, ejsEntries: assets.ejsEntries ?? [] }) };
+  return { card: buildCharacterCardJson({ config, worldbookEntries: [...(project.draft ?? []), ...(assets.worldbookEntries ?? [])], worldbookName: config.worldbook.name ?? project.name, mvuAssets: { regexScripts: assets.regexScripts ?? [], tavernHelperScripts: assets.tavernHelperScripts ?? [] }, ejsEntries: assets.ejsEntries ?? [] }) };
 }

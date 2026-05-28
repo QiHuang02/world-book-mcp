@@ -1,8 +1,10 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createHtmlTemplate, createMvuTemplate, createRegexTemplate, createEjsTemplate, createEntryTemplate } from "../core/templates-v3.js";
+import { createMvuSystemEntries, MVU_ENTRY_IDS, MVU_ENTRY_KEYS } from "../core/mvu-entry-templates.js";
 import { recomputeProjectKindFromSlices } from "../core/project-kind.js";
 import { updateEntryConfig, updateEntryContent, updateEjsConfig, updateEjsContent, updateHtmlConfig, updateHtmlStatusbar, updateSliceMetadata } from "../core/semantic-editors.js";
 import type { DraftType } from "../schemas/draft-slice.js";
+import { MvuConfigSchema } from "../schemas/mvu.js";
 import { CreateDraftSliceInputSchema, DeleteDraftSliceInputSchema, GetDraftSliceInputSchema, ListDraftSlicesInputSchema, UpdateEjsConfigInputSchema, UpdateEjsContentInputSchema, UpdateEntryConfigInputSchema, UpdateEntryContentInputSchema, UpdateHtmlConfigInputSchema, UpdateHtmlStatusbarInputSchema, UpdateSliceMetadataInputSchema } from "./draft-tool-schemas.js";
 import { createDraftSlice, deleteDraftSlice, draftSlicePath, listDraftSlices, readDraftSlice, updateDraftSliceWithRevisionCheck, upsertDraftSlice, canonicalSliceId } from "../storage/draft-store.js";
 import { loadProjectWithSlug, updateProject } from "../storage/project-store.js";
@@ -21,6 +23,7 @@ export function registerDraftTools(server: McpServer): void {
     try { await readDraftSlice(slug, parsed.draft_type, id); if (parsed.if_exists === "error") throw new Error(`draft ${parsed.draft_type}/${id} 已存在`); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
     const data = parsed.data ?? defaultDataForSlice(parsed.draft_type, id, parsed.title, parsed.preset);
     const written = await upsertDraftSlice(slug, createDraftSlice({ type: parsed.draft_type, id, title: parsed.title, active: parsed.active, source: parsed.source, origin: parsed.origin, tags: parsed.tags, notes: parsed.notes, data }));
+    if (parsed.draft_type === "mvu") await ensureMvuSystemEntrySlices(slug, MvuConfigSchema.parse(written.slice.data));
     const slices = await listDraftSlices(slug);
     const saved = await updateProject(project.id, (latest) => ({ ...latest, kind: recomputeProjectKindFromSlices(latest, slices) }));
     return { ok: true, created: true, slice: written.slice, path: written.path, version: versionSnapshot({ project: saved, slice_revision: written.slice.revision }), next_tools: ["validate_project(scope='all')"] };
@@ -63,6 +66,19 @@ async function updateSliceTool(tool: string, input: unknown, type: DraftType, mu
     const result = await updateDraftSliceWithRevisionCheck(slug, type, id, parsed.expected_slice_revision, mutator);
     return { ok: true, project_id: parsed.project_id, slice: result.slice, path: result.path, affected: { artifact_targets: [type === "entry" ? "worldbook" : type] }, version: versionSnapshot({ project, slice_revision: result.slice.revision }), next_tools };
   });
+}
+
+async function ensureMvuSystemEntrySlices(slug: string, runtime: import("../schemas/mvu.js").MvuConfig): Promise<void> {
+  const entries = createMvuSystemEntries({ runtime });
+  const keys = runtime.variableListPath === null ? MVU_ENTRY_KEYS.filter((key) => key !== "variableList") : MVU_ENTRY_KEYS;
+  for (const [index, entry] of entries.entries()) {
+    const id = MVU_ENTRY_IDS[keys[index]];
+    try { await readDraftSlice(slug, "entry", id); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      await upsertDraftSlice(slug, createDraftSlice({ type: "entry", id, title: entry.comment, source: "generated", data: entry }));
+    }
+  }
 }
 
 function defaultDataForSlice(type: DraftType, id: string, title?: string, preset?: string): unknown {

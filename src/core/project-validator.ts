@@ -32,7 +32,7 @@ export function sectionsForScope(scope: ProjectValidationScope): string[] {
   return SCOPE_SECTIONS[scope] ?? SCOPE_SECTIONS.all;
 }
 
-export function validateProject(projectInput: Project & { draft?: import("../schemas/worldbook-draft.js").WorldbookDraftEntry[]; characterCardConfig?: import("../schemas/character-card.js").CharacterCardConfig; mvuConfig?: import("../schemas/mvu.js").MvuConfig; htmlBeautifyConfig?: import("../schemas/html-beautify.js").HtmlBeautifyConfig; ejsConfig?: import("../schemas/ejs.js").EjsConfig; regexSlices?: Array<{ id: string; data: RegexSliceData }> }, options: { scope?: ProjectValidationScope; build?: { manifest?: BuildManifest; stale?: boolean; stale_reasons?: string[] }; export_target?: "worldbook" | "character_card" | "both" } = {}): ProjectValidationReport {
+export function validateProject(projectInput: Project & { draft?: import("../schemas/worldbook-draft.js").WorldbookDraftEntry[]; characterCardConfig?: import("../schemas/character-card.js").CharacterCardConfig; mvuConfig?: import("../schemas/mvu.js").MvuConfig; mvuContent?: import("./mvu-entry-templates.js").MvuContentView; htmlBeautifyConfig?: import("../schemas/html-beautify.js").HtmlBeautifyConfig; ejsConfig?: import("../schemas/ejs.js").EjsConfig; regexSlices?: Array<{ id: string; data: RegexSliceData }> }, options: { scope?: ProjectValidationScope; build?: { manifest?: BuildManifest; stale?: boolean; stale_reasons?: string[] }; export_target?: "worldbook" | "character_card" | "both" } = {}): ProjectValidationReport {
   const scope = options.scope ?? "all";
   const project = normalizeProject(projectInput);
   const sectionSet = new Set(sectionsForScope(scope));
@@ -43,8 +43,8 @@ export function validateProject(projectInput: Project & { draft?: import("../sch
   if (sectionSet.has("worldbook")) sections.worldbook = validateWorldbookSection(project, options.export_target);
   if (sectionSet.has("character_card")) sections.character_card = project.kind.output === "worldbook" ? skipped({ required: false }, "纯世界书项目不需要角色卡") : project.characterCardConfig ? validateCharacterCardConfig({ config: project.characterCardConfig, draft: project.draft, mvuEnabled: Boolean(project.mvuConfig), htmlStatusbarEnabled: Boolean(project.htmlBeautifyConfig && (project.htmlBeautifyConfig.target === "statusbar" || project.htmlBeautifyConfig.target === "both")) }) : sectionFromIssues([normalizeIssue({ code: "character_card.missing", field: "profile", severity: "error", message: "输出包含 character_card，但缺少 profile/greetings" })], { has_profile: false, has_first_mes: false });
   if (sectionSet.has("opening")) sections.opening = validateOpeningSection(project);
-  const analysis = project.mvuConfig ? analyzeMvuPaths(project.mvuConfig) : undefined;
-  if (sectionSet.has("mvu")) sections.mvu = project.kind.assets.mvu.enabled || Boolean(project.mvuConfig) ? project.mvuConfig ? validateMvuConfig({ mvu: project.mvuConfig, characterCardConfig: project.characterCardConfig, analysis }) : sectionFromIssues([normalizeIssue({ code: "mvu.slice.missing", field: "mvu", severity: "error", message: "kind 启用 MVU 但缺少 mvu slice" })], { enabled: true }) : skipped({ enabled: false }, "MVU 未启用");
+  const analysis = project.mvuConfig ? analyzeMvuPaths({ schemaScript: project.mvuConfig.schemaScript, initvar: project.mvuContent?.initvar ?? "", updateRules: project.mvuContent?.updateRules ?? "" }) : undefined;
+  if (sectionSet.has("mvu")) sections.mvu = project.kind.assets.mvu.enabled || Boolean(project.mvuConfig) ? project.mvuConfig ? validateMvuConfig({ mvu: project.mvuConfig, mvuContent: project.mvuContent, characterCardConfig: project.characterCardConfig, analysis }) : sectionFromIssues([normalizeIssue({ code: "mvu.slice.missing", field: "mvu", severity: "error", message: "kind 启用 MVU 但缺少 mvu slice" })], { enabled: true }) : skipped({ enabled: false }, "MVU 未启用");
   if (sectionSet.has("html")) sections.html = project.kind.assets.html.enabled || Boolean(project.htmlBeautifyConfig) ? project.htmlBeautifyConfig ? validateHtmlBeautifyConfig({ html: project.htmlBeautifyConfig, mvu: project.mvuConfig, characterCardConfig: project.characterCardConfig }) : sectionFromIssues([normalizeIssue({ code: "html.slice.missing", field: "html", severity: "error", message: "kind 启用 HTML 但缺少 html slice" })], { enabled: true }) : skipped({ enabled: false }, "HTML 未启用");
   if (sectionSet.has("ejs")) sections.ejs = project.kind.assets.ejs.enabled || Boolean(project.ejsConfig) ? project.ejsConfig ? validateEjsConfig({ ejs: project.ejsConfig, mvu: project.mvuConfig }) : sectionFromIssues([normalizeIssue({ code: "ejs.slice.missing", field: "ejs", severity: "error", message: "kind 启用 EJS 但缺少 ejs slices" })], { enabled: true }) : skipped({ enabled: false }, "EJS 未启用");
   if (sectionSet.has("regex")) sections.regex = validateRegexSection(project);
@@ -55,17 +55,17 @@ export function validateProject(projectInput: Project & { draft?: import("../sch
   const counts = summarize(sections);
   const ok = counts.blocking_count === 0;
   const ready_to_export = Boolean(sections.delivery?.ok ?? ok);
-  return { ok, ready_to_build: ok, ready_to_export, project_id: project.id, scope_used: scope, generated_at: new Date().toISOString(), build: options.build ? { build_id: options.build.manifest?.build_id, manifest_path: options.build.manifest ? `build/runs/${options.build.manifest.build_id}/manifest.json` : undefined, stale: options.build.stale, stale_reasons: options.build.stale_reasons } : undefined, summary: counts, sections, recommendations: recommendations(project, sections), next_actions: nextActions(sections) };
+  return { ok, ready_to_build: ok, ready_to_export, project_id: project.id, scope_used: scope, generated_at: new Date().toISOString(), build: options.build ? { build_id: options.build.manifest?.build_id, manifest_path: options.build.manifest ? `build/runs/${options.build.manifest.build_id}/manifest.yaml` : undefined, stale: options.build.stale, stale_reasons: options.build.stale_reasons } : undefined, summary: counts, sections, recommendations: recommendations(project, sections), next_actions: nextActions(sections) };
 }
 
 function normalizeProject<T extends Project>(project: T): T {
   if (project.kind) return project;
-  return { ...project, schemaVersion: project.schemaVersion ?? 3, slug: project.slug ?? project.id, kind: defaultProjectKind({ output: (project as any).characterCardConfig || (project as any).profile ? "character_card" : "worldbook", source: "original" }) } as T;
+  return { ...project, schemaVersion: project.schemaVersion ?? 4, slug: project.slug ?? project.id, kind: defaultProjectKind({ output: (project as any).characterCardConfig || (project as any).profile ? "character_card" : "worldbook", source: "original" }) } as T;
 }
 
 function validateProjectSection(project: Project): ValidationSection {
   const issues: ValidationIssue[] = [];
-  if (project.schemaVersion !== 3) issues.push(normalizeIssue({ code: "project.schema_version", field: "schemaVersion", severity: "error", message: "Project schemaVersion 必须为 3" }));
+  if (project.schemaVersion !== 4) issues.push(normalizeIssue({ code: "project.schema_version", field: "schemaVersion", severity: "error", message: "Project schemaVersion 必须为 4" }));
   if (!project.name?.trim()) issues.push(normalizeIssue({ code: "project.name.empty", field: "name", severity: "error", message: "项目名称不能为空" }));
   if (project.kind.assets.ejs.enabled && !project.kind.assets.mvu.enabled) issues.push(normalizeIssue({ code: "project.ejs_requires_mvu", field: "kind.assets.ejs", severity: "error", message: "EJS enabled 时 MVU 必须 enabled" }));
   return sectionFromIssues(issues, { name: project.name, output: project.kind.output, source: project.kind.source, assets: project.kind.assets });

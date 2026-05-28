@@ -3,7 +3,12 @@ import { createEjsTemplate } from "../src/core/ejs-template.js";
 import { validateEjsConfig } from "../src/core/ejs-validator.js";
 import type { MvuConfig } from "../src/schemas/mvu.js";
 
-const mvu: MvuConfig = { enabled: true, style: "zod", schemaScript: "registerMvuSchema", initvar: "a: 1", updateRules: "rules", variableListPath: "stat_data", hideRegex: true, beautifyRegex: true };
+const mvu: MvuConfig = {
+  schemaScript: "export const Schema = z.object({ 角色A: z.object({ 好感度: z.coerce.number().prefault(0) }) });\nregisterMvuSchema(Schema);",
+  variableListPath: "stat_data",
+  hideRegex: true,
+  beautifyRegex: true,
+};
 
 describe("validateEjsConfig", () => {
   it("accepts generated template with mvu", () => {

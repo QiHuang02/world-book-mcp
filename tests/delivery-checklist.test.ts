@@ -4,7 +4,7 @@ import { defaultProjectKind, type Project } from "../src/schemas/project.js";
 
 function baseProject(overrides: Partial<Project> = {}): Project {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     id: "project_test",
     slug: "project_test",
     name: "测试",

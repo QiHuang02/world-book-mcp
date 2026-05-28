@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { DraftSliceDataSchemas, DraftSliceSchema, type DraftSlice, type DraftType } from "../schemas/draft-slice.js";
 import { nowIso } from "../utils/ids.js";
-import { readJsonFile, writeJsonFile } from "../utils/json.js";
+import { readYamlFile, writeYamlFile } from "../utils/yaml.js";
 import { assertInside, sanitizeFilename } from "./path-policy.js";
 import { projectSlicesDir } from "./workspace-store.js";
 
@@ -32,7 +32,7 @@ export function draftTypeDir(slug: string, type: DraftType): string {
 
 export function draftSlicePath(slug: string, type: DraftType, id: string): string {
   const dir = draftTypeDir(slug, type);
-  return assertInside(dir, path.resolve(dir, `${sanitizeFilename(canonicalSliceId(type, id))}.json`));
+  return assertInside(dir, path.resolve(dir, `${sanitizeFilename(canonicalSliceId(type, id))}.yaml`));
 }
 
 export async function ensureDraftDirs(slug: string): Promise<void> {
@@ -45,7 +45,7 @@ export function createDraftSlice(input: { type: DraftType; id?: string; title?: 
   const id = canonicalSliceId(input.type, input.id);
   const schema = DraftSliceDataSchemas[input.type];
   return DraftSliceSchema.parse({
-    schemaVersion: 1,
+    schemaVersion: 2,
     id,
     type: input.type,
     title: input.title,
@@ -62,14 +62,14 @@ export function createDraftSlice(input: { type: DraftType; id?: string; title?: 
 }
 
 export async function readDraftSlice(slug: string, type: DraftType, id: string): Promise<DraftSlice> {
-  return readJsonFile(draftSlicePath(slug, type, canonicalSliceId(type, id)), DraftSliceSchema);
+  return readYamlFile(draftSlicePath(slug, type, canonicalSliceId(type, id)), DraftSliceSchema);
 }
 
 export async function writeDraftSlice(slug: string, slice: DraftSlice): Promise<string> {
   await ensureDraftDirs(slug);
   const parsed = DraftSliceSchema.parse({ ...slice, id: canonicalSliceId(slice.type, slice.id), data: DraftSliceDataSchemas[slice.type].parse(slice.data) });
   const outputPath = draftSlicePath(slug, parsed.type, parsed.id);
-  await writeJsonFile(outputPath, parsed);
+  await writeYamlFile(outputPath, parsed);
   return outputPath;
 }
 
@@ -113,8 +113,8 @@ export async function listDraftSlices(slug: string, type?: DraftType): Promise<D
   for (const currentType of types) {
     const dir = draftTypeDir(slug, currentType);
     const files = await fs.readdir(dir).catch(() => [] as string[]);
-    for (const file of files.filter((item) => item.endsWith(".json")).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"))) {
-      const slice = await readJsonFile(path.join(dir, file), DraftSliceSchema);
+    for (const file of files.filter((item) => item.endsWith(".yaml") || item.endsWith(".yml")).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"))) {
+      const slice = await readYamlFile(path.join(dir, file), DraftSliceSchema);
       if (slice.type === currentType) slices.push(slice);
     }
   }

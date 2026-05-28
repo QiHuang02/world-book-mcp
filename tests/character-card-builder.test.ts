@@ -71,10 +71,10 @@ describe("buildCharacterCardJson", () => {
     expect(card.data.character_book.entries[0].extensions.prevent_recursion).toBe(true);
   });
 
-  it("merges mvu assets", () => {
+  it("merges mvu regex and tavern helper assets without implicit worldbook entries", () => {
     const { mvu } = createMvuTemplate({ characterNames: ["角色A"] });
     const card = buildCharacterCardJson({ config, worldbookEntries: draft, mvuAssets: buildMvuAssets(mvu) });
-    expect(card.data.character_book.entries.length).toBeGreaterThan(1);
+    expect(card.data.character_book.entries.length).toBe(1);
     expect(card.data.extensions.regex_scripts?.length).toBeGreaterThan(0);
     expect(card.data.extensions.tavern_helper).toBeTruthy();
   });
@@ -88,7 +88,7 @@ describe("buildCharacterCardJson", () => {
   });
 
   it("strips internal regex fields and normalizes statusbar replacement in final card", () => {
-    const card = buildCharacterCardJson({ config, worldbookEntries: draft, mvuAssets: { worldbookEntries: [], tavernHelperScripts: [], regexScripts: [{ id: "status", scriptName: "[界面]状态栏", findRegex: "/<StatusPlaceHolderImpl\\/>/gs", replaceString: "<![CDATA[\n<div class='wbm-statusbar'>{{stat_data.current_zone}}</div>\n]]>", trimStrings: [], placement: [2], disabled: false, markdownOnly: true, promptOnly: false, runOnEdit: true, substituteRegex: 0, minDepth: null, maxDepth: null, sourceMap: { source: "html" } } as any] } });
+    const card = buildCharacterCardJson({ config, worldbookEntries: draft, mvuAssets: { tavernHelperScripts: [], regexScripts: [{ id: "status", scriptName: "[界面]状态栏", findRegex: "/<StatusPlaceHolderImpl\\/>/gs", replaceString: "<![CDATA[\n<div class='wbm-statusbar'>{{stat_data.current_zone}}</div>\n]]>", trimStrings: [], placement: [2], disabled: false, markdownOnly: true, promptOnly: false, runOnEdit: true, substituteRegex: 0, minDepth: null, maxDepth: null, sourceMap: { source: "html" } } as any] } });
     const script = card.data.extensions.regex_scripts?.[0] as Record<string, unknown>;
     expect(script.sourceMap).toBeUndefined();
     expect(script.replaceString).not.toContain("CDATA");

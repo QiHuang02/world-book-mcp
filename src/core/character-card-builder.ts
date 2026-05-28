@@ -77,10 +77,9 @@ export function buildCharacterCardJson(input: {
   createdAt?: string;
 }): CharacterCardJson {
   const card = input.config.card;
-  const mvuWorldbookEntries = input.mvuAssets?.worldbookEntries ?? [];
   const sourceEntries = input.config.worldbook.source === "project_draft" ? input.worldbookEntries ?? [] : [];
   const ejsEntries = input.ejsEntries ?? [];
-  const characterBookEntries = draftEntriesToCharacterBookEntries([...sourceEntries, ...mvuWorldbookEntries, ...ejsEntries]);
+  const characterBookEntries = draftEntriesToCharacterBookEntries([...sourceEntries, ...ejsEntries]);
   const worldbookName = input.config.worldbook.name ?? input.worldbookName ?? card.name;
   const regexScripts = [
     ...(input.mvuAssets?.regexScripts ?? []),

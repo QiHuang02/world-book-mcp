@@ -1,19 +1,20 @@
 import type { MvuConfig, MvuVariableDefinition, MvuRewriteOptions } from "../schemas/mvu.js";
 import { analyzeMvuPaths } from "./mvu-path-analyzer.js";
-import { defaultOutputFormat } from "./mvu-template.js";
+import { DEFAULT_MVU_OUTPUT_FORMAT, type MvuContentView, type MvuEntryKey } from "./mvu-entry-templates.js";
 
 export interface MvuVariableSummary { path: string[]; expression: string; kind: MvuVariableDefinition["kind"]; defaultValue?: unknown; min?: number; max?: number; enumValues?: string[]; description?: string; readonly?: boolean; hidden?: boolean; updateRule?: string }
 export interface MvuVariableListResult { variables: MvuVariableSummary[]; warnings: string[] }
-export interface MvuVariableEditResult { mvu: MvuConfig; variables: MvuVariableSummary[]; warnings: string[]; changed_path?: string[]; created?: boolean; removed?: boolean }
+export type MvuVariableEditorInput = MvuConfig & MvuContentView;
+export interface MvuVariableEditResult { mvu: MvuConfig; entryContentPatches: Partial<Record<MvuEntryKey, string>>; variables: MvuVariableSummary[]; warnings: string[]; changed_path?: string[]; created?: boolean; removed?: boolean }
 const TEMPLATE_IMPORT = "import { registerMvuSchema } from 'https://testingcf.jsdelivr.net/gh/StageDog/tavern_resource/dist/util/mvu_zod.js';";
 const FORBIDDEN_SCHEMA_SNIPPETS = [/\.optional\s*\(/, /\.nullable\s*\(/, /\.nullish\s*\(/, /\.catch\s*\(/, /eval\s*\(/, /Function\s*\(/, /import\s*\(/, /fetch\s*\(/, /localStorage\b/, /sessionStorage\b/, /document\b/, /window\b/];
 
-export function listMvuVariables(mvu: Pick<MvuConfig, "schemaScript" | "initvar" | "updateRules">): MvuVariableListResult {
+export function listMvuVariables(mvu: Pick<MvuVariableEditorInput, "schemaScript" | "initvar" | "updateRules">): MvuVariableListResult {
   const analysis = analyzeMvuPaths(mvu);
   return { variables: analysis.schemaPaths.map((item) => ({ path: item.segments, expression: item.expression, kind: item.kind, defaultValue: item.defaultValue, enumValues: item.enumValues, readonly: item.readonly, hidden: item.hidden })), warnings: analysis.parseWarnings.map((w) => w.message) };
 }
 
-export function upsertMvuVariable(mvu: MvuConfig, variable: MvuVariableDefinition, rewrite: MvuRewriteOptions = defaultRewrite()): MvuVariableEditResult {
+export function upsertMvuVariable(mvu: MvuVariableEditorInput, variable: MvuVariableDefinition, rewrite: MvuRewriteOptions = defaultRewrite()): MvuVariableEditResult {
   assertRelativePath(mvu, variable.path);
   const listed = listMvuVariables(mvu);
   const key = keyOf(variable.path);
@@ -24,7 +25,7 @@ export function upsertMvuVariable(mvu: MvuConfig, variable: MvuVariableDefinitio
   return { ...rewritten, changed_path: variable.path, created };
 }
 
-export function removeMvuVariable(mvu: MvuConfig, path: string[], rewrite: MvuRewriteOptions = defaultRewrite()): MvuVariableEditResult {
+export function removeMvuVariable(mvu: MvuVariableEditorInput, path: string[], rewrite: MvuRewriteOptions = defaultRewrite()): MvuVariableEditResult {
   assertRelativePath(mvu, path);
   const listed = listMvuVariables(mvu);
   const key = keyOf(path);
@@ -33,15 +34,19 @@ export function removeMvuVariable(mvu: MvuConfig, path: string[], rewrite: MvuRe
   return { ...rewritten, changed_path: path, removed: variables.length !== listed.variables.length };
 }
 
-export function rewriteMvuVariables(mvu: MvuConfig, definitions: MvuVariableDefinition[] | MvuVariableSummary[], rewrite: MvuRewriteOptions = defaultRewrite()): MvuVariableEditResult {
+export function rewriteMvuVariables(mvu: MvuVariableEditorInput, definitions: MvuVariableDefinition[] | MvuVariableSummary[], rewrite: MvuRewriteOptions = defaultRewrite()): MvuVariableEditResult {
   const variables = mergeVariables(definitions.map((value) => "expression" in value ? normalizeSummary(value as MvuVariableSummary) : normalizeVariable(value as MvuVariableDefinition)));
   return {
     mvu: {
-      ...mvu,
-      ...(rewrite.schemaScript ? { schemaScript: buildSchemaScript(variables) } : {}),
+      schemaScript: rewrite.schemaScript ? buildSchemaScript(variables) : mvu.schemaScript,
+      variableListPath: mvu.variableListPath,
+      hideRegex: mvu.hideRegex,
+      beautifyRegex: mvu.beautifyRegex,
+    },
+    entryContentPatches: {
       ...(rewrite.initvar ? { initvar: buildInitvar(variables) } : {}),
       ...(rewrite.updateRules ? { updateRules: buildUpdateRules(variables) } : {}),
-      ...(rewrite.outputFormat ? { outputFormat: defaultOutputFormat() } : {}),
+      ...(rewrite.outputFormat ? { outputFormat: DEFAULT_MVU_OUTPUT_FORMAT } : {}),
     },
     variables,
     warnings: [],

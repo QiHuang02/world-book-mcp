@@ -14,7 +14,7 @@ export const SharedRegistryEntrySchema = z.object({
 });
 
 export const SharedRegistrySchema = z.object({
-  version: z.literal(2).default(2),
+  version: z.literal(4).default(4),
   entries: z.array(SharedRegistryEntrySchema).default([]),
 });
 

@@ -3,7 +3,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { createDraftSlice, draftTypeDir, listDraftSlices, upsertDraftSlice } from "../src/storage/draft-store.js";
-import { initWorkspaceProject, loadWorkspace, projectJsonPath, projectSlicesDir, readProjectJson, WORKSPACE_DIR, WORKSPACE_JSON_PATH } from "../src/storage/workspace-store.js";
+import { initWorkspaceProject, loadWorkspace, projectYamlPath, projectSlicesDir, readProjectYaml, WORKSPACE_DIR, WORKSPACE_YAML_PATH } from "../src/storage/workspace-store.js";
 import { ensureStorage, listProjects, loadProject, loadProjectWithSlug, updateProject } from "../src/storage/project-store.js";
 
 const worldbookInit = (name: string, ifExists: "error" | "overwrite" = "error") => initWorkspaceProject({ name, output: "worldbook", source: "original", ifExists });
@@ -45,14 +45,14 @@ describe("workspace store", () => {
     await cleanupWorkspace();
   });
 
-  it("creates workspace.json, project directory, plan, logs and typed draft directories", async () => {
+  it("creates workspace.yaml, project directory, plan, logs and typed draft directories", async () => {
     await cleanupWorkspace();
     const { project, created, workspace, slug } = await worldbookInit(uniqueName("测试项目"), "overwrite");
     expect(created).toBe(true);
     expect(project.name).toContain("测试项目_");
-    expect(workspace.workspace_json).toBe(WORKSPACE_JSON_PATH);
-    await expect(fs.access(WORKSPACE_JSON_PATH)).resolves.toBeUndefined();
-    await expect(fs.access(projectJsonPath(slug))).resolves.toBeUndefined();
+    expect(workspace.workspace_json).toBe(WORKSPACE_YAML_PATH);
+    await expect(fs.access(WORKSPACE_YAML_PATH)).resolves.toBeUndefined();
+    await expect(fs.access(projectYamlPath(slug))).resolves.toBeUndefined();
     await expect(fs.access(projectSlicesDir(slug))).resolves.toBeUndefined();
     await expect(fs.access(draftTypeDir(slug, "entry"))).resolves.toBeUndefined();
     await expect(fs.access(workspace.plan_md)).resolves.toBeUndefined();
@@ -82,7 +82,7 @@ describe("workspace store", () => {
     await fs.writeFile(exportedPath, "keep", "utf8");
 
     const { project, slug } = await worldbookInit("同名项目", "overwrite");
-    const loaded = await readProjectJson(slug);
+    const loaded = await readProjectYaml(slug);
 
     expect(project.name).toBe("同名项目");
     expect(loaded.draft).toBeUndefined();
@@ -99,7 +99,7 @@ describe("workspace store", () => {
       ...project,
       draft: [{ comment: "内联草稿", entryType: "world_summary", keys: ["切片"], secondaryKeys: [], content: "<entry>切片</entry>", constant: true, position: "before_char", order: 1, enabled: true, preventRecursion: true, excludeRecursion: true }],
     };
-    await fs.writeFile(projectJsonPath(slug), `${JSON.stringify(projectWithInlineDraft, null, 2)}\n`, "utf8");
+    await fs.writeFile(projectYamlPath(slug), `${JSON.stringify(projectWithInlineDraft, null, 2)}\n`, "utf8");
     await fs.rm(projectSlicesDir(slug), { recursive: true, force: true });
 
     const { project: loaded } = await loadProjectWithSlug(project.id);

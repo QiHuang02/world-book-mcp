@@ -1,4 +1,4 @@
-# v3 任务路由
+# 任务路由
 
 ## 阶段
 
@@ -6,7 +6,7 @@
 - 修改已有：`init_project(source="modify_existing") → import_existing_json → targeted semantic update`。
 - 校验：`validate_project(scope)`。
 - 构建：`build_assets(target)`。
-- 交付检查：`validate_project(scope="delivery", build_id=...)` 或 `check_delivery(build_id=...)`。
+- 交付检查：`validate_project(scope="delivery", build_id=...)`。
 - 导出：`generate_json(build_id=...)`。
 - 查询：`query_json` 或 `get_project/list_draft_slices/get_draft_slice`。
 - 共享复用：`share_slice / list_shared / use_shared`。
@@ -26,14 +26,14 @@
 | 纯世界书 | entry slices + `validate_project(worldbook)` |
 | 二创转化 | 提取事实 → update_plan → entry slices |
 | 修改已有 JSON | import slices → targeted update → build → generate overwrite |
-| MVU | mvu slice / MVU variable tools → `validate_project(mvu)` → `build_assets(mvu)` |
+| MVU | mvu runtime slice + `mvu-*` 系统 entry / MVU variable tools → `validate_project(mvu)` → `build_assets(mvu)` |
 | HTML | html slice → `validate_project(html)` → `build_assets(html)` |
 | regex | regex slice → regex tools → `validate_project(regex)` → `build_assets(regex)` |
 | EJS | 确认 MVU → ejs slices → `validate_project(ejs)` → `build_assets(ejs)` |
 | 开场白 | `update_character_greetings` → `validate_project(opening)` |
 | 交付导出 | `build_assets(all)` → `validate_project(delivery)` → `generate_json` |
 
-## v3 命名速查
+## 命名速查
 
 - 输出目标：`worldbook | character_card | both`。
 - 项目来源：`original | derivative | modify_existing | composite`。

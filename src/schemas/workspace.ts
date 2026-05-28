@@ -14,7 +14,7 @@ export const WorkspaceProjectEntrySchema = z.object({
 });
 
 export const WorkspaceSchema = z.object({
-  version: z.literal(3),
+  version: z.literal(4),
   revision: z.number().int().nonnegative().default(0),
   default_project: z.string().optional(),
   projects: z.array(WorkspaceProjectEntrySchema).default([]),

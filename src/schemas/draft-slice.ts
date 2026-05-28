@@ -47,7 +47,7 @@ export const DraftSliceDataSchemas = {
 } satisfies Record<z.infer<typeof DraftTypeSchema>, z.ZodTypeAny>;
 
 export const DraftSliceSchema = z.object({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   id: z.string().min(1),
   type: DraftTypeSchema,
   title: z.string().optional(),

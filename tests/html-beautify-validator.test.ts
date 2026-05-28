@@ -2,10 +2,17 @@ import { describe, expect, it } from "vitest";
 import { createHtmlBeautifyTemplate } from "../src/core/html-beautify-template.js";
 import { validateHtmlBeautifyConfig } from "../src/core/html-beautify-validator.js";
 
+const mvu = {
+  schemaScript: "export const Schema = z.object({});\nregisterMvuSchema(Schema);",
+  variableListPath: "stat_data",
+  hideRegex: true,
+  beautifyRegex: true,
+};
+
 describe("validateHtmlBeautifyConfig", () => {
   it("accepts generated statusbar template", () => {
     const { html } = createHtmlBeautifyTemplate({ target: "statusbar", theme: "minimal" });
-    const result = validateHtmlBeautifyConfig({ html, mvu: { enabled: true, style: "zod", schemaScript: "registerMvuSchema", initvar: "a: 1", updateRules: "rules", variableListPath: "stat_data", hideRegex: true, beautifyRegex: true } });
+    const result = validateHtmlBeautifyConfig({ html, mvu });
     expect(result.valid).toBe(true);
   });
 

@@ -1,15 +1,7 @@
 import { z } from "zod";
-import { normalizeMvuYamlField } from "../utils/yaml-xml.js";
-
-const mvuInitvarText = z.string().transform((value) => normalizeMvuYamlField(value, ["initvar"]));
-const mvuUpdateRulesText = z.string().transform((value) => normalizeMvuYamlField(value, ["variable_update_rules"]));
-const mvuOutputFormatText = z.string().transform((value) => normalizeMvuYamlField(value, ["variable_output_format"]));
 
 export const MvuConfigSchema = z.object({
   schemaScript: z.string().default(""),
-  initvar: mvuInitvarText.default(""),
-  updateRules: mvuUpdateRulesText.default(""),
-  outputFormat: mvuOutputFormatText.optional(),
   variableListPath: z.union([z.string().min(1), z.null()]).default("stat_data"),
   hideRegex: z.boolean().default(true),
   beautifyRegex: z.boolean().default(true),

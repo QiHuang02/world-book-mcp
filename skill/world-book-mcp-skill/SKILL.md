@@ -3,14 +3,17 @@ name: world-book-mcp-skill
 description: Use the world-book-mcp MCP server to create, modify, validate, build, import, and export SillyTavern world book JSON and chara_card_v3 character card JSON. Trigger for SillyTavern, 世界书, 酒馆, 角色卡, chara_card_v3, Tavern JSON, .worldbook, plan.md, DraftSlice, MVU/ZOD, HTML状态栏/HTML美化, regex资产, EJS动态条目, init_project, import_existing_json, create_draft_slice, semantic editor tools, validate_project, build_assets, generate_json, or any request to repair or convert existing Tavern world book / character card files.
 ---
 
-# world-book-mcp v3 操作规范
+# world-book-mcp 操作规范
 
-`world-book-mcp` 用于编排 SillyTavern 世界书与 `chara_card_v3` 角色卡项目。MCP 负责项目元数据、plan、DraftSlice、MVU/HTML/regex/EJS 资产、结构/协议/安全校验、build artifact 与最终导出；内容审美、文风、角色辨识度、世界观方法论和二创提取规则由本技能的 `references/` 承担，不能假定 MCP 会做主观质量 blocking。
+`world-book-mcp` 用于编排 SillyTavern 世界书与角色卡项目。MCP 负责项目元数据、plan、DraftSlice、MVU/HTML/regex/EJS 资产、结构/协议/安全校验、build artifact 与最终导出；内容审美、文风、角色辨识度、世界观方法论和二创提取规则由本技能的 `references/` 承担，不能假定 MCP 会做主观质量 blocking。
+
+内部采用 YAML-first 存储：`.worldbook/workspace.yaml`、`projects/<slug>/project.yaml`、`slices/**/*.yaml`、`shared/registry.yaml` 与 `build/runs/*/manifest.yaml` 是事实源；最终 SillyTavern 导出仍是 `.json`，不要直接修改最终 JSON。
 
 ## 快速决策
 
 - 完整创建或重构项目时，从 `init_project` 开始。
-- 修改已有 JSON 时，也先 `init_project(source="modify_existing")`，再 `import_existing_json`，禁止直接改最终 JSON。
+- 修改已有 Tavern JSON 时，也先 `init_project(source="modify_existing")`，再 `import_existing_json`，禁止直接改最终 JSON。
+- 从外部待办清单或 YAML 配置迁移时，把需求转换为 `plan.md`、project metadata 与 DraftSlice；不要把 loose source files 当作 MCP 的最终事实源。
 - 只改局部资产时，只编辑对应 DraftSlice，但仍运行对应 scope 校验、构建和交付前校验。
 - 不确定关键设定时，用 `update_plan(mode="request_decision"|"record_decision"|"append_decision")` 留痕；不要编造核心事实。
 - 完整项目、修改既有 JSON、或涉及 MVU/HTML/regex/EJS 时，先按 `references/writing-plans.md` 写结构化 plan item、验收标准与验证步骤。
@@ -64,7 +67,7 @@ init_project(source="modify_existing")
 → generate_json(build_id=..., overwrite=true)
 ```
 
-旧版 `requirements / request_user_decision / update_draft_field / validate_draft / review_project / check_delivery` 不是 v3 主线；除非当前 MCP 明确只暴露旧工具，否则优先使用本文件列出的 v3 工具。
+不要使用 `requirements / request_user_decision / update_draft_field / validate_draft / review_project / check_delivery` 这类非主线工具名；除非当前 MCP 明确只暴露这些工具，否则优先使用本文件列出的工具。
 
 ## Project.kind
 
@@ -75,9 +78,21 @@ Project.kind.assets = mvu | html | regex | ejs
 ```
 
 - `source` 在初始化时明确记录。
-- `assets` 在 init 阶段表示 planned，不自动创建空 slice。
+- `assets` 在 init 阶段表示 planned，不自动创建空 slice；调用 `create_draft_slice(draft_type="mvu")` 才会创建 MVU runtime slice 与四个系统 entry。
 - slice 存在且 `active=true` 才表示实际参与 build。
 - `mvu`、`html` 单例；`entry`、`regex`、`ejs` 多实例。
+
+## 内部文件与输出边界
+
+| 类别 | 内部事实源 | 说明 |
+|---|---|---|
+| workspace | `.worldbook/workspace.yaml` | 不读取旧 `.worldbook/workspace.json` |
+| project | `.worldbook/projects/<slug>/project.yaml` | `schemaVersion: 4` |
+| plan | `.worldbook/projects/<slug>/plan.md` | 需求、决策、plan items、验收和验证 |
+| slices | `.worldbook/projects/<slug>/slices/<type>/*.yaml` | DraftSlice envelope |
+| shared | `.worldbook/shared/registry.yaml`、`shared/**/*.yaml` | 共享 slice 库 |
+| build metadata | `build/runs/<build_id>/manifest.yaml`、`assets/*.yaml`、`validation-report.yaml`、`delivery-checklist.yaml` | 内部构建产物 |
+| preview/final | `exports/*.preview.json`、最终 `.worldbook.json` / `.card.json` | Tavern JSON，保持 JSON |
 
 ## DraftSlice
 
@@ -145,22 +160,25 @@ regex：
 
 MVU：
 
-- MVU 变量工具会同步影响 `schemaScript / initvar / updateRules`，默认不改 `outputFormat`。
+- MVU 变量工具会同步影响 runtime `schemaScript` 与真实 entry 中的 `initvar / updateRules`，默认不改 `outputFormat`。
+- MVU 组件顺序可映射为：变量结构脚本 → initvar → updateRules → 变量列表 → outputFormat → EJS 动态内容 → HTML 状态栏。
 - MVU 变量 path 传相对 `variableListPath` 的路径，例如 `["角色A", "好感度"]`。
 - HTML/EJS 引用 MVU 变量时使用完整路径，例如 `stat_data.角色A.好感度`。
 - hidden 变量不进入 outputFormat / HTML / EJS。
 - readonly 变量可读取，但不应被 updateRules 更新。
 - MVU 包含 `export const Schema = z.object(...)` 与 `$(() => registerMvuSchema(Schema))`。
-- `initvar/updateRules/outputFormat` 在 slice 内保存纯 YAML/模板文本，由 build 统一包裹成 `<initvar>`、`<variable_update_rules>`、`<variable_output_format>` 条目。
+- `initvar/updateRules/outputFormat` 保存在真实 entry slices（`mvu-initvar`、`mvu-update-rules`、`mvu-output-format`），正文通过 `update_entry_content` 维护并自动包裹为 `<initvar>`、`<variable_update_rules>`、`<variable_output_format>`。
 - `schemaScript/initvar/updateRules` 必须相对同一个 `variableListPath`；`variableListPath="stat_data"` 时，`initvar` 不再额外包一层 `stat_data:`。
+- 启用 MVU 且 schema 有变量时，`initvar` 必须根据世界观、角色卡与开场白时点写入初始变量；不要留空、只写 `{}` 或用无意义占位值。MCP 只校验结构，不会替你主观生成剧情初始状态。
 - 对象节点如 `target` 必须在 `initvar` 同层存在默认结构，或在 schema 对象与子字段上使用 `.prefault(...)`；`expected object, received undefined at target` 优先检查根层级错位。
 - updateRules 顶层必须是教程式 `变量更新规则:` YAML；边界约束进 schema `.transform(...).prefault(...)`，不要写 `target.affection = _.clamp(...)` 这类 JS 赋值语句。
-- 变量输出格式遵循教程式 `<UpdateVariable><Analysis>...</Analysis><JSONPatch>[...]</JSONPatch></UpdateVariable>`，JSONPatch 路径使用 `/角色/变量`。
+- 变量输出格式遵循教程式 `<UpdateVariable><Analysis>...</Analysis><JSONPatch>[...]</JSONPatch></UpdateVariable>`，JSONPatch 路径使用 `/角色/变量`，默认只使用 `replace` / `add` / `remove`。
 
 HTML/EJS：
 
 - HTML slice 保存状态栏展示配置与 regexPolicy；build 生成 `[不发送]界面占位符` 与 `[界面]状态栏` regex。
 - 状态栏使用 `.wbm-statusbar` 作用域；HTML/CSS 使用内联安全结构，不引用外部 URL、不内嵌 `<script>`。
+- 交互式 `<script type="module">` 状态栏属于未来增强；当前 MCP 默认生成静态/宏展示版。
 - 状态栏 HTML 展示 MVU 变量时必须使用 `{{format_message_variable::stat_data.角色A.好感度}}`，禁止裸 `{{stat_data...}}` / `{{current_zone}}` 宏。
 - `[界面]状态栏` regex 的 `replaceString` 是普通 HTML/CSS 字符串，禁止 `<![CDATA[`、`]]>` 或空 CDATA 壳。
 - 内容层规则：`first_mes` 至少 400 个非标点字符；开场白中只要让 user 出场、被称呼、被等待、被邀请或可介入，必须使用 `{{user}}`。
@@ -182,8 +200,9 @@ all | project | plan | worldbook | character_card | opening | mvu | html | regex
 
 ```text
 build_assets(target="all")
-  → build/runs/<build_id>/manifest.json
-  → assets/*.json
+  → build/runs/<build_id>/manifest.yaml
+  → assets/*.yaml
+  → validation-report.yaml / delivery-checklist.yaml
   → exports/*.preview.json
 
 validate_project(scope="delivery", build_id=...)
@@ -191,7 +210,7 @@ validate_project(scope="delivery", build_id=...)
 
 generate_json(build_id=...)
   → 从 build preview 写最终 JSON
-  → export-records/<export_id>.json
+  → export-records/<export_id>.yaml
 ```
 
 没有 fresh build 时 delivery 不通过。`force=true` 只用于用户明确要求的强制交付，且不能绕过路径安全、artifact 缺失或 hash mismatch。
@@ -201,7 +220,7 @@ generate_json(build_id=...)
 - `import_existing_json` 将已有 Tavern JSON 转为 slices，并记录 `origin`。
 - third-party regex 作为 regex slice 保留。
 - 覆盖原导入路径时显式 `overwrite=true`，并自动 backup。
-- source of truth 是 v3 project + slices，不是导出的最终 JSON。
+- source of truth 是 project + YAML slices，不是导出的最终 JSON。
 
 ## 禁止事项
 
@@ -211,7 +230,7 @@ generate_json(build_id=...)
 - 不把长篇原文塞进 MCP；只保存结构化提取结果和 draft。
 - 不把大段人设塞进 character card `description`。
 - 不让 EJS 脱离 MVU。
-- 不让 HTML 污染全局 CSS 或依赖外链。
+- 不让 HTML 污染全局 CSS、依赖外链或内嵌脚本。
 - 不在成品条目里写“这是角色卡/世界书/AI/模型/玩家正在使用”。
 
 ## 按需读取 references
@@ -221,11 +240,11 @@ generate_json(build_id=...)
 | 工具参数、field path、scope section | `references/tool-reference.md` |
 | 可执行计划、plan item、验收与验证 | `references/writing-plans.md` |
 | 任务分流与端到端流程 | `references/task-routing.md`、`references/workflows.md` |
-| 需求记录与条目组织 | `references/requirements.md`、`references/composition.md` |
+| 需求记录与条目组织、外部清单映射 | `references/requirements.md`、`references/composition.md` |
 | 内容质量审查 | `references/content-rules.md` |
 | 开场白 | `references/first-message.md` |
 | MVU/HTML/regex/EJS 一致性 | `references/assets-consistency.md`、`references/multi-stage-ejs.md` |
-| 原创角色 | `references/character-creation.md` |
+| 原创角色、对话语料、角色采访 | `references/character-creation.md` |
 | 世界观 | `references/worldbuilding-methodology.md` |
 | 二创提取 | `references/derivative-extraction.md`、示例文件 |
 | 文风提取和二次解释 | `references/style-extraction-guide.md`、`references/rephrase-guide.md` |

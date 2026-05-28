@@ -2,11 +2,12 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { listMvuVariables, removeMvuVariable, rewriteMvuVariables, upsertMvuVariable } from "../core/mvu-variable-editor.js";
 import { updateMvuSource as updateMvuSourceSlice } from "../core/semantic-editors.js";
 import { ListMvuVariablesInputSchema, RemoveMvuVariableInputSchema, RewriteMvuVariablesInputSchema, UpdateMvuSourceInputSchema, UpsertMvuVariableInputSchema } from "./mvu-variable-tool-schemas.js";
-import { readDraftSlice, updateDraftSliceWithRevisionCheck } from "../storage/draft-store.js";
+import { createDraftSlice, readDraftSlice, updateDraftSliceWithRevisionCheck, upsertDraftSlice } from "../storage/draft-store.js";
 import { loadProjectWithSlug } from "../storage/project-store.js";
 import { logToolCall } from "../storage/tool-log.js";
 import { assertProjectRevisionValue, versionSnapshot } from "../storage/version-manager.js";
-import { MvuConfigSchema } from "../schemas/mvu.js";
+import { MvuConfigSchema, type MvuConfig } from "../schemas/mvu.js";
+import { createMvuSystemEntries, mvuContentFromEntryRecords, MVU_ENTRY_IDS, MVU_ENTRY_KEYS, normalizeMvuEntryContent, type MvuContentView, type MvuEntryKey } from "../core/mvu-entry-templates.js";
 import { toolText } from "./helpers.js";
 
 export function registerMvuVariableTools(server: McpServer): void {
@@ -15,8 +16,9 @@ export function registerMvuVariableTools(server: McpServer): void {
     const { slug } = await loadProjectWithSlug(parsed.project_id);
     const slice = await readDraftSlice(slug, "mvu", "mvu");
     const mvu = MvuConfigSchema.parse(slice.data);
-    const listed = listMvuVariables(mvu);
-    return { ok: true, project_id: parsed.project_id, slice: { id: slice.id, revision: slice.revision, active: slice.active }, variableListPath: mvu.variableListPath, variables: listed.variables, warnings: listed.warnings, ...(parsed.include_raw ? { raw: mvu } : {}) };
+    const content = await readMvuContentView(slug, mvu);
+    const listed = listMvuVariables({ ...mvu, ...content });
+    return { ok: true, project_id: parsed.project_id, slice: { id: slice.id, revision: slice.revision, active: slice.active }, variableListPath: mvu.variableListPath, variables: listed.variables, warnings: listed.warnings, ...(parsed.include_raw ? { raw: { ...mvu, ...content } } : {}) };
   })));
 
   server.tool("upsert_mvu_variable", UpsertMvuVariableInputSchema.shape, async (input) => toolText(await mutateMvu("upsert_mvu_variable", input, (mvu, parsed) => upsertMvuVariable(mvu, parsed, parsed.rewrite))));
@@ -31,18 +33,42 @@ export function registerMvuVariableTools(server: McpServer): void {
   })));
 }
 
-async function mutateMvu(tool: string, input: unknown, editor: (mvu: import("../schemas/mvu.js").MvuConfig, parsed: any) => ReturnType<typeof upsertMvuVariable>) {
+async function mutateMvu(tool: string, input: unknown, editor: (mvu: import("../core/mvu-variable-editor.js").MvuVariableEditorInput, parsed: any) => ReturnType<typeof upsertMvuVariable>) {
   return logToolCall(tool, input, async () => {
     const schema = tool === "upsert_mvu_variable" ? UpsertMvuVariableInputSchema : tool === "remove_mvu_variable" ? RemoveMvuVariableInputSchema : RewriteMvuVariablesInputSchema;
     const parsed = schema.parse(input) as any;
     const { project, slug } = await loadProjectWithSlug(parsed.project_id);
     assertProjectRevisionValue(project, parsed.expected_project_revision);
-    let edited: ReturnType<typeof upsertMvuVariable> | undefined;
-    const result = await updateDraftSliceWithRevisionCheck(slug, "mvu", "mvu", parsed.expected_slice_revision, (slice) => {
-      const mvu = MvuConfigSchema.parse(slice.data);
-      edited = editor(mvu, parsed);
-      return { ...slice, data: edited.mvu };
-    });
-    return { ok: true, project_id: parsed.project_id, slice: { id: result.slice.id, revision: result.slice.revision }, variables: edited?.variables, warnings: edited?.warnings, affected: { script_fields: ["schemaScript"], content_fields: ["initvar", "updateRules"], variable_paths: edited?.changed_path ? [edited.changed_path.join(".")] : [], artifact_targets: ["mvu", "regex", "ejs", "html"] }, version: versionSnapshot({ project, slice_revision: result.slice.revision }), next_tools: ["validate_project(scope='mvu')", "build_assets(target='all')"] };
+    const existing = await readDraftSlice(slug, "mvu", "mvu");
+    const mvu = MvuConfigSchema.parse(existing.data);
+    await ensureMvuEntries(slug, mvu);
+    const content = await readMvuContentView(slug, mvu);
+    const edited = editor({ ...mvu, ...content }, parsed);
+    const result = await updateDraftSliceWithRevisionCheck(slug, "mvu", "mvu", parsed.expected_slice_revision, (slice) => ({ ...slice, data: edited.mvu }));
+    for (const [key, value] of Object.entries(edited.entryContentPatches) as Array<[MvuEntryKey, string]>) {
+      await updateDraftSliceWithRevisionCheck(slug, "entry", MVU_ENTRY_IDS[key], undefined, (slice) => ({ ...slice, data: { ...(slice.data as object), content: normalizeMvuEntryContent(key, value, edited.mvu) } }));
+    }
+    return { ok: true, project_id: parsed.project_id, slice: { id: result.slice.id, revision: result.slice.revision }, variables: edited.variables, warnings: edited.warnings, affected: { script_fields: ["schemaScript"], content_fields: Object.keys(edited.entryContentPatches).map((key) => MVU_ENTRY_IDS[key as MvuEntryKey]), variable_paths: edited.changed_path ? [edited.changed_path.join(".")] : [], artifact_targets: ["mvu", "regex", "ejs", "html", "worldbook"] }, version: versionSnapshot({ project, slice_revision: result.slice.revision }), next_tools: ["validate_project(scope='mvu')", "build_assets(target='all')"] };
   });
+}
+
+async function ensureMvuEntries(slug: string, runtime: MvuConfig): Promise<void> {
+  const entries = createMvuSystemEntries({ runtime });
+  const keys = runtime.variableListPath === null ? MVU_ENTRY_KEYS.filter((key) => key !== "variableList") : MVU_ENTRY_KEYS;
+  for (const [index, entry] of entries.entries()) {
+    const id = MVU_ENTRY_IDS[keys[index]];
+    try { await readDraftSlice(slug, "entry", id); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      await upsertDraftSlice(slug, createDraftSlice({ type: "entry", id, title: entry.comment, source: "generated", data: entry }));
+    }
+  }
+}
+
+async function readMvuContentView(slug: string, runtime: MvuConfig): Promise<MvuContentView> {
+  await ensureMvuEntries(slug, runtime);
+  const initvar = await readDraftSlice(slug, "entry", MVU_ENTRY_IDS.initvar);
+  const updateRules = await readDraftSlice(slug, "entry", MVU_ENTRY_IDS.updateRules);
+  const outputFormat = await readDraftSlice(slug, "entry", MVU_ENTRY_IDS.outputFormat);
+  return mvuContentFromEntryRecords([initvar, updateRules, outputFormat].map((slice) => ({ id: slice.id, entry: slice.data as import("../schemas/worldbook-draft.js").WorldbookDraftEntry })));
 }

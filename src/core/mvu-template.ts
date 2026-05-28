@@ -1,4 +1,6 @@
 import type { MvuConfig } from "../schemas/mvu.js";
+import type { WorldbookDraftEntry } from "../schemas/worldbook-draft.js";
+import { createMvuSystemEntries, DEFAULT_MVU_OUTPUT_FORMAT } from "./mvu-entry-templates.js";
 
 export interface CreateMvuTemplateInput {
   characterNames?: string[];
@@ -7,6 +9,7 @@ export interface CreateMvuTemplateInput {
 
 export interface CreateMvuTemplateResult {
   mvu: MvuConfig;
+  entries: WorldbookDraftEntry[];
 }
 
 const TEMPLATE_IMPORT = "import { registerMvuSchema } from 'https://testingcf.jsdelivr.net/gh/StageDog/tavern_resource/dist/util/mvu_zod.js';";
@@ -19,20 +22,19 @@ export function createMvuTemplate(input: CreateMvuTemplateInput = {}): CreateMvu
   const variableListPath = input.variableListPath ?? "stat_data";
   const characterNames = uniqueNames(input.characterNames?.length ? input.characterNames : ["角色A"]);
   const variables = defaultVariables(characterNames);
+  const mvu: MvuConfig = {
+    schemaScript: buildSchemaScript(variables),
+    variableListPath,
+    hideRegex: true,
+    beautifyRegex: true,
+  };
   return {
-    mvu: {
-      schemaScript: buildSchemaScript(variables),
-      initvar: buildInitvar(variables),
-      updateRules: buildUpdateRules(variables),
-      outputFormat: defaultOutputFormat(),
-      variableListPath,
-      hideRegex: true,
-      beautifyRegex: true,
-    },
+    mvu,
+    entries: createMvuSystemEntries({ runtime: mvu, initvar: buildInitvar(variables), updateRules: buildUpdateRules(variables), outputFormat: defaultOutputFormat() }),
   };
 }
 
-interface TemplateVariable {
+export interface TemplateVariable {
   path: string[];
   expression: string;
   defaultValue: unknown;
@@ -78,13 +80,13 @@ function buildObjectFields(vars: TemplateVariable[], level: number): string {
   return lines.map((line, index) => `${line}${index === lines.length - 1 ? "" : ","}`).join("\n");
 }
 
-function buildInitvar(vars: TemplateVariable[]): string {
+export function buildInitvar(vars: TemplateVariable[]): string {
   const root: Record<string, unknown> = {};
   for (const variable of vars) setNested(root, variable.path, variable.defaultValue);
   return yamlLines(root).join("\n");
 }
 
-function buildUpdateRules(vars: TemplateVariable[]): string {
+export function buildUpdateRules(vars: TemplateVariable[]): string {
   const root: Record<string, unknown> = {};
   for (const variable of vars) {
     if (variable.path.at(-1)?.startsWith("_")) continue;
@@ -95,7 +97,7 @@ function buildUpdateRules(vars: TemplateVariable[]): string {
 }
 
 export function defaultOutputFormat(): string {
-  return `变量输出格式:\n  rule:\n    - you must output the update analysis and the actual update commands at once in the end of the next reply\n    - the update commands works like the **JSON Patch (RFC 6902)** standard, must be a valid JSON array containing operation objects, but supports the following operations instead:\n      - replace: replace the value of existing paths\n      - delta: update the value of existing number paths by a delta value\n      - insert: insert new items into an object or array (using \`-\` as array index intends appending to the end)\n      - remove\n      - move\n    - don't update field names starts with \`_\` as they are readonly, such as \`_变量\`\n  format: |-\n    <UpdateVariable>\n    <Analysis>$(IN ENGLISH, no more than 80 words)\n    - \${calculate time passed: ...}\n    - \${decide whether dramatic updates are allowed as it's in a special case or the time passed is more than usual: yes/no}\n    - \${analyze every variable based on its corresponding \`check\`, according only to current reply instead of previous plots: ...}\n    </Analysis>\n    <JSONPatch>\n    [\n      { "op": "replace", "path": "\${/path/to/variable}", "value": "\${new_value}" },\n      { "op": "delta", "path": "\${/path/to/number/variable}", "value": "\${positive_or_negative_delta}" },\n      { "op": "insert", "path": "\${/path/to/object/new_key}", "value": "\${new_value}" },\n      { "op": "insert", "path": "\${/path/to/array/-}", "value": "\${new_value}" },\n      { "op": "remove", "path": "\${/path/to/object/key}" },\n      { "op": "remove", "path": "\${/path/to/array/0}" },\n      { "op": "move", "from": "\${/path/to/variable}", "to": "\${/path/to/another/path}" }\n    ]\n    </JSONPatch>\n    </UpdateVariable>`;
+  return DEFAULT_MVU_OUTPUT_FORMAT;
 }
 
 function setNested(target: Record<string, unknown>, path: string[], value: unknown): void {

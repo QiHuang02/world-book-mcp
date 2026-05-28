@@ -33,9 +33,6 @@ export const UpdateMvuSourceInputSchema = z.object({
   project_id: z.string(),
   changes: z.object({
     schemaScript: z.string().optional(),
-    initvar: z.string().optional(),
-    updateRules: z.string().optional(),
-    outputFormat: z.string().nullable().optional(),
     variableListPath: z.union([z.string().min(1), z.null()]).optional(),
     hideRegex: z.boolean().optional(),
     beautifyRegex: z.boolean().optional(),

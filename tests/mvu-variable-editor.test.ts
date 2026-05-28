@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { listMvuVariables, removeMvuVariable, rewriteMvuVariables, upsertMvuVariable } from "../src/core/mvu-variable-editor.js";
+import { mvuContentFromEntries } from "../src/core/mvu-entry-templates.js";
 import { createMvuTemplate } from "../src/core/mvu-template.js";
 
-const baseMvu = () => createMvuTemplate({ characterNames: ["角色A"] }).mvu;
+const baseMvu = () => {
+  const template = createMvuTemplate({ characterNames: ["角色A"] });
+  return { ...template.mvu, ...mvuContentFromEntries(template.entries) };
+};
 
 describe("mvu variable editor", () => {
   it("lists variables from generated template", () => {
@@ -12,7 +16,7 @@ describe("mvu variable editor", () => {
     expect(result.variables.map((variable) => variable.path.join("."))).toContain("角色A.心情");
   });
 
-  it("upserts a variable and rewrites mvu fields", () => {
+  it("upserts a variable and rewrites mvu runtime plus entry content patches", () => {
     const result = upsertMvuVariable(baseMvu(), {
       path: ["角色A", "信任度"],
       kind: "number",
@@ -24,12 +28,11 @@ describe("mvu variable editor", () => {
 
     expect(result.created).toBe(true);
     expect(result.mvu.schemaScript).toContain('"信任度": z.coerce.number()');
-    expect(result.mvu.initvar).toContain("信任度: 10");
-    expect(result.mvu.updateRules).toContain("根据守约、照顾和坦诚交流调整");
+    expect(result.entryContentPatches.initvar).toContain("信任度: 10");
+    expect(result.entryContentPatches.updateRules).toContain("根据守约、照顾和坦诚交流调整");
     expect(result.mvu.schemaScript).toContain("registerMvuSchema(Schema)");
-    // updateRules 是纯 YAML，由 builder 在合成世界书条目时再统一加 XML 包裹，这里不应自带 `---` 分隔符
-    expect(result.mvu.updateRules.startsWith("---")).toBe(false);
-    expect(result.mvu.updateRules.split(/\r?\n/)[0]).toBe("变量更新规则:");
+    expect(result.entryContentPatches.updateRules!.startsWith("---")).toBe(false);
+    expect(result.entryContentPatches.updateRules!.split(/\r?\n/)[0]).toBe("变量更新规则:");
   });
 
   it("overwrites an existing variable", () => {
@@ -43,7 +46,7 @@ describe("mvu variable editor", () => {
 
     expect(result.created).toBe(false);
     expect(result.mvu.schemaScript).toContain("_.clamp(v, -100, 100)");
-    expect(result.mvu.initvar).toContain("好感度: 30");
+    expect(result.entryContentPatches.initvar).toContain("好感度: 30");
   });
 
   it("removes a variable from schema, initvar and rules", () => {
@@ -51,8 +54,8 @@ describe("mvu variable editor", () => {
 
     expect(result.removed).toBe(true);
     expect(result.mvu.schemaScript).not.toContain("心情");
-    expect(result.mvu.initvar).not.toContain("心情");
-    expect(result.mvu.updateRules).not.toContain("心情");
+    expect(result.entryContentPatches.initvar).not.toContain("心情");
+    expect(result.entryContentPatches.updateRules).not.toContain("心情");
   });
 
   it("rewrites variables from a complete list", () => {
@@ -64,7 +67,7 @@ describe("mvu variable editor", () => {
 
     expect(result.mvu.schemaScript).toContain("当前地点");
     expect(result.mvu.schemaScript).toContain('"$路线"');
-    expect(result.mvu.updateRules).not.toContain("_生日");
+    expect(result.entryContentPatches.updateRules).not.toContain("_生日");
   });
 
   it("rejects unsafe schema expressions", () => {

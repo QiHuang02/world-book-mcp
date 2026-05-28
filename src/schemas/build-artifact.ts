@@ -24,7 +24,7 @@ export const SliceInputSnapshotSchema = z.object({
 });
 
 export const BuildManifestSchema = z.object({
-  schema_version: z.literal(1),
+  schema_version: z.literal(2),
   build_id: z.string(),
   status: z.enum(["success", "failed", "partial"]),
   built_at: z.string(),
@@ -45,7 +45,7 @@ export const BuildManifestSchema = z.object({
     force: z.boolean().default(false),
   }),
   inputs: z.object({
-    project_json: FileInputSnapshotSchema,
+    project_yaml: FileInputSnapshotSchema,
     plan_md: FileInputSnapshotSchema.optional(),
     slices: z.array(SliceInputSnapshotSchema),
     imports: z.array(z.object({ importId: z.string(), path: z.string(), type: z.enum(["worldbook", "character_card"]), sha256_at_import: z.string(), current_sha256: z.string().optional(), changed_since_import: z.boolean() })).default([]),
@@ -55,7 +55,7 @@ export const BuildManifestSchema = z.object({
     id: z.string(),
     target: BuildArtifactTargetSchema,
     path: z.string(),
-    media_type: z.enum(["application/json", "text/plain"]).default("application/json"),
+    media_type: z.enum(["application/json", "application/yaml", "text/plain"]).default("application/yaml"),
     sha256: z.string(),
     bytes: z.number().int().nonnegative(),
     created_at: z.string(),
@@ -104,7 +104,7 @@ export const BuildLatestSchema = z.object({
 });
 
 export const ExportRecordSchema = z.object({
-  schema_version: z.literal(1),
+  schema_version: z.literal(2),
   export_id: z.string(),
   exported_at: z.string(),
   project_id: z.string(),

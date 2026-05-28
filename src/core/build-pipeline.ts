@@ -10,7 +10,7 @@ import type { Project } from "../schemas/project.js";
 import type { BuildManifest } from "../schemas/build-artifact.js";
 import { draftSlicePath, listDraftSlices } from "../storage/draft-store.js";
 import { createBuildId, fileSnapshot, readBuildLatest, readBuildManifest, verifyFileHash, writeBuildArtifact, writeBuildLatest, writeBuildManifest } from "../storage/build-store.js";
-import { projectJsonPath, projectPlanPath } from "../storage/workspace-store.js";
+import { projectYamlPath, projectPlanPath } from "../storage/workspace-store.js";
 
 export async function buildProjectRun(input: { project: Project; slug: string; target?: "mvu" | "html" | "regex" | "ejs" | "all"; include_previews?: boolean; requested_by?: "build_assets" | "generate_json" | "check_delivery" | "manual"; strict_review?: "off" | "standard" | "strict"; force?: boolean }): Promise<{ ok: boolean; manifest: BuildManifest; manifest_path: string; artifacts: BuildManifest["artifacts"]; previews: unknown[]; validation_report: ReturnType<typeof validateProject> }> {
   const target = input.target ?? "all";
@@ -33,11 +33,11 @@ export async function buildProjectRun(input: { project: Project; slug: string; t
 
   if (status !== "failed") {
     const assets = buildProjectAssets(hydrated, target, aggregate.regexSlices, builtAt);
-    if (target === "mvu" || target === "all") await addArtifact({ slug: input.slug, buildId, artifacts, cache, target: "mvu", relativePath: "assets/mvu.json", value: { target: "mvu", builtAt, worldbookEntries: assets.worldbook_entries, tavernHelperScripts: assets.tavern_helper_scripts }, inputSliceIds, inputRevisions, fingerprint: targetFingerprint(cacheContext, "mvu") });
-    if (target === "html" || target === "all") await addArtifact({ slug: input.slug, buildId, artifacts, cache, target: "html", relativePath: "assets/html.json", value: { target: "html", builtAt }, inputSliceIds, inputRevisions, fingerprint: targetFingerprint(cacheContext, "html") });
-    if (target === "regex" || target === "all") await addArtifact({ slug: input.slug, buildId, artifacts, cache, target: "regex", relativePath: "assets/regex.json", value: assets.regex_artifact, inputSliceIds, inputRevisions, fingerprint: targetFingerprint(cacheContext, "regex") });
-    if (target === "ejs" || target === "all") await addArtifact({ slug: input.slug, buildId, artifacts, cache, target: "ejs", relativePath: "assets/ejs.json", value: { target: "ejs", builtAt, worldbookEntries: assets.ejs_entries }, inputSliceIds, inputRevisions, fingerprint: targetFingerprint(cacheContext, "ejs") });
-    if (target === "all") await addArtifact({ slug: input.slug, buildId, artifacts, cache, target: "all", relativePath: "assets/all.json", value: assets, inputSliceIds, inputRevisions, fingerprint: targetFingerprint(cacheContext, "all") });
+    if (target === "mvu" || target === "all") await addArtifact({ slug: input.slug, buildId, artifacts, cache, target: "mvu", relativePath: "assets/mvu.yaml", value: { target: "mvu", builtAt, worldbookEntries: assets.worldbook_entries, tavernHelperScripts: assets.tavern_helper_scripts }, inputSliceIds, inputRevisions, fingerprint: targetFingerprint(cacheContext, "mvu") });
+    if (target === "html" || target === "all") await addArtifact({ slug: input.slug, buildId, artifacts, cache, target: "html", relativePath: "assets/html.yaml", value: { target: "html", builtAt }, inputSliceIds, inputRevisions, fingerprint: targetFingerprint(cacheContext, "html") });
+    if (target === "regex" || target === "all") await addArtifact({ slug: input.slug, buildId, artifacts, cache, target: "regex", relativePath: "assets/regex.yaml", value: assets.regex_artifact, inputSliceIds, inputRevisions, fingerprint: targetFingerprint(cacheContext, "regex") });
+    if (target === "ejs" || target === "all") await addArtifact({ slug: input.slug, buildId, artifacts, cache, target: "ejs", relativePath: "assets/ejs.yaml", value: { target: "ejs", builtAt, worldbookEntries: assets.ejs_entries }, inputSliceIds, inputRevisions, fingerprint: targetFingerprint(cacheContext, "ejs") });
+    if (target === "all") await addArtifact({ slug: input.slug, buildId, artifacts, cache, target: "all", relativePath: "assets/all.yaml", value: assets, inputSliceIds, inputRevisions, fingerprint: targetFingerprint(cacheContext, "all") });
 
     if (includePreviews) {
       if (input.project.kind.output === "worldbook" || input.project.kind.output === "both") {
@@ -55,20 +55,20 @@ export async function buildProjectRun(input: { project: Project; slug: string; t
 
   const delivery = validateProject(hydrated, { scope: "delivery", build: { stale: false, stale_reasons: [] } });
   const checklist = createDeliveryChecklist({ project: input.project, review: delivery, export_target: input.project.kind.output });
-  const validationArtifact = await writeBuildArtifact(input.slug, buildId, "validation-report.json", validation);
-  const checklistArtifact = await writeBuildArtifact(input.slug, buildId, "delivery-checklist.json", checklist);
-  const projectInput = await fileSnapshot(projectJsonPath(input.slug), input.project.revision);
+  const validationArtifact = await writeBuildArtifact(input.slug, buildId, "validation-report.yaml", validation);
+  const checklistArtifact = await writeBuildArtifact(input.slug, buildId, "delivery-checklist.yaml", checklist);
+  const projectInput = await fileSnapshot(projectYamlPath(input.slug), input.project.revision);
   let planInput; try { planInput = await fileSnapshot(projectPlanPath(input.slug)); } catch { /* no plan */ }
   const sliceInputs = await Promise.all(slices.map(async (slice) => ({ ...await fileSnapshot(draftSlicePath(input.slug, slice.type, slice.id), slice.revision), id: slice.id, type: slice.type, title: slice.title, active: slice.active, revision: slice.revision, source: slice.source })));
   const manifest: BuildManifest = {
-    schema_version: 1,
+    schema_version: 2,
     build_id: buildId,
     status,
     built_at: builtAt,
     tool: { name: "world-book-mcp", version: "0.1.0-beta.0", node_version: process.version },
     project: { project_id: input.project.id, slug: input.project.slug, name: input.project.name, project_revision: input.project.revision, kind: input.project.kind },
     build: { requested_by: input.requested_by ?? "build_assets", target, mode: "full", strict_review: strictReview, force: Boolean(input.force) },
-    inputs: { project_json: projectInput, plan_md: planInput, slices: sliceInputs, imports: input.project.imports.map((item) => ({ importId: item.importId, path: item.path, type: item.type, sha256_at_import: item.sourceHash, changed_since_import: false })) },
+    inputs: { project_yaml: projectInput, plan_md: planInput, slices: sliceInputs, imports: input.project.imports.map((item) => ({ importId: item.importId, path: item.path, type: item.type, sha256_at_import: item.sourceHash, changed_since_import: false })) },
     graph: { nodes: [], edges: [] },
     artifacts,
     validation: { validated: true, validate_tool: "validate_project", scope: "all", ok: validation.ok, ready_to_build: readyToBuild, ready_to_export: validation.ready_to_export, section_status: Object.fromEntries(Object.entries(validation.sections).map(([key, section]) => [key, section.status])), error_count: validation.summary.blocking_count, warning_count: validation.summary.warning_count, info_count: validation.summary.info_count, report_path: validationArtifact.path },
@@ -93,7 +93,7 @@ async function addArtifact(input: { slug: string; buildId: string; artifacts: Bu
     return artifact;
   }
   const written = await writeBuildArtifact(input.slug, input.buildId, input.relativePath, input.value);
-  const artifact: BuildManifest["artifacts"][number] = { id: String(input.target), target: input.target, path: written.path, media_type: "application/json", sha256: written.sha256, bytes: written.bytes, created_at: new Date().toISOString(), input_slice_ids: input.inputSliceIds, input_revisions: input.inputRevisions, summary: input.summary ?? (input.value as { summary?: unknown }).summary, cache: artifactCache(input.fingerprint), stale: false };
+  const artifact: BuildManifest["artifacts"][number] = { id: String(input.target), target: input.target, path: written.path, media_type: input.relativePath.endsWith(".json") ? "application/json" : "application/yaml", sha256: written.sha256, bytes: written.bytes, created_at: new Date().toISOString(), input_slice_ids: input.inputSliceIds, input_revisions: input.inputRevisions, summary: input.summary ?? (input.value as { summary?: unknown }).summary, cache: artifactCache(input.fingerprint), stale: false };
   input.artifacts.push(artifact);
   return artifact;
 }
@@ -110,7 +110,7 @@ export async function loadFreshBuild(input: { slug: string; build_id?: string })
 }
 
 async function appendInputStaleReasons(slug: string, manifest: BuildManifest, staleReasons: string[]): Promise<void> {
-  if (!await verifyFileHash(manifest.inputs.project_json.path, manifest.inputs.project_json.sha256)) staleReasons.push("input project_json changed");
+  if (!await verifyFileHash(manifest.inputs.project_yaml.path, manifest.inputs.project_yaml.sha256)) staleReasons.push("input project_yaml changed");
   if (manifest.inputs.plan_md && !await verifyFileHash(manifest.inputs.plan_md.path, manifest.inputs.plan_md.sha256)) staleReasons.push("input plan_md changed");
   for (const slice of manifest.inputs.slices) if (!await verifyFileHash(slice.path, slice.sha256)) staleReasons.push(`input slice changed or missing: ${slice.type}/${slice.id}`);
 

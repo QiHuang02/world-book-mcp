@@ -5,6 +5,36 @@ import { ProjectOutputKindSchema, ProjectSourceKindSchema } from "./workspace.js
 import { RegexAssetSourceSchema } from "./regex.js";
 import { PlanItemSchema } from "./plan.js";
 
+const DEFAULT_SOURCE_MANIFEST = {
+  sourceRoot: "source",
+  profile: "source/profile.yaml",
+  greetings: { first: "source/greetings/first.md", alternates: [] as string[] },
+  entriesDir: "source/entries",
+  mvuDir: "source/mvu",
+  ejsDir: "source/ejs",
+  html: { statusbar: "source/statusbar.html" },
+  regexDir: "source/regex",
+  exportTargets: {},
+};
+
+export const SourceManifestSchema = z.object({
+  sourceRoot: z.string().default(DEFAULT_SOURCE_MANIFEST.sourceRoot),
+  profile: z.string().default(DEFAULT_SOURCE_MANIFEST.profile),
+  greetings: z.object({
+    first: z.string().default(DEFAULT_SOURCE_MANIFEST.greetings.first),
+    alternates: z.array(z.string()).default([]),
+  }).default(DEFAULT_SOURCE_MANIFEST.greetings),
+  entriesDir: z.string().default(DEFAULT_SOURCE_MANIFEST.entriesDir),
+  mvuDir: z.string().default(DEFAULT_SOURCE_MANIFEST.mvuDir),
+  ejsDir: z.string().default(DEFAULT_SOURCE_MANIFEST.ejsDir),
+  html: z.object({ statusbar: z.string().default(DEFAULT_SOURCE_MANIFEST.html.statusbar) }).default(DEFAULT_SOURCE_MANIFEST.html),
+  regexDir: z.string().default(DEFAULT_SOURCE_MANIFEST.regexDir),
+  exportTargets: z.object({
+    worldbook: z.string().optional(),
+    characterCard: z.string().optional(),
+  }).default(DEFAULT_SOURCE_MANIFEST.exportTargets),
+}).default(DEFAULT_SOURCE_MANIFEST);
+
 export const AssetKindStateSchema = z.object({
   planned: z.boolean().default(false),
   enabled: z.boolean().default(false),
@@ -88,12 +118,13 @@ export const ProjectGreetingsSchema = z.object({
 });
 
 export const ProjectSchema = z.object({
-  schemaVersion: z.literal(3),
+  schemaVersion: z.literal(4),
   id: z.string(),
   slug: z.string(),
   name: z.string(),
   kind: ProjectKindSchema,
   opening: OpeningDesignSchema.optional(),
+  sourceManifest: SourceManifestSchema,
   plan: ProjectPlanMetadataSchema,
   profile: ProjectProfileSchema.optional(),
   greetings: ProjectGreetingsSchema.optional(),
@@ -112,6 +143,7 @@ export type ProjectKind = z.infer<typeof ProjectKindSchema>;
 export type OpeningDesign = z.infer<typeof OpeningDesignSchema>;
 export type ProjectProfile = z.infer<typeof ProjectProfileSchema>;
 export type ProjectGreetings = z.infer<typeof ProjectGreetingsSchema>;
+export type SourceManifest = z.infer<typeof SourceManifestSchema>;
 export type ProjectPlanMetadata = z.infer<typeof ProjectPlanMetadataSchema>;
 export type ProjectImportRecord = z.infer<typeof ProjectImportRecordSchema>;
 export type Project = z.infer<typeof ProjectSchema>;

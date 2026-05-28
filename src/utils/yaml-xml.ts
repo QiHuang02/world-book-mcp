@@ -89,12 +89,12 @@ export function normalizeWorldbookEntryContent(content: string): string {
 }
 
 /**
- * MVU 字段（initvar / update_rules / output_format）的输入侧规范化：
+ * MVU 系统 entry（initvar / update_rules / output_format）的输入侧规范化：
  * - 剥离首尾 `---`。
- * - 如果用户/AI 误把已经带 XML 包裹的内容贴进字段，自动解包成纯 YAML。
+ * - 如果用户/AI 误把已经带 XML 包裹的内容贴进编辑器，自动解包成纯 YAML。
  *
- * `MvuConfig` 约定这三个字段存原始 YAML，由 builder 在合成世界书条目时再统一加 XML 包裹，
- * 因此这里要主动剥包裹，避免出现 `<variable_update_rules><variable_update_rules>...` 这种重复包裹。
+ * MVU 内容现在存放在真实 entry slice 中；变量编辑器先把 entry content 解包成纯 YAML，
+ * 改写后再由 entry 模板统一包回语义 XML，避免重复包裹。
  */
 export function normalizeMvuYamlField(content: string, candidateTags: string[]): string {
   if (typeof content !== "string") return content;

@@ -16,7 +16,7 @@ export function createEntryTemplate(input: CreateWorldbookDraftTemplateInput): W
 }
 
 export function createMvuTemplate(): MvuConfig {
-  return { schemaScript: "", initvar: "", updateRules: "", outputFormat: undefined, variableListPath: "stat_data", hideRegex: true, beautifyRegex: true };
+  return { schemaScript: "", variableListPath: "stat_data", hideRegex: true, beautifyRegex: true };
 }
 
 export function createHtmlTemplate(): HtmlBeautifyConfig {

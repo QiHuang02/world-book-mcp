@@ -1,15 +1,19 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { ProjectSchema, defaultProjectKind, type OpeningDesign, type Project } from "../schemas/project.js";
+import { ProjectSchema, defaultProjectKind, type OpeningDesign, type Project, type SourceManifest } from "../schemas/project.js";
 import { WorkspaceSchema, type ProjectOutputKind, type ProjectSourceKind, type Workspace, type WorkspaceProjectEntry } from "../schemas/workspace.js";
 import { createId, nowIso } from "../utils/ids.js";
-import { readJsonFile, toPrettyJson, writeJsonFile } from "../utils/json.js";
+import { readJsonFile, toPrettyJson } from "../utils/json.js";
+import { readYamlFile, writeYamlFile } from "../utils/yaml.js";
 import { assertInside, ROOT_DIR, sanitizeFilename, writeTextFileSafely } from "./path-policy.js";
 import { ensureDraftDirs } from "./draft-store.js";
 import { ensureLogDir, LATEST_LOG_PATH, currentSessionId } from "./tool-log.js";
 
 export const WORKSPACE_DIR = path.resolve(ROOT_DIR, ".worldbook");
-export const WORKSPACE_JSON_PATH = path.resolve(WORKSPACE_DIR, "workspace.json");
+export const LEGACY_JSON_WORKSPACE_MESSAGE = "检测到 v3 JSON 工作区；v4 不支持旧存储，请重新 init_project/import_existing_json 或手动导入 Tavern JSON。";
+export const WORKSPACE_YAML_PATH = path.resolve(WORKSPACE_DIR, "workspace.yaml");
+export const WORKSPACE_JSON_PATH = WORKSPACE_YAML_PATH;
+const LEGACY_WORKSPACE_JSON_PATH = path.resolve(WORKSPACE_DIR, "workspace.json");
 const PROJECTS_DIR = path.resolve(WORKSPACE_DIR, "projects");
 
 export function resolveProjectSlug(name: string): string {
@@ -18,7 +22,8 @@ export function resolveProjectSlug(name: string): string {
 }
 
 export function projectDir(slug: string): string { return assertInside(PROJECTS_DIR, path.resolve(PROJECTS_DIR, slug)); }
-export function projectJsonPath(slug: string): string { return path.resolve(projectDir(slug), "project.json"); }
+export function projectYamlPath(slug: string): string { return path.resolve(projectDir(slug), "project.yaml"); }
+export const projectJsonPath = projectYamlPath;
 export function projectPlanPath(slug: string): string { return path.resolve(projectDir(slug), "plan.md"); }
 export function projectSlicesDir(slug: string): string { return path.resolve(projectDir(slug), "slices"); }
 export function projectBuildDir(slug: string): string { return path.resolve(projectDir(slug), "build"); }
@@ -27,15 +32,14 @@ export function projectBackupsDir(slug: string): string { return path.resolve(pr
 
 export async function loadWorkspace(): Promise<Workspace> {
   try {
-    const raw = await readJsonFile(WORKSPACE_JSON_PATH) as { version?: unknown };
-    if (raw.version !== 3) {
-      throw new Error(`.worldbook workspace version=${String(raw.version)} 不符合 v3 schema；请使用 v3 workspace，或从 Tavern JSON 重新 init_project(source="modify_existing")。`);
-    }
+    const raw = await readYamlFile(WORKSPACE_YAML_PATH) as { version?: unknown };
+    if (raw.version !== 4) throw new Error(`.worldbook workspace version=${String(raw.version)} 不符合 v4 schema；请重新 init_project/import_existing_json。`);
     return WorkspaceSchema.parse(raw);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      await assertNoLegacyWorkspaceJson();
       const timestamp = nowIso();
-      return { version: 3, revision: 0, projects: [], createdAt: timestamp, updatedAt: timestamp };
+      return { version: 4, revision: 0, projects: [], createdAt: timestamp, updatedAt: timestamp };
     }
     throw error;
   }
@@ -44,7 +48,7 @@ export async function loadWorkspace(): Promise<Workspace> {
 export async function saveWorkspace(workspace: Workspace, options: { bumpRevision?: boolean } = {}): Promise<void> {
   await fs.mkdir(WORKSPACE_DIR, { recursive: true });
   const next = WorkspaceSchema.parse({ ...workspace, revision: options.bumpRevision ? workspace.revision + 1 : workspace.revision, updatedAt: nowIso() });
-  await writeJsonFile(WORKSPACE_JSON_PATH, next);
+  await writeYamlFile(WORKSPACE_YAML_PATH, next);
 }
 
 export function findProjectEntry(workspace: Workspace, slugOrId: string): WorkspaceProjectEntry | undefined {
@@ -55,8 +59,10 @@ export type InitWorkspaceIfExists = "error" | "overwrite";
 
 export interface WorkspacePaths {
   workspace_dir: string;
+  workspace_yaml: string;
   workspace_json: string;
   project_dir: string;
+  project_yaml: string;
   project_json: string;
   plan_md: string;
   slices_dir: string;
@@ -87,12 +93,13 @@ export async function initWorkspaceProject(input: {
 
   const timestamp = nowIso();
   const project = ProjectSchema.parse({
-    schemaVersion: 3,
+    schemaVersion: 4,
     id: input.projectId ?? createId("project"),
     slug,
     name: input.name,
     kind: defaultProjectKind({ output: input.output, source: input.source, assets: input.assets }),
     opening: input.opening,
+    sourceManifest: sourceManifestForProject(input.name, input.output),
     plan: {},
     imports: [],
     pendingDecisions: [],
@@ -113,8 +120,17 @@ export async function initWorkspaceProject(input: {
   return { project, created: !existing, workspace: workspacePaths(slug), slug };
 }
 
-export async function readProjectJson(slug: string): Promise<Project> { return readJsonFile(projectJsonPath(slug), ProjectSchema); }
-export async function writeProjectJson(slug: string, project: Project): Promise<void> { await ensureProjectDirs(slug); await writeJsonFile(projectJsonPath(slug), ProjectSchema.parse(project)); }
+export async function readProjectYaml(slug: string): Promise<Project> {
+  try {
+    return await readYamlFile(projectYamlPath(slug), ProjectSchema);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") await assertNoLegacyProjectJson(slug);
+    throw error;
+  }
+}
+export async function writeProjectYaml(slug: string, project: Project): Promise<void> { await ensureProjectDirs(slug); await writeYamlFile(projectYamlPath(slug), ProjectSchema.parse(project)); }
+export const readProjectJson = readProjectYaml;
+export const writeProjectJson = writeProjectYaml;
 
 export async function findSlugByProjectId(projectId: string): Promise<string | undefined> {
   const workspace = await loadWorkspace();
@@ -152,9 +168,11 @@ async function clearProjectData(slug: string): Promise<void> { await fs.rm(proje
 export function workspacePaths(slug: string): WorkspacePaths {
   return {
     workspace_dir: WORKSPACE_DIR,
-    workspace_json: WORKSPACE_JSON_PATH,
+    workspace_yaml: WORKSPACE_YAML_PATH,
+    workspace_json: WORKSPACE_YAML_PATH,
     project_dir: projectDir(slug),
-    project_json: projectJsonPath(slug),
+    project_yaml: projectYamlPath(slug),
+    project_json: projectYamlPath(slug),
     plan_md: projectPlanPath(slug),
     slices_dir: projectSlicesDir(slug),
     build_dir: projectBuildDir(slug),
@@ -192,6 +210,36 @@ export async function findRootTavernJsonFiles(): Promise<string[]> {
     try { if (isTavernJson(await readJsonFile(filePath))) result.push(filePath); } catch { /* ignore */ }
   }
   return result.sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
+}
+
+async function assertNoLegacyWorkspaceJson(): Promise<void> {
+  try {
+    await fs.access(LEGACY_WORKSPACE_JSON_PATH);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+  throw new Error(LEGACY_JSON_WORKSPACE_MESSAGE);
+}
+
+async function assertNoLegacyProjectJson(slug: string): Promise<void> {
+  const legacyPath = path.resolve(projectDir(slug), "project.json");
+  try {
+    await fs.access(legacyPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+  throw new Error(`检测到 v3 JSON project 文件 ${legacyPath}；v4 不支持旧存储，请重新 init_project/import_existing_json。`);
+}
+
+function sourceManifestForProject(name: string, output: ProjectOutputKind): SourceManifest {
+  return ProjectSchema.shape.sourceManifest.parse({
+    exportTargets: {
+      ...(output === "worldbook" || output === "both" ? { worldbook: `${sanitizeFilename(name)}.worldbook.json` } : {}),
+      ...(output === "character_card" || output === "both" ? { characterCard: `${sanitizeFilename(name)}.card.json` } : {}),
+    },
+  });
 }
 
 const DEFAULT_PLAN = `# World Book MCP Plan

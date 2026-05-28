@@ -30,7 +30,7 @@ export async function updateProject(projectId: string, mutator: (project: Projec
     const { project, slug } = await loadProjectWithSlug(projectId);
     if (options.expectedRevision !== undefined && project.revision !== options.expectedRevision) throw new Error(`project revision conflict: expected ${options.expectedRevision}, current ${project.revision}`);
     const next = await mutator(project);
-    const updated = ProjectSchema.parse({ ...next, id: project.id, slug: project.slug, schemaVersion: 3, revision: project.revision + 1, updatedAt: nowIso() });
+    const updated = ProjectSchema.parse({ ...next, id: project.id, slug: project.slug, schemaVersion: 4, revision: project.revision + 1, updatedAt: nowIso() });
     await writeProjectJson(slug, updated);
     return updated;
   });

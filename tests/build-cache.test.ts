@@ -13,7 +13,7 @@ describe("build cache", () => {
   it("records slice snapshots and reuses unchanged target artifacts", async () => {
     await cleanupWorkspace();
     const { project, slug } = await initWorkspaceProject({ name: "缓存测试", output: "worldbook", source: "original", assets: { mvu: true }, ifExists: "overwrite" });
-    await upsertDraftSlice(slug, createDraftSlice({ type: "mvu", data: { ...createMvuTemplate(), schemaScript: "export const Schema = z.object({ hp: z.string().prefault('') });\nregisterMvuSchema(Schema);", initvar: "hp: ok", updateRules: "变量更新规则:\n  hp:\n    check:\n      - 根据状态更新" } }));
+    await upsertDraftSlice(slug, createDraftSlice({ type: "mvu", data: { ...createMvuTemplate(), schemaScript: "export const Schema = z.object({ hp: z.string().prefault('') });\nregisterMvuSchema(Schema);" } }));
     await upsertDraftSlice(slug, createDraftSlice({ type: "entry", id: "entry-a", data: { ...createEntryTemplate({ comment: "条目A", entryType: "world_summary" }), keys: [], content: "<entry>初始</entry>" } }));
 
     const first = await buildProjectRun({ project, slug, target: "all", include_previews: true, force: true });
@@ -21,7 +21,7 @@ describe("build cache", () => {
 
     expect(first.ok).toBe(true);
     expect(second.ok).toBe(true);
-    expect(second.manifest.inputs.slices.every((slice) => slice.sha256.length > 0 && slice.path.endsWith(".json"))).toBe(true);
+    expect(second.manifest.inputs.slices.every((slice) => slice.sha256.length > 0 && slice.path.endsWith(".yaml"))).toBe(true);
     expect(second.manifest.artifacts.some((artifact) => artifact.cache?.reused_from_build_id === first.manifest.build_id)).toBe(true);
 
     const fresh = await loadFreshBuild({ slug, build_id: second.manifest.build_id });

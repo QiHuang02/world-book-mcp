@@ -2,7 +2,8 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { BuildLatestSchema, BuildManifestSchema, ExportRecordSchema, type BuildLatest, type BuildManifest, type ExportRecord } from "../schemas/build-artifact.js";
-import { readJsonFile, toPrettyJson, writeJsonFile } from "../utils/json.js";
+import { toPrettyJson } from "../utils/json.js";
+import { readYamlFile, toPrettyYaml, writeYamlFile } from "../utils/yaml.js";
 import { assertInside } from "./path-policy.js";
 import { projectBuildDir } from "./workspace-store.js";
 
@@ -17,8 +18,8 @@ export function createExportId(date = new Date()): string {
 }
 
 export function buildRunDir(slug: string, buildId: string): string { return assertInside(path.resolve(projectBuildDir(slug), "runs"), path.resolve(projectBuildDir(slug), "runs", buildId)); }
-export function buildManifestPath(slug: string, buildId: string): string { return path.resolve(buildRunDir(slug, buildId), "manifest.json"); }
-export function buildLatestPath(slug: string): string { return path.resolve(projectBuildDir(slug), "latest.json"); }
+export function buildManifestPath(slug: string, buildId: string): string { return path.resolve(buildRunDir(slug, buildId), "manifest.yaml"); }
+export function buildLatestPath(slug: string): string { return path.resolve(projectBuildDir(slug), "latest.yaml"); }
 export function buildAssetsDir(slug: string, buildId: string): string { return path.resolve(buildRunDir(slug, buildId), "assets"); }
 export function buildExportsDir(slug: string, buildId: string): string { return path.resolve(buildRunDir(slug, buildId), "exports"); }
 export function buildExportRecordsDir(slug: string, buildId: string): string { return path.resolve(buildRunDir(slug, buildId), "export-records"); }
@@ -30,7 +31,7 @@ export async function ensureBuildRunDirs(slug: string, buildId: string): Promise
 export async function writeBuildArtifact(slug: string, buildId: string, relativePath: string, value: unknown): Promise<{ path: string; sha256: string; bytes: number }> {
   await ensureBuildRunDirs(slug, buildId);
   const filePath = assertInside(buildRunDir(slug, buildId), path.resolve(buildRunDir(slug, buildId), relativePath));
-  const content = toPrettyJson(value);
+  const content = relativePath.endsWith(".json") ? toPrettyJson(value) : toPrettyYaml(value);
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, content, "utf8");
   return { path: filePath, sha256: sha256Text(content), bytes: Buffer.byteLength(content, "utf8") };
@@ -40,26 +41,26 @@ export async function writeBuildManifest(slug: string, manifest: BuildManifest):
   await ensureBuildRunDirs(slug, manifest.build_id);
   const parsed = BuildManifestSchema.parse(manifest);
   const filePath = buildManifestPath(slug, manifest.build_id);
-  await writeJsonFile(filePath, parsed);
+  await writeYamlFile(filePath, parsed);
   return filePath;
 }
 
-export async function readBuildManifest(slug: string, buildId: string): Promise<BuildManifest> { return readJsonFile(buildManifestPath(slug, buildId), BuildManifestSchema); }
+export async function readBuildManifest(slug: string, buildId: string): Promise<BuildManifest> { return readYamlFile(buildManifestPath(slug, buildId), BuildManifestSchema); }
 
 export async function writeBuildLatest(slug: string, manifest: BuildManifest, manifestPath: string): Promise<void> {
   const latest: BuildLatest = BuildLatestSchema.parse({ build_id: manifest.build_id, manifest_path: manifestPath, built_at: manifest.built_at, status: manifest.status });
-  await writeJsonFile(buildLatestPath(slug), latest);
+  await writeYamlFile(buildLatestPath(slug), latest);
 }
 
 export async function readBuildLatest(slug: string): Promise<BuildLatest | undefined> {
-  try { return await readJsonFile(buildLatestPath(slug), BuildLatestSchema); }
+  try { return await readYamlFile(buildLatestPath(slug), BuildLatestSchema); }
   catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined; throw error; }
 }
 
 export async function writeExportRecord(slug: string, buildId: string, record: ExportRecord): Promise<string> {
   const parsed = ExportRecordSchema.parse(record);
-  const filePath = path.resolve(buildExportRecordsDir(slug, buildId), `${parsed.export_id}.json`);
-  await writeJsonFile(filePath, parsed);
+  const filePath = path.resolve(buildExportRecordsDir(slug, buildId), `${parsed.export_id}.yaml`);
+  await writeYamlFile(filePath, parsed);
   return filePath;
 }
 

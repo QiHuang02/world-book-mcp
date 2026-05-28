@@ -36,7 +36,7 @@ describe("shared store", () => {
     await upsertDraftSlice(source.slug, entrySlice("entry-a", "源内容"));
 
     const shared = await shareSlice({ slug: source.slug, type: "entry", id: "entry-a", sharedId: "entry-shared", title: "共享条目" });
-    expect(shared.entry.file).toBe("entries/entry-shared.json");
+    expect(shared.entry.file).toBe("entries/entry-shared.yaml");
     await expect(fs.access(SHARED_REGISTRY_PATH)).resolves.toBeUndefined();
 
     const used = await useShared({ slug: target.slug, sharedId: "entry-shared", targetId: "entry-copied" });
@@ -53,7 +53,7 @@ describe("shared store", () => {
     await cleanupWorkspace();
     const source = await initWorkspaceProject({ name: "资产源", output: "worldbook", source: "original", assets: { mvu: true }, ifExists: "error" });
     const target = await initWorkspaceProject({ name: "资产目标", output: "worldbook", source: "original", assets: { mvu: true }, ifExists: "error" });
-    await upsertDraftSlice(source.slug, createDraftSlice({ type: "mvu", id: "mvu", data: { schemaScript: "", initvar: "", updateRules: "", variableListPath: "stat_data", hideRegex: true, beautifyRegex: true } }));
+    await upsertDraftSlice(source.slug, createDraftSlice({ type: "mvu", id: "mvu", data: { schemaScript: "", variableListPath: "stat_data", hideRegex: true, beautifyRegex: true } }));
 
     await shareSlice({ slug: source.slug, type: "mvu", id: "anything", sharedId: "shared-mvu" });
     const used = await useShared({ slug: target.slug, sharedId: "shared-mvu", targetId: "custom-mvu" });
