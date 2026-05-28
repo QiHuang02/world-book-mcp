@@ -5,6 +5,7 @@ import type { MvuAssets } from "./mvu-assets.js";
 import type { WorldbookDraftEntry } from "../schemas/worldbook-draft.js";
 import { uniqueStrings } from "../utils/strings.js";
 import { positionToNumber } from "./position-map.js";
+import { normalizeStatusbarHtml } from "./statusbar-html-normalizer.js";
 
 export interface CharacterCardJson {
   name: string;
@@ -90,7 +91,7 @@ export function buildCharacterCardJson(input: {
     fav: false,
     world: card.name,
     depth_prompt: { prompt: "", depth: 4, role: "system" },
-    ...(regexScripts.length ? { regex_scripts: regexScripts.map((script) => withId(script)) } : {}),
+    ...(regexScripts.length ? { regex_scripts: regexScripts.map((script) => withId(serializeRegexScript(script))) } : {}),
     ...(input.mvuAssets?.tavernHelperScripts.length ? { tavern_helper: [["scripts", input.mvuAssets.tavernHelperScripts.map((script) => withId(script))], ["variables", {}]] } : {}),
   };
 
@@ -136,6 +137,30 @@ export function buildCharacterCardJson(input: {
 function withId<T extends object>(value: T): T & { id: string } {
   const maybeId = (value as { id?: unknown }).id;
   return { ...value, id: typeof maybeId === "string" ? maybeId : randomUUID() };
+}
+
+function serializeRegexScript(value: object): object {
+  const script = value as Record<string, unknown>;
+  const replaceString = typeof script.replaceString === "string" && isStatusbarDisplayRegex(script) ? normalizeStatusbarHtml(script.replaceString) : typeof script.replaceString === "string" ? script.replaceString : "";
+  return {
+    ...(typeof script.id === "string" ? { id: script.id } : {}),
+    scriptName: String(script.scriptName ?? ""),
+    findRegex: String(script.findRegex ?? ""),
+    replaceString,
+    trimStrings: Array.isArray(script.trimStrings) ? script.trimStrings.map(String) : [],
+    placement: Array.isArray(script.placement) ? script.placement.map(Number) : [2],
+    disabled: Boolean(script.disabled ?? false),
+    markdownOnly: Boolean(script.markdownOnly ?? true),
+    promptOnly: Boolean(script.promptOnly ?? false),
+    runOnEdit: Boolean(script.runOnEdit ?? false),
+    substituteRegex: Number(script.substituteRegex ?? 0),
+    minDepth: typeof script.minDepth === "number" ? script.minDepth : null,
+    maxDepth: typeof script.maxDepth === "number" ? script.maxDepth : null,
+  };
+}
+
+function isStatusbarDisplayRegex(script: Record<string, unknown>): boolean {
+  return Boolean(script.markdownOnly ?? true) && !Boolean(script.promptOnly ?? false) && (/状态栏/.test(String(script.scriptName ?? "")) || /StatusPlaceHolderImpl/.test(String(script.findRegex ?? "")));
 }
 
 function mergeCharacterProfileEntries(entries: WorldbookDraftEntry[]): WorldbookDraftEntry[] {

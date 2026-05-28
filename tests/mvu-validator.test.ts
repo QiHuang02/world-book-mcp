@@ -76,4 +76,18 @@ describe("validateMvuConfig", () => {
     });
     expect(result.warnings.some((issue) => issue.field === "outputFormat" && issue.message.includes("variable_output_format"))).toBe(true);
   });
+
+  it("rejects initvar with duplicated variableListPath root", () => {
+    const { mvu } = createMvuTemplate({ characterNames: ["角色A"] });
+    const result = validateMvuConfig({
+      mvu: { ...mvu, schemaScript: "export const Schema = z.object({ target: z.object({ name: z.string().prefault('') }) });\nregisterMvuSchema(Schema);", initvar: "stat_data:\n  target:\n    name: foo" },
+    });
+    expect(result.errors.some((issue) => issue.code === "mvu.initvar.root_mismatch")).toBe(true);
+  });
+
+  it("rejects js assignment style update rules", () => {
+    const { mvu } = createMvuTemplate({ characterNames: ["角色A"] });
+    const result = validateMvuConfig({ mvu: { ...mvu, updateRules: "target.affection = _.clamp(target.affection, 0, 100);" } });
+    expect(result.errors.some((issue) => issue.code === "mvu.update_rules.js_assignment")).toBe(true);
+  });
 });

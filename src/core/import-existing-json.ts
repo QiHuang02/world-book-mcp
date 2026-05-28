@@ -11,6 +11,7 @@ import { findRootTavernJsonFiles } from "../storage/workspace-store.js";
 import { nowIso } from "../utils/ids.js";
 import { readJsonFile } from "../utils/json.js";
 import { sha256Buffer } from "../storage/build-store.js";
+import { normalizeStatusbarHtml, stripCdata } from "./statusbar-html-normalizer.js";
 
 export interface ImportExistingJsonOptions {
   path?: string;
@@ -122,4 +123,11 @@ function extractRegexScripts(card: Record<string, unknown>): ImportedRegex[] {
   const scripts = Array.isArray(extensions.regex_scripts) ? extensions.regex_scripts : [];
   return scripts.map((script, index) => normalizeRegex(script as Record<string, unknown>, index));
 }
-function normalizeRegex(script: Record<string, unknown>, index: number): ImportedRegex { return { scriptName: String(script.scriptName ?? script.name ?? `导入正则 ${index + 1}`), findRegex: String(script.findRegex ?? ""), replaceString: String(script.replaceString ?? ""), trimStrings: Array.isArray(script.trimStrings) ? script.trimStrings.map(String) : [], placement: Array.isArray(script.placement) ? script.placement.map(Number) : [2], disabled: Boolean(script.disabled ?? false), markdownOnly: Boolean(script.markdownOnly ?? true), promptOnly: Boolean(script.promptOnly ?? false), runOnEdit: Boolean(script.runOnEdit ?? false), substituteRegex: Number(script.substituteRegex ?? 0), minDepth: typeof script.minDepth === "number" ? script.minDepth : null, maxDepth: typeof script.maxDepth === "number" ? script.maxDepth : null }; }
+function normalizeRegex(script: Record<string, unknown>, index: number): ImportedRegex {
+  const normalized = { scriptName: String(script.scriptName ?? script.name ?? `导入正则 ${index + 1}`), findRegex: String(script.findRegex ?? ""), replaceString: String(script.replaceString ?? ""), trimStrings: Array.isArray(script.trimStrings) ? script.trimStrings.map(String) : [], placement: Array.isArray(script.placement) ? script.placement.map(Number) : [2], disabled: Boolean(script.disabled ?? false), markdownOnly: Boolean(script.markdownOnly ?? true), promptOnly: Boolean(script.promptOnly ?? false), runOnEdit: Boolean(script.runOnEdit ?? false), substituteRegex: Number(script.substituteRegex ?? 0), minDepth: typeof script.minDepth === "number" ? script.minDepth : null, maxDepth: typeof script.maxDepth === "number" ? script.maxDepth : null };
+  return { ...normalized, replaceString: isStatusbarDisplayRegex(normalized) ? normalizeStatusbarHtml(normalized.replaceString) : stripCdata(normalized.replaceString) };
+}
+
+function isStatusbarDisplayRegex(script: ImportedRegex): boolean {
+  return script.markdownOnly && !script.promptOnly && (/状态栏/.test(script.scriptName) || /StatusPlaceHolderImpl/.test(script.findRegex));
+}

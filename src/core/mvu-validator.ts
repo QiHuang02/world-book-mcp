@@ -21,6 +21,7 @@ export function validateMvuConfig(input: { mvu: MvuConfig; characterCardConfig?:
   if (!/registerMvuSchema/.test(schemaScript)) issues.push(normalizeIssue({ code: "mvu.schema.import_missing", field: "schemaScript", severity: "warning", message: "schemaScript 建议导入 registerMvuSchema" }));
   if (hasForbiddenZodMethod(schemaScript)) issues.push(normalizeIssue({ code: "mvu.schema.unsupported_zod", field: "schemaScript", severity: "error", message: "schemaScript 包含不建议用于 MVU zod 变量卡的 optional/nullable/nullish/catch 等方法" }));
   if (containsBetaStyle(stripCommentsAndStrings(schemaScript)) || containsBetaStyle(stripCommentsAndStrings(updateRules))) issues.push(normalizeIssue({ code: "mvu.beta_style", field: "schemaScript/updateRules", severity: "error", message: "检测到旧 MVU Beta 风格的 _.set/_.add/getvar 更新写法，请改用 zod Schema + JSONPatch 输出规则" }));
+  if (containsJsAssignmentUpdateRules(updateRules)) issues.push(normalizeIssue({ code: "mvu.update_rules.js_assignment", field: "updateRules", severity: "error", message: "updateRules 不应包含 JS 赋值或 _.clamp 执行语句；边界约束应放入 schema transform，更新条件写成 YAML" }));
   if (!initvar.trim()) issues.push(normalizeIssue({ code: "mvu.initvar.empty", field: "initvar", severity: "warning", message: "initvar 为空" }));
   if (!updateRules.trim()) issues.push(normalizeIssue({ code: "mvu.update_rules.empty", field: "updateRules", severity: "warning", message: "updateRules 为空" }));
   if (hasXmlWrapper(initvar, "initvar")) issues.push(normalizeIssue({ code: "mvu.initvar.wrapped", field: "initvar", severity: "warning", message: "initvar 字段应保存纯 YAML，不应自带 <initvar> 包裹" }));
@@ -30,6 +31,9 @@ export function validateMvuConfig(input: { mvu: MvuConfig; characterCardConfig?:
 
   const schemaPaths = new Set(analysis.schemaPaths.map((item) => item.path));
   const root = mvu.variableListPath ?? "stat_data";
+  const schemaHasRoot = analysis.schemaPaths.some((item) => item.segments[0] === root);
+  if (root && !schemaHasRoot && analysis.initvarPaths.some((path) => path === root || path.startsWith(`${root}.`))) issues.push(normalizeIssue({ code: "mvu.initvar.root_mismatch", field: "initvar", severity: "error", message: `initvar 不应额外包含 ${root}: 根键；schema/initvar 应相对 variableListPath` }));
+  if (root && !schemaHasRoot && analysis.updateRulePaths.some((path) => path === root || path.startsWith(`${root}.`))) issues.push(normalizeIssue({ code: "mvu.update_rules.root_mismatch", field: "updateRules", severity: "error", message: `updateRules 不应额外包含 ${root}: 根键；schema/updateRules 应相对 variableListPath` }));
   const acceptsPath = (relative: string) => schemaPaths.has(relative) || schemaPaths.has(`${root}.${relative}`);
   for (const path of analysis.initvarPaths) {
     const relative = stripRoot(path, root);
@@ -50,6 +54,15 @@ function stripRoot(path: string, root: string): string {
 
 function hasForbiddenZodMethod(script: string): boolean { return /\.(?:optional|nullable|nullish|catch)\s*\(/.test(stripCommentsAndStrings(script)); }
 function containsBetaStyle(value: string): boolean { return /(?:_\.(?:set|add|remove|update)\s*\(|\bgetvar\s*\()/.test(value); }
+function containsJsAssignmentUpdateRules(value: string): boolean {
+  const stripped = stripCommentsAndStrings(value);
+  if (/\b_\.clamp\s*\(/.test(stripped)) return true;
+  return stripped.split(/\r?\n/).some((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.includes(":")) return false;
+    return /^[\w$][\w$]*(?:\.[\w$][\w$]*)*\s*=\s*.+;?$/.test(trimmed);
+  });
+}
 function stripCommentsAndStrings(value: string): string {
   return value
     .replace(/\/\*[\s\S]*?\*\//g, "")

@@ -130,6 +130,7 @@ data
 - `update_entry_content` 固定写 XML-wrapped YAML；正文只通过 `update_entry_content` 修改。
 - keys/order/position/enabled 等配置只通过 `update_entry_config` 修改。
 - 条目应短句、具体、可触发、可维护；绿灯条目必须有 keys。
+- 内容层规则：条目中只要提及 user、安排 user 出场或描述可互动对象，必须使用字面占位符 `{{user}}`；不要用 `<user>`、`你`、`用户`、`对方`、`来客` 代替。
 - 物品/能力/场景/事件建议 `scanDepth=2`。
 - 默认双递归：`preventRecursion=true` 与 `excludeRecursion=true`。
 
@@ -151,12 +152,18 @@ MVU：
 - readonly 变量可读取，但不应被 updateRules 更新。
 - MVU 包含 `export const Schema = z.object(...)` 与 `$(() => registerMvuSchema(Schema))`。
 - `initvar/updateRules/outputFormat` 在 slice 内保存纯 YAML/模板文本，由 build 统一包裹成 `<initvar>`、`<variable_update_rules>`、`<variable_output_format>` 条目。
+- `schemaScript/initvar/updateRules` 必须相对同一个 `variableListPath`；`variableListPath="stat_data"` 时，`initvar` 不再额外包一层 `stat_data:`。
+- 对象节点如 `target` 必须在 `initvar` 同层存在默认结构，或在 schema 对象与子字段上使用 `.prefault(...)`；`expected object, received undefined at target` 优先检查根层级错位。
+- updateRules 顶层必须是教程式 `变量更新规则:` YAML；边界约束进 schema `.transform(...).prefault(...)`，不要写 `target.affection = _.clamp(...)` 这类 JS 赋值语句。
 - 变量输出格式遵循教程式 `<UpdateVariable><Analysis>...</Analysis><JSONPatch>[...]</JSONPatch></UpdateVariable>`，JSONPatch 路径使用 `/角色/变量`。
 
 HTML/EJS：
 
 - HTML slice 保存状态栏展示配置与 regexPolicy；build 生成 `[不发送]界面占位符` 与 `[界面]状态栏` regex。
 - 状态栏使用 `.wbm-statusbar` 作用域；HTML/CSS 使用内联安全结构，不引用外部 URL、不内嵌 `<script>`。
+- 状态栏 HTML 展示 MVU 变量时必须使用 `{{format_message_variable::stat_data.角色A.好感度}}`，禁止裸 `{{stat_data...}}` / `{{current_zone}}` 宏。
+- `[界面]状态栏` regex 的 `replaceString` 是普通 HTML/CSS 字符串，禁止 `<![CDATA[`、`]]>` 或空 CDATA 壳。
+- 内容层规则：`first_mes` 至少 400 个非标点字符；开场白中只要让 user 出场、被称呼、被等待、被邀请或可介入，必须使用 `{{user}}`。
 - 启用状态栏时，开场白包含 `<StatusPlaceHolderImpl/>`。
 - active EJS 依赖 MVU 与提示词模板插件；stage 默认 `enabled=false`。
 - EJS 变量读取用 `getvar('stat_data...')`，跨条目变量声明用 `if (typeof gw === 'undefined') var gw = ...`。

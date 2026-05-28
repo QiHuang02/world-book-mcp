@@ -87,6 +87,14 @@ describe("buildCharacterCardJson", () => {
     expect(card.data.extensions.regex_scripts?.some((script) => String((script as any).scriptName).includes("去除变量更新"))).toBe(true);
   });
 
+  it("strips internal regex fields and normalizes statusbar replacement in final card", () => {
+    const card = buildCharacterCardJson({ config, worldbookEntries: draft, mvuAssets: { worldbookEntries: [], tavernHelperScripts: [], regexScripts: [{ id: "status", scriptName: "[界面]状态栏", findRegex: "/<StatusPlaceHolderImpl\\/>/gs", replaceString: "<![CDATA[\n<div class='wbm-statusbar'>{{stat_data.current_zone}}</div>\n]]>", trimStrings: [], placement: [2], disabled: false, markdownOnly: true, promptOnly: false, runOnEdit: true, substituteRegex: 0, minDepth: null, maxDepth: null, sourceMap: { source: "html" } } as any] } });
+    const script = card.data.extensions.regex_scripts?.[0] as Record<string, unknown>;
+    expect(script.sourceMap).toBeUndefined();
+    expect(script.replaceString).not.toContain("CDATA");
+    expect(script.replaceString).toContain("{{format_message_variable::stat_data.current_zone}}");
+  });
+
   it("merges ejs entries into character book", () => {
     const { ejs } = createEjsTemplate({ templateType: "phase_profile", characterName: "角色A" });
     const card = buildCharacterCardJson({ config, worldbookEntries: draft, ejsEntries: buildEjsEntries(ejs).worldbookEntries });

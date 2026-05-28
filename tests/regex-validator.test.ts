@@ -35,4 +35,14 @@ describe("validateRegexScripts", () => {
     const result = validateRegexScripts([asset({ markdownOnly: true })]);
     expect(result.warnings.some((issue) => issue.message.includes("缺少 promptOnly"))).toBe(true);
   });
+
+  it("rejects cdata wrappers in replaceString", () => {
+    const result = validateRegexScripts([asset({ replaceString: "<![CDATA[\n<div></div>\n]]>" })]);
+    expect(result.errors.some((issue) => issue.code === "regex.replace.cdata")).toBe(true);
+  });
+
+  it("rejects bare stat_data macros in statusbar display regex", () => {
+    const result = validateRegexScripts([asset({ replaceString: "<div class=\"wbm-statusbar\">{{stat_data.current_zone}}</div>" })]);
+    expect(result.errors.some((issue) => issue.code === "regex.statusbar.bare_stat_data")).toBe(true);
+  });
 });

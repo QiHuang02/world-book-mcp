@@ -101,6 +101,33 @@ create_draft_slice(draft_type="regex", id="...")
 
 stage 默认 `enabled=false`。
 
+## 修复已有 MVU+HTML 角色卡
+
+用于处理导入卡中状态栏 CDATA、裸 `{{stat_data...}}` 宏、MVU 根层级错位或旧式 updateRules：
+
+```text
+init_project(source="modify_existing")
+→ import_existing_json
+→ list_draft_slices / get_draft_slice
+→ list_regex_scripts：检查 [界面]状态栏 replaceString 是否含 CDATA
+→ get_draft_slice(draft_type="html")：检查裸 {{stat_data...}} 宏
+→ get_draft_slice(draft_type="mvu")：检查 schemaScript/initvar 是否重复 stat_data 根层级
+→ update_regex_script / update_html_statusbar / update_mvu_source 或 rewrite_mvu_variables
+→ validate_project(scope="mvu")
+→ validate_project(scope="html")
+→ validate_project(scope="regex")
+→ build_assets(target="all", force=true 如需避开旧 artifact 缓存)
+→ generate_json(build_id=...)
+```
+
+验收项：
+
+- 导出预览 JSON 不含 `<![CDATA[` 或 `]]>`。
+- `[界面]状态栏.replaceString` 不含裸 `{{stat_data`，只使用 `{{format_message_variable::...}}`。
+- `<initvar>` 内没有多余根键 `stat_data:`，除非 schema 明确也以 `stat_data` 为根且 plan 记录了原因；默认禁止。
+- `target` 在 schema 与 initvar 中处于同一层级，避免 `expected object, received undefined at target`。
+- `[mvu_update]变量更新规则` 顶层是 `变量更新规则:`，不是 JS 执行语句。
+
 ## 导出流程
 
 ```text

@@ -13,7 +13,7 @@ describe("build cache", () => {
   it("records slice snapshots and reuses unchanged target artifacts", async () => {
     await cleanupWorkspace();
     const { project, slug } = await initWorkspaceProject({ name: "缓存测试", output: "worldbook", source: "original", assets: { mvu: true }, ifExists: "overwrite" });
-    await upsertDraftSlice(slug, createDraftSlice({ type: "mvu", data: { ...createMvuTemplate(), schemaScript: "export const Schema = z.object({ stat_data: z.object({ hp: z.string() }) });\nregisterMvuSchema(Schema);", initvar: "stat_data:\n  hp: ok", updateRules: "stat_data:\n  hp: ok" } }));
+    await upsertDraftSlice(slug, createDraftSlice({ type: "mvu", data: { ...createMvuTemplate(), schemaScript: "export const Schema = z.object({ hp: z.string().prefault('') });\nregisterMvuSchema(Schema);", initvar: "hp: ok", updateRules: "变量更新规则:\n  hp:\n    check:\n      - 根据状态更新" } }));
     await upsertDraftSlice(slug, createDraftSlice({ type: "entry", id: "entry-a", data: { ...createEntryTemplate({ comment: "条目A", entryType: "world_summary" }), keys: [], content: "<entry>初始</entry>" } }));
 
     const first = await buildProjectRun({ project, slug, target: "all", include_previews: true, force: true });

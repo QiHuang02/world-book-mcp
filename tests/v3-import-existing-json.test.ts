@@ -25,6 +25,7 @@ describe("v3 existing JSON import", () => {
         extensions: {
           regex_scripts: [
             { scriptName: "第三方正则", findRegex: "/foo/g", replaceString: "bar", trimStrings: [], placement: [2], disabled: false, markdownOnly: true, promptOnly: false, runOnEdit: false, substituteRegex: 0, minDepth: null, maxDepth: null },
+            { scriptName: "[界面]状态栏", findRegex: "/<StatusPlaceHolderImpl\\/>/gs", replaceString: "<![CDATA[\n<div class='wbm-statusbar'>{{stat_data.current_zone}}</div>\n]]>", trimStrings: [], placement: [2], disabled: false, markdownOnly: true, promptOnly: false, runOnEdit: true, substituteRegex: 0, minDepth: null, maxDepth: null },
           ],
         },
       },
@@ -36,7 +37,12 @@ describe("v3 existing JSON import", () => {
     expect(result.created_slices.some((slice) => slice.type === "regex")).toBe(true);
     const regexSliceInfo = result.created_slices.find((slice) => slice.type === "regex")!;
     const regexSlice = await readDraftSlice(slug, "regex", regexSliceInfo.id);
-    expect((regexSlice.data as { scripts: Array<{ scriptName: string }> }).scripts[0].scriptName).toBe("第三方正则");
+    const scripts = (regexSlice.data as { scripts: Array<{ scriptName: string; replaceString: string }> }).scripts;
+    expect(scripts[0].scriptName).toBe("第三方正则");
+    const statusbar = scripts.find((script) => script.scriptName.includes("状态栏"));
+    expect(statusbar?.replaceString).not.toContain("CDATA");
+    expect(statusbar?.replaceString).not.toContain("{{stat_data");
+    expect(statusbar?.replaceString).toContain("{{format_message_variable::stat_data.current_zone}}");
     await cleanup();
   });
 });

@@ -93,7 +93,7 @@ describe("v3 assets", () => {
 
   it("builds project assets without writing generated regex back to regex slices", () => {
     const project = projectBase();
-    const mvu = { ...createMvuTemplate(), schemaScript: "export const Schema = z.object({ stat_data: z.object({}) });\nregisterMvuSchema(Schema);", initvar: "stat_data: {}", updateRules: "stat_data: {}" };
+    const mvu = { ...createMvuTemplate(), schemaScript: "export const Schema = z.object({ hp: z.string().prefault('') });\nregisterMvuSchema(Schema);", initvar: "hp: ok", updateRules: "变量更新规则:\n  hp:\n    check:\n      - 根据状态更新" };
     const assets = buildProjectAssets({ ...project, mvuConfig: mvu }, "all", [], "2026-01-01T00:00:00.000Z");
     expect(assets.regex_scripts.some((script) => script.scriptName.includes("界面占位符"))).toBe(true);
     expect(assets.regex_artifact.summary.source_counts.mvu).toBeGreaterThan(0);

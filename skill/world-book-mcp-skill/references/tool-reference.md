@@ -67,6 +67,8 @@ create_draft_slice(project_id, draft_type, id?, title?, active?, source?, origin
 - script 必须用稳定 `id` 操作。
 - `upsert_regex_script` 是创建/完整替换主入口。
 - `update_regex_script` 只做局部修改，不改 `id/source/origin`。
+- `replaceString` 是普通字符串；`[界面]状态栏` 等 HTML 替换内容禁止包含 `<![CDATA[`、`]]>` 或 `<![CDATA[]]>`。
+- 修复导入卡时，如果 `replaceString` 已含 CDATA，先剥掉外壳；空 CDATA 直接重写为空字符串或标准 HTML。
 
 ## MVU
 
@@ -82,7 +84,27 @@ HTML/EJS 引用时使用完整路径：
 stat_data.角色A.好感度
 ```
 
+HTML 状态栏展示时要包成宏：
+
+```text
+{{format_message_variable::stat_data.角色A.好感度}}
+```
+
 默认同步：`schemaScript / initvar / updateRules`；`outputFormat` 默认不自动重写。
+
+集中修复导入卡 MVU 时：
+
+- 优先使用 `list_mvu_variables`、`upsert_mvu_variable`、`rewrite_mvu_variables`，因为它们会同步 schema/initvar/updateRules。
+- 使用 `update_mvu_source` 时必须同时检查 `schemaScript`、`initvar`、`updateRules`，不要只改 schema 或只改 initvar。
+- `variableListPath="stat_data"` 时，schema 与 initvar 都应相对该根；`initvar` 不要额外包 `stat_data:`。
+- `expected object, received undefined at target` 通常先查对象节点 `target` 是否在 initvar 同层存在，以及是否误多写了 `stat_data:` 根键。
+- updateRules 顶层应为 `变量更新规则:` YAML，不写 `target.affection = _.clamp(...)` 这类 JS 赋值语句。
+
+## HTML 状态栏
+
+- `update_html_statusbar` 写入状态栏 HTML 前，先把裸 `{{stat_data.xxx}}` 改成 `{{format_message_variable::stat_data.xxx}}`。
+- `variablePaths` 记录完整路径，如 `stat_data.target.name`；HTML 文本中展示时才加 `format_message_variable::`。
+- 状态栏 HTML 不内嵌 `<script>`、不引用外部 URL、不污染 `.wbm-statusbar` 之外的全局 CSS。
 
 ## validate_project
 

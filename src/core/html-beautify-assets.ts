@@ -1,5 +1,6 @@
 import type { HtmlBeautifyConfig } from "../schemas/html-beautify.js";
 import type { RegexScriptAsset } from "./mvu-assets.js";
+import { normalizeStatusbarHtml } from "./statusbar-html-normalizer.js";
 
 export interface HtmlBeautifyAssets {
   statusbarHtml?: string;
@@ -11,7 +12,7 @@ export interface HtmlBeautifyAssets {
 export function buildHtmlBeautifyAssets(html: HtmlBeautifyConfig): HtmlBeautifyAssets {
   const scripts: RegexScriptAsset[] = [];
   const statusbarEnabled = html.target === "statusbar" || html.target === "both";
-  const replacement = withScopedCss(html.statusbar.html, html.statusbar.scopedCss);
+  const replacement = withScopedCss(normalizeStatusbarHtml(html.statusbar.html), html.statusbar.scopedCss);
   if (statusbarEnabled && html.regexPolicy.generateStatusbarRegex) {
     scripts.push(regexScript({ id: "html-display-statusbar", scriptName: "[界面]状态栏", findRegex: "/<StatusPlaceHolderImpl\\/>/gs", replaceString: replacement, markdownOnly: true, promptOnly: false, placement: [2], runOnEdit: true }));
   }

@@ -7,6 +7,7 @@ import { RegexSliceDataSchema, type RegexScriptDraft, type RegexSliceData } from
 import { WorldbookDraftEntrySchema, type WorldbookDraftEntry } from "../schemas/worldbook-draft.js";
 import { normalizeWorldbookEntryContent } from "../utils/yaml-xml.js";
 import { uniqueStrings } from "../utils/strings.js";
+import { normalizeStatusbarHtml } from "./statusbar-html-normalizer.js";
 
 export function updateEntryContent(slice: DraftSlice, content: string): DraftSlice {
   assertType(slice, "entry");
@@ -36,7 +37,7 @@ export function updateSliceMetadata(slice: DraftSlice, changes: { title?: string
 export function updateHtmlStatusbar(slice: DraftSlice, input: { html?: string; scopedCss?: string | null; variablePaths?: string[] }): DraftSlice {
   assertType(slice, "html");
   const data = HtmlBeautifyConfigSchema.parse(slice.data);
-  const next: HtmlBeautifyConfig = { ...data, statusbar: { ...data.statusbar, ...(input.html !== undefined ? { html: input.html } : {}), ...(input.scopedCss === null ? { scopedCss: undefined } : input.scopedCss !== undefined ? { scopedCss: input.scopedCss } : {}) }, ...(input.variablePaths ? { variablePaths: uniqueStrings(input.variablePaths) } : {}) };
+  const next: HtmlBeautifyConfig = { ...data, statusbar: { ...data.statusbar, ...(input.html !== undefined ? { html: normalizeStatusbarHtml(input.html) } : {}), ...(input.scopedCss === null ? { scopedCss: undefined } : input.scopedCss !== undefined ? { scopedCss: input.scopedCss } : {}) }, ...(input.variablePaths ? { variablePaths: uniqueStrings(input.variablePaths) } : {}) };
   return parseSlice({ ...slice, data: HtmlBeautifyConfigSchema.parse(next) });
 }
 

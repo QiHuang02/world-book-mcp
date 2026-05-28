@@ -20,4 +20,16 @@ describe("validateHtmlBeautifyConfig", () => {
     const result = validateHtmlBeautifyConfig({ html: { ...html, statusbar: { ...html.statusbar, html: "<script>alert(1)</script><div class='wbm-statusbar'></div>" } } });
     expect(result.warnings.some((issue) => issue.field === "statusbar.html")).toBe(true);
   });
+
+  it("rejects cdata in statusbar html", () => {
+    const { html } = createHtmlBeautifyTemplate({ target: "statusbar", theme: "minimal" });
+    const result = validateHtmlBeautifyConfig({ html: { ...html, statusbar: { ...html.statusbar, html: "<![CDATA[<div class='wbm-statusbar'></div>]]>" } } });
+    expect(result.errors.some((issue) => issue.code === "html.statusbar.cdata")).toBe(true);
+  });
+
+  it("rejects bare stat_data macros in statusbar html", () => {
+    const { html } = createHtmlBeautifyTemplate({ target: "statusbar", theme: "minimal" });
+    const result = validateHtmlBeautifyConfig({ html: { ...html, statusbar: { ...html.statusbar, html: "<div class='wbm-statusbar'>{{stat_data.current_zone}}</div>" } } });
+    expect(result.errors.some((issue) => issue.code === "html.statusbar.bare_stat_data")).toBe(true);
+  });
 });

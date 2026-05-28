@@ -37,7 +37,7 @@ export function aggregateDraftSlices(project: Project, slices: DraftSlice[]): Pr
 }
 
 export interface HydratedProject {
-  project: Project & { draft?: WorldbookDraftEntry[]; characterCardConfig?: CharacterCardConfig; mvuConfig?: MvuConfig; htmlBeautifyConfig?: HtmlBeautifyConfig; ejsConfig?: EjsConfig };
+  project: Project & { draft?: WorldbookDraftEntry[]; characterCardConfig?: CharacterCardConfig; mvuConfig?: MvuConfig; htmlBeautifyConfig?: HtmlBeautifyConfig; ejsConfig?: EjsConfig; regexSlices?: ProjectDraftAggregate["regexSlices"] };
   slug: string;
   regexSlices: ProjectDraftAggregate["regexSlices"];
 }
@@ -49,7 +49,7 @@ export async function hydrateProjectDraft(project: Project, slug?: string): Prom
 }
 
 export function projectWithAggregate(project: Project, aggregate: ProjectDraftAggregate): HydratedProject["project"] {
-  return { ...project, draft: aggregate.worldbookDraft, characterCardConfig: aggregate.characterCardConfig, mvuConfig: aggregate.mvuConfig, htmlBeautifyConfig: aggregate.htmlBeautifyConfig, ejsConfig: aggregate.ejsConfig };
+  return { ...project, draft: aggregate.worldbookDraft, characterCardConfig: aggregate.characterCardConfig, mvuConfig: aggregate.mvuConfig, htmlBeautifyConfig: aggregate.htmlBeautifyConfig, ejsConfig: aggregate.ejsConfig, regexSlices: aggregate.regexSlices };
 }
 
 function activeSlicesOf<T extends DraftSlice["type"]>(slices: DraftSlice[], type: T): Array<DraftSlice & { type: T }> { return slices.filter((slice): slice is DraftSlice & { type: T } => slice.active && slice.type === type); }
