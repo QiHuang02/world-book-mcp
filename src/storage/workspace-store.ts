@@ -10,10 +10,8 @@ import { ensureDraftDirs } from "./draft-store.js";
 import { ensureLogDir, LATEST_LOG_PATH, currentSessionId } from "./tool-log.js";
 
 export const WORKSPACE_DIR = path.resolve(ROOT_DIR, ".worldbook");
-export const LEGACY_JSON_WORKSPACE_MESSAGE = "检测到 v3 JSON 工作区；v4 不支持旧存储，请重新 init_project/import_existing_json 或手动导入 Tavern JSON。";
 export const WORKSPACE_YAML_PATH = path.resolve(WORKSPACE_DIR, "workspace.yaml");
 export const WORKSPACE_JSON_PATH = WORKSPACE_YAML_PATH;
-const LEGACY_WORKSPACE_JSON_PATH = path.resolve(WORKSPACE_DIR, "workspace.json");
 const PROJECTS_DIR = path.resolve(WORKSPACE_DIR, "projects");
 
 export function resolveProjectSlug(name: string): string {
@@ -37,7 +35,6 @@ export async function loadWorkspace(): Promise<Workspace> {
     return WorkspaceSchema.parse(raw);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      await assertNoLegacyWorkspaceJson();
       const timestamp = nowIso();
       return { version: 4, revision: 0, projects: [], createdAt: timestamp, updatedAt: timestamp };
     }
@@ -210,16 +207,6 @@ export async function findRootTavernJsonFiles(): Promise<string[]> {
     try { if (isTavernJson(await readJsonFile(filePath))) result.push(filePath); } catch { /* ignore */ }
   }
   return result.sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
-}
-
-async function assertNoLegacyWorkspaceJson(): Promise<void> {
-  try {
-    await fs.access(LEGACY_WORKSPACE_JSON_PATH);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
-    throw error;
-  }
-  throw new Error(LEGACY_JSON_WORKSPACE_MESSAGE);
 }
 
 async function assertNoLegacyProjectJson(slug: string): Promise<void> {

@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { dump } from "js-yaml";
+import { ensureStorage } from "../src/storage/project-store.js";
 import { loadWorkspace, WORKSPACE_DIR, WORKSPACE_YAML_PATH } from "../src/storage/workspace-store.js";
 
 async function cleanupWorkspace(): Promise<void> {
@@ -19,12 +20,17 @@ describe("v4 workspace schema gate", () => {
     await cleanupWorkspace();
   });
 
-  it("reports legacy JSON workspaces as unsupported", async () => {
+  it("ignores legacy JSON workspaces during startup and creates v4 YAML", async () => {
     await cleanupWorkspace();
     await fs.mkdir(WORKSPACE_DIR, { recursive: true });
     await fs.writeFile(path.resolve(WORKSPACE_DIR, "workspace.json"), JSON.stringify({ version: 3 }), "utf8");
 
-    await expect(loadWorkspace()).rejects.toThrow(/v3 JSON 工作区/);
+    await ensureStorage();
+    const workspace = await loadWorkspace();
+
+    expect(workspace.version).toBe(4);
+    await expect(fs.access(WORKSPACE_YAML_PATH)).resolves.toBeUndefined();
+    await expect(fs.access(path.resolve(WORKSPACE_DIR, "workspace.json"))).resolves.toBeUndefined();
     await cleanupWorkspace();
   });
 });
