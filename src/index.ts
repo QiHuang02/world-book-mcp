@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createServer } from "./server.js";
-import { ensureStorage } from "./storage/project-store.js";
+import { ensureWorkspace } from "./storage/workspace.js";
 
 async function main(): Promise<void> {
-  await ensureStorage();
+  await ensureWorkspace();
   const server = createServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
