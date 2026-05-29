@@ -1,7 +1,0 @@
-interface:
-  display_name: "World Book MCP"
-  short_description: "创建、修改并导出 SillyTavern 世界书与角色卡"
-  default_prompt: "Use $world-book-mcp-skill to create, validate, and export a SillyTavern world book or chara_card_v3 project."
-
-policy:
-  allow_implicit_invocation: true

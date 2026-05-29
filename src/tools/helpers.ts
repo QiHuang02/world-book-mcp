@@ -1,10 +1,3 @@
-export function toolText(value: unknown) {
-  return {
-    content: [
-      {
-        type: "text" as const,
-        text: typeof value === "string" ? value : JSON.stringify(value, null, 2),
-      },
-    ],
-  };
+export function toolText(value: unknown): { content: Array<{ type: "text"; text: string }> } {
+  return { content: [{ type: "text", text: JSON.stringify(value, null, 2) }] };
 }

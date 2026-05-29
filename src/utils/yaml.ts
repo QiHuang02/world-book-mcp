@@ -1,10 +1,9 @@
-import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import yaml from "js-yaml";
 import type { z, ZodTypeAny } from "zod";
 
-export function parseYamlLike<T = unknown>(text: string): T {
+export function parseYaml<T = unknown>(text: string): T {
   try {
     return yaml.load(text) as T;
   } catch (error) {
@@ -13,8 +12,8 @@ export function parseYamlLike<T = unknown>(text: string): T {
   }
 }
 
-export function toPrettyYaml(value: unknown): string {
-  return yaml.dump(sortPlainObject(value), {
+export function stringifyYaml(value: unknown): string {
+  return yaml.dump(value, {
     indent: 2,
     lineWidth: 120,
     noRefs: true,
@@ -25,38 +24,20 @@ export function toPrettyYaml(value: unknown): string {
 export async function readYamlFile<T = unknown>(filePath: string): Promise<T>;
 export async function readYamlFile<TSchema extends ZodTypeAny>(filePath: string, schema: TSchema): Promise<z.infer<TSchema>>;
 export async function readYamlFile(filePath: string, schema?: ZodTypeAny): Promise<unknown> {
-  const parsed = parseYamlLike(await fs.readFile(filePath, "utf8"));
-  return schema ? schema.parse(parsed) : parsed;
+  const value = parseYaml(await fs.readFile(filePath, "utf8"));
+  return schema ? schema.parse(value) : value;
 }
-
-const yamlWriteQueues = new Map<string, Promise<unknown>>();
 
 export async function writeYamlFile(filePath: string, value: unknown): Promise<void> {
-  const resolved = path.resolve(filePath);
-  const previous = yamlWriteQueues.get(resolved) ?? Promise.resolve();
-  const next = previous.catch(() => undefined).then(() => writeYamlFileNow(resolved, value));
-  yamlWriteQueues.set(resolved, next.finally(() => { if (yamlWriteQueues.get(resolved) === next) yamlWriteQueues.delete(resolved); }));
-  return next;
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, stringifyYaml(value), "utf8");
 }
 
-async function writeYamlFileNow(resolved: string, value: unknown): Promise<void> {
-  await fs.mkdir(path.dirname(resolved), { recursive: true });
-  const tempName = `.${path.basename(resolved)}.tmp.${process.pid}.${crypto.randomBytes(4).toString("hex")}`;
-  const tempPath = path.join(path.dirname(resolved), tempName);
-  await fs.writeFile(tempPath, toPrettyYaml(value), { encoding: "utf8", flag: "wx" });
-  try {
-    await fs.rename(tempPath, resolved);
-  } catch (error) {
-    await fs.rm(tempPath, { force: true });
-    throw error;
-  }
+export async function readTextFile(filePath: string): Promise<string> {
+  return fs.readFile(filePath, "utf8");
 }
 
-export function sortPlainObject(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(sortPlainObject);
-  if (value && typeof value === "object") {
-    if (value instanceof Date) return value;
-    return Object.fromEntries(Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, sortPlainObject(item)]));
-  }
-  return value;
+export async function writeTextFile(filePath: string, content: string): Promise<void> {
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, content, "utf8");
 }

@@ -1,166 +1,219 @@
 # world-book-mcp
 
-`world-book-mcp` 是一个 MCP server，用于创建、修改、校验、构建和导出 SillyTavern 世界书 JSON 与 `chara_card_v3` 角色卡 JSON。
+`world-book-mcp` 是一个 MCP server，用于创建、修改、校验、修复并导出 SillyTavern 世界书 JSON 与 `chara_card_v3` 角色卡 JSON。
 
-## 架构
+## v5 架构
 
-项目由两层组成：
-
-```text
-┌─────────────────────────────────────────────────────┐
-│  Skill 层（skill/world-book-mcp-skill/）             │
-│  创作方法论：世界观、角色、文风、二创提取、开场白     │
-│  产出：高质量结构化语料                              │
-└──────────────────────────┬──────────────────────────┘
-                           │ 调用 MCP 工具写入 project/slices
-┌──────────────────────────▼──────────────────────────┐
-│  MCP 层（src/）                                      │
-│  工程编排器：管理 v3 多项目工作区、DraftSlice、       │
-│  validate/build/delivery、MVU/HTML/regex/EJS 资产    │
-│  产出：可直接导入 SillyTavern 的 JSON 文件           │
-└─────────────────────────────────────────────────────┘
-```
-
-## 主线工作流
+v5 使用确定性的轻量工作流：
 
 ```text
-用户需求
-→ init_project(output, source, assets?, opening?)
-→ update_plan（记录需求、决策、导出目标）
-→ update_character_profile / update_character_greetings（角色卡需要时）
-→ create_draft_slice（entry/mvu/html/regex/ejs）
-→ 语义化编辑工具（update_entry_content / update_entry_config / 资产工具）
-→ validate_project(scope="all")
-→ build_assets(target="all")
-→ validate_project(scope="delivery", build_id=...)
-→ generate_json(build_id=...)
+AI 询问用户需求
+→ 直接记录到 plan.md
+→ 基于 plan.md 生成/维护 draft YAML 配置
+→ 长文本写入 source files
+→ MCP 校验项目
+→ MCP 根据 draft + source 生成酒馆 JSON
 ```
 
-## Skill 层 — 创作方法论
+核心模型：
 
-`skill/world-book-mcp-skill/` 包含创作 reference 文档：
+```text
+workspace + plan.md + draft YAML + source files + deterministic builder
+```
 
-| 文档 | 内容 |
-|------|------|
-| `worldbuilding-methodology.md` | 世界观设计：A/B/C 类型判定、维度取舍、总纲零度写作 |
-| `character-creation.md` | 角色设定：XML+YAML 结构、性格调色盘、三面性、开场白 |
-| `derivative-extraction.md` | 二创提取：从小说/网络资源系统性提取角色、世界观、事件 |
-| `style-extraction-guide.md` | 文风提取：分析源材料风格并转化为风格条目和规避表达条目 |
-| `rephrase-guide.md` | 二次解释：作者对角色深层逻辑的注释，减少角色误读 |
-| `content-rules.md` | 内容规则：具体性、第四面墙、user 边界 |
-| `first-message.md` | 开场白规则：吸引力、剧情动力、互动点 |
-| `composition.md` | 条目编排：蓝绿灯、position、order、DoubleCheck |
-| `requirements.md` | 需求对齐：主题式提问与用户决策流程 |
-| `tool-reference.md` | MCP v3 工具参数速查 |
+铁律：
 
-## MCP 层 — 工程编排
+- `plan.md` 是唯一计划文档，不引入 `plan.yaml`。
+- 角色卡 `description` 必须始终是空字符串。
+- 角色设定、人设、背景、关系、性格必须进入世界书条目，不写入 card description。
+- 最终 `.card.json` / `.worldbook.json` 只能由 `generate_json` 生成，不直接手写。
 
-### 工作区结构
+## Workspace 结构
 
-`init_project` 创建 v3 多项目工作区：
+`init_project` 创建 v5 workspace project：
 
 ```text
 .worldbook/
-  workspace.json
+  workspace.yaml
   projects/
     <slug>/
-      project.json
+      project.yaml
       plan.md
-      slices/
-        entries/*.json        # draft_type="entry"
-        assets/mvu.json       # draft_type="mvu"
-        assets/html.json      # draft_type="html"
-        assets/regex/*.json   # draft_type="regex"
-        assets/ejs/*.json     # draft_type="ejs"
-      build/
-        runs/<build_id>/
-          manifest.json
-          assets/*.json
-          exports/*.preview.json
-          export-records/*.json
-      backups/
-      logs/
-  shared/
-    entries/*.json
-    assets/*.json
-    registry.json
-  logs/
-    latest.jsonl
-    <session>.jsonl
+      draft/
+        card.yaml
+        worldbook.yaml
+        assets.yaml
+      source/
+        fields/
+          first_mes.md
+          greeting-01.md
+        entries/
+          001-world-summary.xyaml
+          010-character-basic.xyaml
+        mvu/
+          schema.js
+          initvar.yaml
+          update-rules.yaml
+          variable-list.md
+          output-format.md
+        html/
+          statusbar.html
+          statusbar.css
+        regex/
+          scripts.yaml
+        ejs/
+          controller.ejs
+      reports/
+        validation-report.md
+        build-report.yaml
+      exports/
+        <name>.card.json
+        <name>.worldbook.json
 ```
 
-已有 SillyTavern JSON 可通过 `import_existing_json` 导入：
+## Draft YAML
 
-- 世界书条目 → `entry` slices。
-- 角色卡 profile / greetings → project metadata。
-- 第三方 regex → `regex` slice。
-- 导入来源记录到 project imports 与 slice origin。
+### `draft/card.yaml`
 
-### Project.kind
+角色卡元信息与字段引用。`description` 严格为空。
 
-```text
-Project.kind.output = worldbook | character_card | both
-Project.kind.source = original | derivative | modify_existing | composite
-Project.kind.assets = mvu | html | regex | ejs
+```yaml
+name: 示例卡片
+description: ""
+personality: ""
+scenario: ""
+first_mes: ../source/fields/first_mes.md
+alternate_greetings:
+  - ../source/fields/greeting-01.md
+mes_example: ""
+creator_notes: ""
+system_prompt: ""
+post_history_instructions: ""
+creator: ""
+character_version: "1.0"
+talkativeness: "0.5"
+fav: false
+worldbook:
+  include: true
+  name: 示例卡片
 ```
 
-### 核心工具
+### `draft/worldbook.yaml`
+
+世界书条目配置。正文内容放在 `source/entries/*`。
+
+```yaml
+name: 示例卡片
+entries:
+  - id: world-summary
+    comment: 世界观总纲
+    type: world_summary
+    content: ../source/entries/001-world-summary.xyaml
+    enabled: true
+    constant: true
+    keys: []
+    secondary_keys: []
+    position: before_char
+    order: 1
+    depth: 4
+    scanDepth: null
+    preventRecursion: true
+    excludeRecursion: true
+```
+
+### `draft/assets.yaml`
+
+可选 MVU / HTML / regex / EJS 资产配置。
+
+```yaml
+mvu:
+  enabled: true
+  schema: ../source/mvu/schema.js
+  initvar: ../source/mvu/initvar.yaml
+  updateRules: ../source/mvu/update-rules.yaml
+  variableList: ../source/mvu/variable-list.md
+  outputFormat: ../source/mvu/output-format.md
+  variableListPath: stat_data
+  hideRegex: true
+  beautifyRegex: true
+html:
+  statusbar:
+    enabled: true
+    html: ../source/html/statusbar.html
+    css: ../source/html/statusbar.css
+    variablePaths:
+      - stat_data.角色A.好感度
+    hideRegex: true
+regex:
+  scripts: ../source/regex/scripts.yaml
+ejs:
+  enabled: false
+  entries: []
+```
+
+## 职责边界
+
+MCP 只做客观、确定性的 workspace/draft/source/JSON 操作：路径安全、schema 校验、导入、修复、生成和结构模板。角色调色盘、世界观构思、禁词/白描/文风判断属于 Skill 的主观创作流程；Skill 完成审查后通过 `write_source_file`、`write_draft`、`configure_draft` 落盘。
+
+## MCP 工具
 
 | 工具 | 用途 |
 |------|------|
-| `init_project` | 初始化 v3 项目，记录 output/source/assets/opening |
-| `import_existing_json` | 将已有 Tavern JSON 导入为 v3 slices / metadata |
-| `list_projects` / `get_project` | 查询项目状态 |
-| `update_plan` | 写入需求、决策、导出目标到 `plan.md` |
-| `create_draft_slice` / `update_slice_metadata` | 创建和维护 DraftSlice envelope |
-| `update_entry_content` / `update_entry_config` | 写世界书正文与配置 |
-| `update_character_profile` / `update_character_greetings` | 更新角色卡元数据与开场白 |
-| `list_mvu_variables` / `upsert_mvu_variable` / `remove_mvu_variable` / `rewrite_mvu_variables` | MVU 变量维护 |
-| `update_mvu_source` | 集中更新 MVU 源字段 |
-| `update_html_statusbar` / `update_html_config` | HTML 状态栏与配置 |
-| `list_regex_scripts` / `upsert_regex_script` / `update_regex_script` / `remove_regex_script` / `reorder_regex_scripts` / `move_regex_script` | regex 资产维护 |
-| `update_ejs_content` / `update_ejs_config` | EJS 动态条目维护 |
-| `validate_project` | 统一校验 project/plan/worldbook/character_card/opening/mvu/html/regex/ejs/assets/build/delivery/content |
-| `build_assets` | 生成 build manifest、资产 JSON 与 preview exports |
-| `review_project` / `check_delivery` | 交付审查与门禁检查 |
-| `generate_json` | 从 fresh build preview 导出最终 JSON |
-| `query_json` | 查询已导出的 JSON |
-| `share_slice` / `use_shared` / `list_shared` | 共享与复用切片 |
+| `init_project` | 创建 v5 workspace project、`plan.md`、draft YAML、source/reports/exports 目录。 |
+| `update_plan` | 修改 `plan.md` 的 section、决策、todo、验收标准、验证记录和风险。 |
+| `write_source_file` | 只能写项目 `source/` 下文件。 |
+| `read_source_file` | 安全读取项目 `source/` 下文件，供 Skill 主观审查。 |
+| `write_draft` | rewrite/patch `draft/card.yaml`、`draft/worldbook.yaml`、`draft/assets.yaml`，或追加/删除世界书条目。 |
+| `configure_draft` | 根据条目类型、profile、typeLists、strategyThresholds、partOrder 推导世界书条目配置，可预览或应用；拒绝重复 id 和非 `source/entries` content 引用。 |
+| `query_project` | 查看项目元数据、plan、draft、source 文件、reports 与 exports。 |
+| `resume_project` | 汇总断点续写状态、plan/draft 差异、MVU/EJS/exports 进度与下一步。 |
+| `check_delivery` | 检查交付门禁：validation、exports、reports、entry status。 |
+| `validate_project` | 校验 workspace/project 一致性、项目文件、draft/source 引用、角色卡规则、世界书条目与资产一致性。 |
+| `validate_mvu` | 对 MVU schema/initvar/变量列表/output format 做静态一致性检查，包含简单 Zod schema 与 initvar 对照。 |
+| `apply_mvu_preset` | 写入 v5 原生 MVU 五件套模板并启用 assets.mvu。 |
+| `list_mvu_variables` | 从 initvar/schema/变量列表中列出 MVU 变量。 |
+| `upsert_mvu_variable` | 新增或更新单个 MVU 变量，并同步 schema/initvar/变量列表/update rules/output format。 |
+| `remove_mvu_variable` | 删除单个 MVU 变量并同步五件套。 |
+| `rewrite_mvu_variables` | 使用完整变量列表重写 MVU 五件套。 |
+| `repair_project` | 修复导入旧卡常见问题：非空 description、缺双递归、裸状态宏、MVU 根层级错误等。 |
+| `generate_json` | 生成最终酒馆 `.card.json` 和/或 `.worldbook.json`，并生成 build report。 |
+| `import_existing_json` | 将已有 Tavern 角色卡或世界书 JSON 导入为 v5 project。 |
+| `import_nova_config` | 将 nova-creator-cli 风格 YAML config 导入为 v5 project。 |
+| `update_entry_status` | 更新世界书条目的 status、abstract、sourceRefs、part、scope。 |
+| `query_entries` | 查询世界书条目的断点续写视图与统计。 |
+| `generate_tavern_sync_config` | 生成 nova tavern_sync 风格桥接配置到 reports。 |
+| `create_ejs_stage_template` | 生成 EJS controller + disabled stage entries，用于分阶段人设。 |
+| `list_projects` | 列出 workspace projects。 |
 
-### Draft 类型
-
-- `entry` — 世界书条目。
-- `mvu` — 每项目唯一 MVU ZOD / initvar / updateRules / outputFormat 切片，id 固定为 `mvu`。
-- `html` — 每项目唯一 HTML 状态栏与 regexPolicy 切片，id 固定为 `html`。
-- `regex` — 一组相关 regex scripts，script 使用稳定内部 `id` 操作。
-- `ejs` — EJS 动态条目。
-
-外层 `active` 表示是否参与 build；内层 `enabled/disabled` 表示最终 Tavern 对象启用状态。
-
-## 修改已有 JSON
+## 标准流程
 
 ```text
-init_project(output=..., source="modify_existing", opening?若角色卡)
-→ import_existing_json(path? 多候选时指定)
-→ list_draft_slices / get_project / get_draft_slice
-→ update_plan
-→ 语义化编辑工具
-→ validate_project(scope="all")
-→ build_assets(target="all")
-→ validate_project(scope="delivery", build_id=...)
-→ generate_json(build_id=..., overwrite=true)
+1. 询问并确认用户需求。
+2. init_project。
+3. update_plan 记录需求和决策。
+4. write_source_file 写长文本内容。
+5. write_draft 或 configure_draft 维护 draft YAML。
+6. Skill 按 references 做主观文本审查，必要时用 write_source_file 修改 source。
+7. validate_project。
+8. 必要时 repair_project / validate_mvu。
+9. generate_json。
+9. 返回 exports 路径和 validation summary。
 ```
 
-## 日志
+## 导入与修复
 
-MCP 静默记录工具调用摘要：
+`import_existing_json` 将已有 Tavern JSON 映射到 v5：
 
-```text
-.worldbook/logs/latest.jsonl
-.worldbook/logs/<session>.jsonl
-```
+- card fields → `draft/card.yaml` 与 `source/fields/*`。
+- 非空 `description` → 世界书条目；card description 保持 `""`。
+- personality / scenario / creator_notes → 世界书条目。
+- character_book entries → `source/entries/*` + `draft/worldbook.yaml`。
+- regex scripts → `source/regex/scripts.yaml`。
+- 状态栏 regex → `source/html/statusbar.html` / `.css` + `draft/assets.yaml`。
+- MVU 系统条目 → `source/mvu/*` + `draft/assets.yaml`。
+- TavernHelper schema 脚本 → `source/mvu/schema.js`。
 
-长文本字段以 preview + length + hash 形式记录。
+导入后如果校验发现常见可修复问题，使用 `repair_project`。
 
 ## 开发
 

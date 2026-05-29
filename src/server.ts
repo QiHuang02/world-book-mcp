@@ -1,7 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { registerTools } from "./tools/register.js";
-import { registerPrompts } from "./prompts/register.js";
 import packageJson from "../package.json" with { type: "json" };
+import { registerTools } from "./tools/register.js";
 
 export function createServer(): McpServer {
   const server = new McpServer({
@@ -10,7 +9,6 @@ export function createServer(): McpServer {
   });
 
   registerTools(server);
-  registerPrompts(server);
 
   return server;
 }
