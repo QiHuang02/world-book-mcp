@@ -2,6 +2,7 @@ import type { Project } from "../schemas/project.js";
 import { draftPath, projectDir, readDraft, writeDraft } from "../storage/workspace.js";
 import { resolveDraftReference, resolveSourceFilePath } from "../storage/path-policy.js";
 import { parseYaml, readTextFile, stringifyYaml, writeTextFile } from "../utils/yaml.js";
+import { MVU_DONE_BEAUTIFY_HTML, MVU_LOADING_BEAUTIFY_HTML } from "./mvu-templates.js";
 
 export type MvuVariableKind = "string" | "number" | "boolean" | "enum" | "object" | "record" | "custom";
 export interface MvuVariableInput {
@@ -31,6 +32,10 @@ export async function applyMvuPreset(project: Project, options: { preset: "minim
     "mvu/update-rules.yaml": `${presetNote}# 在此描述变量更新规则。\n`,
     "mvu/variable-list.md": `${presetNote}# 变量列表\n`,
     "mvu/output-format.md": `${presetNote}# 变量输出格式\n`,
+    ...(options.preset === "tavern_cards" ? {
+      "html/变量更新中美化.html": `${MVU_LOADING_BEAUTIFY_HTML}\n`,
+      "html/变量更新美化.html": `${MVU_DONE_BEAUTIFY_HTML}\n`,
+    } : {}),
   };
   for (const [relative, content] of Object.entries(contents)) {
     const filePath = resolveSourceFilePath(projectDir(project.slug), project.paths.sourceRoot, relative);
@@ -151,7 +156,7 @@ function renderSchemaTree(tree: VariableTree, depth: number): string[] {
 
 function schemaExpression(variable: MvuVariableInput): string {
   const kind = variable.kind ?? inferKind(variable.defaultValue);
-  if (kind === "number") return `z.number()${typeof variable.min === "number" || typeof variable.max === "number" ? `.transform(v => _.clamp(v, ${variable.min ?? "-Infinity"}, ${variable.max ?? "Infinity"}))` : ""}`;
+  if (kind === "number") return `z.coerce.number()${typeof variable.min === "number" || typeof variable.max === "number" ? `.transform(v => _.clamp(v, ${variable.min ?? "-Infinity"}, ${variable.max ?? "Infinity"}))` : ""}`;
   if (kind === "boolean") return "z.boolean()";
   if (kind === "enum" && variable.enumValues?.length) return `z.enum([${variable.enumValues.map((item) => JSON.stringify(item)).join(", ")}])`;
   if (kind === "record") return "z.record(z.string(), z.unknown())";
@@ -164,8 +169,32 @@ function buildVariableList(variables: Array<MvuVariableInput & { dotPath: string
 }
 
 function buildUpdateRules(variables: Array<MvuVariableInput & { dotPath: string }>): string {
-  const value = Object.fromEntries(variables.map((variable) => [variable.dotPath, variable.readonly ? "只读，不由 AI 更新" : "根据剧情合理更新"]));
-  return stringifyYaml(value);
+  const rules: Record<string, unknown> = {};
+  for (const variable of variables) {
+    if (shouldSkipUpdateRule(variable)) continue;
+    const kind = variable.kind ?? inferKind(variable.defaultValue);
+    const rule: Record<string, unknown> = {};
+    if (kind === "number") {
+      rule.type = "number";
+      if (typeof variable.min === "number" || typeof variable.max === "number") rule.range = `${variable.min ?? "-Infinity"}~${variable.max ?? "Infinity"}`;
+    } else if (kind === "boolean") {
+      rule.type = "boolean";
+    } else if (kind === "enum" && variable.enumValues?.length) {
+      rule.type = variable.enumValues.map((item) => `'${item}'`).join("|");
+    } else if (kind === "record") {
+      rule.type = "{ [键名: string]: unknown }";
+    } else if (kind === "object") {
+      rule.type = "object";
+    }
+    if (variable.description) rule.value = variable.description;
+    if (Object.keys(rule).length > 0) setNested(rules, variable.path, rule);
+  }
+  return stringifyYaml({ 变量更新规则: rules });
+}
+
+function shouldSkipUpdateRule(variable: MvuVariableInput & { dotPath: string }): boolean {
+  const last = variable.path.at(-1) ?? variable.dotPath;
+  return Boolean(variable.readonly || variable.hidden || last.startsWith("_") || last.startsWith("$") || variable.dotPath.split(".").some((segment) => segment.startsWith("_") || segment.startsWith("$")));
 }
 
 function buildOutputFormat(variables: Array<MvuVariableInput & { dotPath: string }>): string {

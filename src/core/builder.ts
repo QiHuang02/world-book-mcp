@@ -5,6 +5,7 @@ import type { Project } from "../schemas/project.js";
 import { draftPath, projectDir, projectPath, readDraft } from "../storage/workspace.js";
 import { backupIfExists, resolveDraftReference, resolveExportFilePath } from "../storage/path-policy.js";
 import { readTextFile, readYamlFile, writeTextFile, writeYamlFile } from "../utils/yaml.js";
+import { MVU_DONE_BEAUTIFY_HTML, MVU_LOADING_BEAUTIFY_HTML } from "./mvu-templates.js";
 import { positionToNumber } from "./position.js";
 import { readMaybeReference, validateProject } from "./validation.js";
 
@@ -271,7 +272,10 @@ function sortEntries(entries: WorldbookEntryDraft[]): WorldbookEntryDraft[] {
 async function buildRegexScripts(project: Project, assets?: AssetsDraft): Promise<unknown[]> {
   const scripts: RegexScriptDraft[] = [];
   if (assets?.mvu.enabled && assets.mvu.hideRegex) {
-    scripts.push({ name: "[不发送]去除变量更新", findRegex: "/<(UpdateVariable|Analysis|JSONPatch)>[\\s\\S]*?<\\/\\1>/gm", replaceString: "", markdownOnly: true, promptOnly: true, placement: [2], minDepth: 4, maxDepth: null, runOnEdit: true, substituteRegex: 0, disabled: false });
+    scripts.push({ name: "[不发送]去除变量更新", findRegex: "/<(UpdateVariable|Analysis|JSONPatch|update(?:variable)?)>[\\s\\S]*?<\\/\\1>/gmi", replaceString: "", markdownOnly: true, promptOnly: true, placement: [1, 2], minDepth: 4, maxDepth: null, runOnEdit: true, substituteRegex: 0, disabled: false });
+  }
+  if (assets?.mvu.enabled && assets.mvu.beautifyRegex !== false) {
+    scripts.push(...mvuBeautifyRegexScripts());
   }
   if (assets?.html.statusbar.enabled) {
     scripts.push({ name: "[不发送]界面占位符", findRegex: "<StatusPlaceHolderImpl/>", replaceString: "", markdownOnly: false, promptOnly: true, placement: [2], minDepth: null, maxDepth: null, runOnEdit: true, substituteRegex: 0, disabled: false });
@@ -294,14 +298,50 @@ async function buildRegexScripts(project: Project, assets?: AssetsDraft): Promis
   return mapped;
 }
 
+function mvuBeautifyRegexScripts(): RegexScriptDraft[] {
+  return [
+    {
+      name: "[界面]变量更新中美化",
+      findRegex: "/<(update(?:variable)?)>(?!.*<\\/\\1>)\\s*((?:(?!<\\1>).)*)\\s*$/gsi",
+      replaceString: MVU_LOADING_BEAUTIFY_HTML,
+      markdownOnly: true,
+      promptOnly: false,
+      placement: [1, 2],
+      minDepth: null,
+      maxDepth: null,
+      runOnEdit: false,
+      substituteRegex: 0,
+      disabled: false,
+    },
+    {
+      name: "[界面]变量更新美化",
+      findRegex: "/<(update(?:variable)?)>\\s*((?:(?!<\\1>).)*)\\s*<\\/\\1>/gsi",
+      replaceString: MVU_DONE_BEAUTIFY_HTML,
+      markdownOnly: true,
+      promptOnly: false,
+      placement: [1, 2],
+      minDepth: null,
+      maxDepth: null,
+      runOnEdit: false,
+      substituteRegex: 0,
+      disabled: false,
+    },
+  ];
+}
+
 async function buildTavernHelperScripts(project: Project, assets?: AssetsDraft): Promise<unknown[]> {
   if (!assets?.mvu.enabled) return [];
   const scripts: unknown[] = [{ type: "script", value: { id: "mvu-runtime", name: "MVU Zod 脚本", content: "import 'https://testingcf.jsdelivr.net/gh/MagicalAstrogy/MagVarUpdate/artifact/bundle.js'", info: "", buttons: [{ name: "重新处理变量", visible: false }, { name: "重新读取初始变量", visible: false }, { name: "清除旧楼层变量", visible: false }], data: { "是否显示变量更新错误": "是", "构建信息": new Date().toISOString() }, enabled: true } }];
   if (assets.mvu.schema) {
     const content = await readTextFile(resolveDraftReference(projectDir(project.slug), draftPath(project, "assets"), assets.mvu.schema));
-    scripts.push({ type: "script", value: { id: "mvu-schema", name: "变量结构设计", content, info: "", buttons: [], data: {}, enabled: true } });
+    scripts.push({ type: "script", value: { id: "mvu-schema", name: "变量结构设计", content: wrapMvuSchemaScript(content), info: "", buttons: [], data: {}, enabled: true } });
   }
   return scripts;
+}
+
+function wrapMvuSchemaScript(schema: string): string {
+  const cleaned = schema.split(/\r?\n/).filter((line) => !/^\s*export\s+type\s+/.test(line)).join("\n");
+  return `import { registerMvuSchema } from 'https://testingcf.jsdelivr.net/gh/StageDog/tavern_resource/dist/util/mvu_zod.js';\n${cleaned}\n\n$(() => {\n  registerMvuSchema(Schema);\n});\n`;
 }
 
 function resolveOutput(project: Project, requested: string | undefined, fallback: string): string {

@@ -194,14 +194,17 @@ async function validateAssets(project: Project, assets: AssetsDraft | undefined,
     await assertSourceFileReference(project, assetsFile, assets.regex.scripts, "regex.scripts", "regex", issues);
     await validateRegexScripts(project, assetsFile, assets.regex.scripts, issues);
   }
+  let preprocessContent = "";
   if (assets.ejs.preprocess) {
     await assertSourceFileReference(project, assetsFile, assets.ejs.preprocess.file, "ejs.preprocess.file", "ejs", issues);
+    preprocessContent = await readMaybeReference(project, assetsFile, assets.ejs.preprocess.file) ?? "";
     await lintEjsFile(project, assetsFile, assets.ejs.preprocess.file, "ejs.preprocess", [], issues);
   }
   for (const [index, entry] of assets.ejs.entries.entries()) {
     await assertSourceFileReference(project, assetsFile, entry.file, `ejs.entries.${index}.file`, "ejs", issues);
     if (entry.role === "stage" && entry.enabled) issues.push(issue("warning", "ejs.stage.enabled", `阶段条目 ${entry.id} 通常应禁用，由 controller 动态加载`, `ejs.entries.${index}.enabled`));
     await lintEjsFile(project, assetsFile, entry.file, `ejs.entries.${index}`, entry.conditionVariables, issues);
+    validateEjsPreprocessCoverage(preprocessContent, entry.conditionVariables, `ejs.entries.${index}`, issues);
   }
   if (project.kind.output !== "worldbook" && !card) issues.push(issue("error", "assets.card_missing", "角色卡输出缺少 card draft"));
   return issues;
@@ -239,12 +242,64 @@ async function validateRegexScripts(project: Project, assetsFile: string, script
 async function lintEjsFile(project: Project, assetsFile: string, reference: string, field: string, conditionVariables: string[], issues: ValidationIssue[]): Promise<void> {
   const content = await readMaybeReference(project, assetsFile, reference);
   if (!content) return;
+  validateEjsTags(content, field, issues);
+  validateEjsDecorators(content, field, issues);
   if (/\bgetwi\s*\(/.test(content) && !/await\s+getwi\s*\(/.test(content)) issues.push(issue("warning", "ejs.getwi_without_await", `${field} 使用 getwi() 时建议 await getwi()`, field));
+  if (/\bactivewi\s*\(/.test(content) && !/await\s+activewi\s*\(/.test(content)) issues.push(issue("warning", "ejs.activewi_without_await", `${field} 使用 activewi() 时建议 await activewi()`, field));
   if (/\b(?:let|const)\s+/.test(content)) issues.push(issue("warning", "ejs.let_const", `${field} 建议使用 var 与 typeof 防重复声明`, field));
+  const firstMeaningfulLine = content.split(/\r?\n/).find((line) => line.trim());
+  if (/^\s*@@/m.test(content) && firstMeaningfulLine && !firstMeaningfulLine.trimStart().startsWith("@@")) issues.push(issue("warning", "ejs.decorator_not_at_start", `${field} 的 @@ 装饰器应位于文件首个非空行`, field));
+  for (const match of content.matchAll(/\bgetvar\s*\(\s*(['"])(.*?)\1/g)) {
+    const variablePath = match[2];
+    if (looksLikeMvuPath(variablePath) && !variablePath.startsWith("stat_data.")) issues.push(issue("warning", "ejs.getvar_missing_stat_data", `${field} 读取 MVU 变量 ${variablePath} 时建议使用 stat_data.${variablePath}`, field));
+  }
   const variables = Array.from(content.matchAll(/stat_data\.([\p{L}\p{N}_.$-]+)/gu)).map((match) => `stat_data.${match[1]}`);
   for (const variable of variables) {
     if (!conditionVariables.includes(variable)) issues.push(issue("warning", "ejs.condition_variable_missing", `${field} 使用 ${variable}，建议登记到 conditionVariables`, field));
   }
+}
+
+function validateEjsTags(content: string, field: string, issues: ValidationIssue[]): void {
+  const openCount = (content.match(/<%[-_=#]?/g) ?? []).length;
+  const closeCount = (content.match(/[-_]?%>/g) ?? []).length;
+  if (openCount !== closeCount) issues.push(issue("warning", "ejs.tag_unbalanced", `${field} 的 EJS 标签数量不配对: <% ${openCount} / %> ${closeCount}`, field));
+}
+
+function validateEjsDecorators(content: string, field: string, issues: ValidationIssue[]): void {
+  const lines = content.split(/\r?\n/);
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index].trim();
+    if (!line.startsWith("@@if")) continue;
+    const nextLine = lines[index + 1]?.trim() ?? "";
+    if (!line.replace(/^@@if\s*/, "").trim()) issues.push(issue("warning", "ejs.if_condition_empty", `${field} 的 @@if 缺少同一行条件`, field));
+    if (nextLine && !nextLine.startsWith("@@") && !nextLine.startsWith("<%") && /(?:&&|\|\||[=!<>]=?|\(|\))/.test(nextLine)) issues.push(issue("warning", "ejs.if_multiline", `${field} 的 @@if 条件应保持单行`, field));
+  }
+}
+
+function validateEjsPreprocessCoverage(preprocessContent: string, conditionVariables: string[], field: string, issues: ValidationIssue[]): void {
+  if (!conditionVariables.length) return;
+  if (!preprocessContent.trim()) {
+    issues.push(issue("warning", "ejs.preprocess_missing", `${field} 声明了 conditionVariables，但未配置 EJS 预处理条目`, field));
+    return;
+  }
+  const definedVariables = collectEjsDefinedVariables(preprocessContent);
+  for (const variable of conditionVariables) {
+    if (!preprocessContent.includes(variable) && !definedVariables.has(variable) && !definedVariables.has(lastPathSegment(variable))) issues.push(issue("warning", "ejs.preprocess_variable_missing", `${field} 的条件变量 ${variable} 未在 EJS 预处理中注册`, field));
+  }
+}
+
+function collectEjsDefinedVariables(content: string): Set<string> {
+  const result = new Set<string>();
+  for (const match of content.matchAll(/\bdefine\s*\(\s*(['"])(.*?)\1/g)) result.add(match[2]);
+  return result;
+}
+
+function lastPathSegment(value: string): string {
+  return value.split(".").at(-1) ?? value;
+}
+
+function looksLikeMvuPath(value: string): boolean {
+  return Boolean(value && !value.startsWith("stat_data.") && !["global", "local", "message", "cache", "initial"].includes(value));
 }
 
 async function assertSourceFileReference(project: Project, draftFile: string, reference: string, field: string, expectedDir: string, issues: ValidationIssue[]): Promise<void> {

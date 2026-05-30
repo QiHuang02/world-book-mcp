@@ -233,9 +233,13 @@ ejs:
 
 - EJS 依赖 MVU。
 - MVU 启用时必须配置 `schema/initvar/updateRules/variableList/outputFormat`。
-- HTML 状态栏禁止 `<script>` 和外链。
+- MVU 以 `schema.js` 为先：数字用 `z.coerce.number()`，范围用 `_.clamp`，不导入 zod/lodash，不使用 `.strict()` / `.passthrough()`。
+- `_` 前缀变量只读、`$` 前缀变量隐藏；二者不写入 AI 更新规则。
+- EJS 读取 MVU 必须使用 `getvar('stat_data.xxx')`，共享变量在 `[EJS]预处理` 中用 `@@generate_before` + `define()` 注册。
+- HTML 状态栏禁止 `<script>` 和外链，除非明确使用 `dynamic_js` 并记录原因。
 - HTML 展示 MVU 变量必须使用 `{{format_message_variable::stat_data.xxx}}`。
 - MVU `initvar` 不应额外包一层 `stat_data:`，除非 plan.md 记录原因。
+- builder 会自动注入变量更新隐藏/美化 regex 与状态栏占位符隐藏/替换 regex。
 
 ## 工作方式
 
@@ -255,8 +259,9 @@ ejs:
 | `resume_project` | 汇总断点续写状态、plan/draft 差异和下一步 |
 | `check_delivery` | 检查 validation、exports、reports、entry status 等交付门禁 |
 | `validate_project` | 校验 workspace/project、plan、draft/source、资产一致性 |
-| `validate_mvu` | 静态检查 MVU schema/initvar/变量列表/output format 一致性，含简单 Zod schema 对照 |
-| `apply_mvu_preset` | 写入 v5 原生 MVU 五件套模板并启用 assets.mvu |
+| `validate_mvu` | 检查 MVU schema/initvar/变量列表/output format/update rules 一致性；含简单 Zod schema 对照、Zod 反模式、沙箱 parse/幂等性、enum/阶段/地点覆盖提示 |
+| `convert_mvu_path` | 在 EJS `stat_data.a.b`、AI JSON Patch `/a/b`、YAML 点路径 `a.b` 间互转 |
+| `apply_mvu_preset` | 写入 v5 原生 MVU 五件套模板并启用 assets.mvu；`tavern_cards` 会额外写入变量更新美化 HTML 模板 |
 | `list_mvu_variables` | 列出 MVU 变量路径、默认值和覆盖情况 |
 | `upsert_mvu_variable` | 新增或更新单个 MVU 变量并同步五件套 |
 | `remove_mvu_variable` | 删除单个 MVU 变量并同步五件套 |
