@@ -8,9 +8,11 @@ description: Use world-book-mcp v5 to ask for user requirements, record them in 
 v5 采用唯一工作流：
 
 ```text
-AI 询问用户需求
-→ 直接记录到 plan.md
-→ 基于 plan.md 生成/维护 draft YAML 配置
+AI 初筛用户需求
+→ init_project 创建 plan.md
+→ grill-me 式逐问拷打需求与设计分支
+→ 每拷打一次立即 update_plan 记录问答、推荐答案、用户决策/风险
+→ 基于持续更新的 plan.md 生成/维护 draft YAML 配置
 → 创作长内容到 source files
 → MCP 校验
 → MCP 根据 draft + source 生成酒馆 JSON
@@ -25,26 +27,27 @@ workspace + plan.md + draft YAML + source files + deterministic builder
 ## 铁律
 
 1. **plan**：所有需求、决策、规划、验收和验证记录都写入 `plan.md`。
-2. **description 只能为空字符串**：角色卡 `description` 必须是 `""`。角色设定、人设、背景、关系、性格全部进入世界书条目。
-3. **不直接手写最终 JSON**：最终 `.card.json` / `.worldbook.json` 只能由 `generate_json` 生成。
-4. **draft YAML 是生成配置源**：`draft/card.yaml`、`draft/worldbook.yaml`、`draft/assets.yaml` 决定最终 JSON。
-5. **长内容进 source 文件**：开场白、条目正文、MVU、HTML、regex、EJS 内容放在 `source/`。
-6. **世界书条目双递归必须开启**：`preventRecursion: true` 与 `excludeRecursion: true`。
-7. **绿灯条目必须有 keys**：`constant: false` 时必须配置触发词。
-8. **MVU/EJS/HTML 不主动推销**：用户明确要求或需求明显需要时才启用。EJS 依赖 MVU。
-9. **开场白不预设 {{user}}**：不得预设 user 的性别、外貌、行动、心理或无法确认的身份。
-10. **生成前必须校验**：完整交付前先 `validate_project`，修复 blocking 后再 `generate_json`。
+2. **grill-me 前置到写 plan 前**：`init_project` 只负责先创建可写入的 `plan.md`；正式填充/定稿 plan 前必须按 grill-me 方式逐问拷打需求，每拷打一次都要立即 `update_plan`，不能等全部问完再汇总。
+3. **description 只能为空字符串**：角色卡 `description` 必须是 `""`。角色设定、人设、背景、关系、性格全部进入世界书条目。
+4. **不直接手写最终 JSON**：最终 `.card.json` / `.worldbook.json` 只能由 `generate_json` 生成。
+5. **draft YAML 是生成配置源**：`draft/card.yaml`、`draft/worldbook.yaml`、`draft/assets.yaml` 决定最终 JSON。
+6. **长内容进 source 文件**：开场白、条目正文、MVU、HTML、regex、EJS 内容放在 `source/`。
+7. **世界书条目双递归必须开启**：`preventRecursion: true` 与 `excludeRecursion: true`。
+8. **绿灯条目必须有 keys**：`constant: false` 时必须配置触发词。
+9. **MVU/EJS/HTML 不主动推销**：用户明确要求或需求明显需要时才启用。EJS 依赖 MVU。
+10. **开场白不预设 {{user}}**：不得预设 user 的性别、外貌、行动、心理或无法确认的身份。
+11. **生成前必须校验**：完整交付前先 `validate_project`，修复 blocking 后再 `generate_json`。
 
 ## 标准流程
 
 ### 原创 / 二创项目
 
 ```text
-1. 逐主题询问用户需求
-2. init_project
-3. update_plan 写入 plan.md
-4. write_source_file 写 source 内容
-5. write_draft 写 draft YAML
+1. 初筛用户需求，确认足以创建项目的最小信息
+2. init_project 创建 plan.md
+3. 按 grill-me 方式逐主题、逐分支拷打需求；每问一次就 update_plan 写入问答、推荐答案、用户决策/风险
+4. 基于持续更新的 plan.md 写 source 内容
+5. write_draft / configure_draft 写 draft YAML
 6. validate_project
 7. 修复问题
 8. generate_json
@@ -57,10 +60,11 @@ workspace + plan.md + draft YAML + source files + deterministic builder
 1. import_existing_json
 2. query_project 查看导入后的 plan/draft/source
 3. update_plan 记录修改目标
-4. write_source_file / write_draft 修改
-5. validate_project
-6. generate_json(overwrite=true)
-7. 返回 exports 路径和 validation summary
+4. 按 grill-me 方式逐项拷打修改范围、保留项、重写项和风险；每问一次就 update_plan
+5. write_source_file / write_draft 修改
+6. validate_project
+7. generate_json(overwrite=true)
+8. 返回 exports 路径和 validation summary
 ```
 
 导入规则：
@@ -73,9 +77,9 @@ workspace + plan.md + draft YAML + source files + deterministic builder
 - MVU 系统条目拆为 `source/mvu/*` 和 `draft/assets.yaml`。
 - TavernHelper 变量结构脚本导入为 `source/mvu/schema.js`。
 
-## 需求询问顺序
+## 需求询问 / grill-me 顺序
 
-按主题逐步问，不要一次问完所有问题：
+按主题逐步问，不要一次问完所有问题。每一轮只问一个问题，并给出推荐答案；如果能从已有 plan、draft、source、导入结果或代码库回答，就先自行探索而不是问用户。用户回答后，必须立刻 `update_plan`，把该轮问题、推荐答案、用户选择、影响范围写入 `plan.md` 的用户决策记录、对应规划、验收标准或风险与未决问题。
 
 1. 输出目标：世界书 / 角色卡 / 二者都要。
 2. 来源：原创 / 二创 / 修改已有 JSON / 混合。
@@ -86,6 +90,20 @@ workspace + plan.md + draft YAML + source files + deterministic builder
 7. 开场白：初始场景、与 `{{user}}` 的关系、氛围、可选开场数量。
 8. 可选资产：MVU、HTML 状态栏、regex、EJS。
 9. 验收标准：用户希望最终 JSON 满足什么。
+
+### grill-me 记录格式
+
+每轮拷打建议在 `plan.md` 记录为：
+
+```text
+[grill-me] 问题：……
+推荐答案：……
+用户决定：……
+影响范围：……
+状态：已确认 / 待确认 / 记录为风险
+```
+
+不得在未记录本轮结果的情况下继续下一轮关键问题。
 
 ## v5 项目结构
 
