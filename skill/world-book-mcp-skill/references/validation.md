@@ -26,17 +26,20 @@ generate_json → 成功生成 exports
 - regex replaceFile 引用、replaceFile 覆盖 replaceString warning
 - HTML 状态栏 safe_macro / dynamic_js 模式安全规则
 
-## 文本检查清单
+## Skill 人工/创作审查清单
 
-生成前还需要按对应 reference 检查：
+以下检查偏语义判断，不交给 MCP 自动报错；由 skill 在生成前阅读 source 与 plan 后人工审查：
 
-- 角色调色盘是否只有标签、缺少行为衍生
-- 三面性是否缺五部件、语料是否混动作/心理
-- 世界观是否空泛、缺少功能锚点
-- first_mes 是否预设 {{user}}
-- 禁词、白描、比喻、语气声线、第四面墙污染
+- 角色调色盘是否只有标签、缺少行为衍生。
+- 三面性是否缺五部件、语料是否混动作/心理。
+- 世界观是否空泛、缺少功能锚点。
+- first_mes 是否预设 {{user}} 的性别、外貌、身份、行为、心理或固定关系。
+- 禁词、白描、比喻、语气声线、第四面墙污染。
+- 启用 MVU 时，`initvar.yaml` 的初始地点、阶段、关系/好感度是否与 `first_mes` 明示内容冲突。
+- 状态栏展示的变量是否能在开场初始状态中自洽；例如状态栏显示“门口”，开场却明确写成“庭院”。
+- `z.enum()` 的阶段值、地点值、关系值是否有世界书条目、变量列表或更新规则解释。
 
-如果发现问题，修改 source 后再运行 `validate_project`。
+如果发现问题，修改 source 或 MVU 五件套后再运行 `validate_project` / `validate_mvu`。
 
 ## generate_json 输出
 

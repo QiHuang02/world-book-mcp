@@ -95,6 +95,12 @@ export const ValidateMvuInputSchema = z.object({
   project_id: z.string().default("active"),
 });
 
+export const ConvertMvuPathInputSchema = z.object({
+  path: z.string().min(1),
+  from: z.enum(["auto", "ejs", "json_patch", "yaml_dot"]).default("auto"),
+  to: z.enum(["ejs", "json_patch", "yaml_dot"]),
+});
+
 const EntryTypeListSchema = z.array(EntryTypeSchema).default([]);
 const ConfigureThresholdSchema = z.record(EntryTypeSchema, z.union([z.number(), z.literal("Infinity"), z.null()])).optional();
 

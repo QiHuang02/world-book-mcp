@@ -5,6 +5,7 @@ import { buildCharacterCardJson, buildWorldbookJson, generateJson } from "../src
 import { configureDraft } from "../src/core/configure-draft.js";
 import { repairProject } from "../src/core/repair.js";
 import { validateMvuProject } from "../src/core/mvu-validation.js";
+import { convertMvuPath } from "../src/core/mvu-paths.js";
 import { applyMvuPreset, listMvuVariables, removeMvuVariable, rewriteMvuVariables, upsertMvuVariable } from "../src/core/mvu-variables.js";
 import { createEjsStageTemplate } from "../src/core/creative-tools.js";
 import { importNovaConfig } from "../src/core/nova-importer.js";
@@ -497,10 +498,13 @@ describe("v5 builders", () => {
     const worldbookContents = Object.values(worldbookJson.entries).map((entry: any) => entry.content).join("\n");
 
     expect(regexNames).toContain("[不发送]去除变量更新");
+    expect(regexNames).toContain("[界面]变量更新中美化");
+    expect(regexNames).toContain("[界面]变量更新美化");
     expect(regexNames).toContain("[不发送]界面占位符");
     expect(regexNames).toContain("[界面]状态栏");
     expect(regexNames).toContain("自定义正则");
     expect(cardJson.data.extensions.regex_scripts.find((script: any) => script.scriptName === "[界面]状态栏").replaceString).toContain("format_message_variable::stat_data.hp");
+    expect(cardJson.data.extensions.TavernHelper_scripts.find((script: any) => script.value.name === "变量结构设计").value.content).toContain("registerMvuSchema(Schema)");
     expect(helperNames).toContain("MVU Zod 脚本");
     expect(helperNames).toContain("变量结构设计");
     expect(worldbookContents).toContain("资产世界");
@@ -903,7 +907,9 @@ describe("v5 configure, repair and mvu validation", () => {
     ]);
     let listed = await listMvuVariables(project);
     expect(listed.variables.map((item) => item.dotPath)).toContain("角色A.好感度");
+    await expect(fs.readFile(path.resolve(projectDir(project.slug), "source/mvu/schema.js"), "utf8")).resolves.toContain("z.coerce.number()");
     await expect(fs.readFile(path.resolve(projectDir(project.slug), "source/mvu/schema.js"), "utf8")).resolves.toContain("_.clamp");
+    await expect(fs.readFile(path.resolve(projectDir(project.slug), "source/mvu/update-rules.yaml"), "utf8")).resolves.toContain("变量更新规则");
 
     await upsertMvuVariable(project, { path: ["角色A", "在场"], kind: "boolean", defaultValue: true });
     listed = await listMvuVariables(project);
@@ -914,31 +920,90 @@ describe("v5 configure, repair and mvu validation", () => {
     expect(listed.variables.map((item) => item.dotPath)).not.toContain("世界.阶段");
   });
 
+  it("generates tavern-cards mvu beautify templates and converts mvu paths", async () => {
+    const { project } = await createTestProject("v5-mvp-tavern-cards-preset", "character_card");
+    const preset = await applyMvuPreset(project, { preset: "tavern_cards", overwrite: true });
+    expect(preset.files.some((file) => file.includes("变量更新中美化.html"))).toBe(true);
+    await expect(fs.readFile(path.resolve(projectDir(project.slug), "source/html/变量更新中美化.html"), "utf8")).resolves.toContain("mvu-loading-details");
+    expect(convertMvuPath({ path: "stat_data.角色.好感度", to: "json_patch" })).toMatchObject({ from: "ejs", path: "/角色/好感度", segments: ["角色", "好感度"] });
+    expect(convertMvuPath({ path: "/角色/好感度", to: "yaml_dot" })).toMatchObject({ from: "json_patch", path: "角色.好感度" });
+    expect(convertMvuPath({ path: "角色.好感度", to: "ejs" })).toMatchObject({ from: "yaml_dot", path: "stat_data.角色.好感度" });
+  });
+
   it("validates ejs preprocess and condition lint warnings", async () => {
     const { project } = await createTestProject("v5-mvp-ejs-preprocess-lint", "character_card");
     await writeSource(project.slug, "fields/first_mes.md", "你好\n");
-    await writeSource(project.slug, "mvu/schema.js", "export const Schema = z.object({ phase: z.string() });\n");
-    await writeSource(project.slug, "mvu/initvar.yaml", "phase: start\n");
+    await writeSource(project.slug, "mvu/schema.js", "export const Schema = z.object({ phase: z.string(), hp: z.coerce.number() });\n");
+    await writeSource(project.slug, "mvu/initvar.yaml", "phase: start\nhp: 10\n");
     await writeSource(project.slug, "mvu/update-rules.yaml", "phase: 更新\n");
-    await writeSource(project.slug, "mvu/variable-list.md", "phase\n");
-    await writeSource(project.slug, "mvu/output-format.md", "phase\n");
-    await writeSource(project.slug, "ejs/preprocess.ejs", "@@generate_before\nvar phase = getvar('stat_data.phase')\n");
-    await writeSource(project.slug, "ejs/stage.ejs", "const lore = getwi('阶段一'); if (stat_data.phase === 'start') { }\n");
+    await writeSource(project.slug, "mvu/variable-list.md", "phase\nhp\n");
+    await writeSource(project.slug, "mvu/output-format.md", "phase\nhp\n");
+    await writeSource(project.slug, "ejs/preprocess.ejs", "@@generate_before\ndefine('phase', getvar('stat_data.phase'))\nvar hp = getvar('stat_data.hp')\n");
+    await writeSource(project.slug, "ejs/stage.ejs", "前置文本\n@@if\nphase === 'start'\n<% if (phase) {\nconst lore = getwi('阶段一'); activewi('阶段二'); var hp = getvar('hp'); if (stat_data.phase === 'start') { }\n");
     await writeDraft(project, "assets", {
       mvu: { enabled: true, schema: "../source/mvu/schema.js", initvar: "../source/mvu/initvar.yaml", updateRules: "../source/mvu/update-rules.yaml", variableList: "../source/mvu/variable-list.md", outputFormat: "../source/mvu/output-format.md" },
       html: { statusbar: { enabled: false } },
       regex: {},
-      ejs: { enabled: true, preprocess: { file: "../source/ejs/preprocess.ejs" }, entries: [{ id: "stage", file: "../source/ejs/stage.ejs", role: "stage", enabled: true, conditionVariables: [] }] },
+      ejs: { enabled: true, preprocess: { file: "../source/ejs/preprocess.ejs" }, entries: [{ id: "stage", file: "../source/ejs/stage.ejs", role: "stage", enabled: true, conditionVariables: ["stat_data.hp"] }] },
     });
 
     const report = await validateProject(project);
     expect(report.issues.some((issue) => issue.code === "ejs.stage.enabled")).toBe(true);
     expect(report.issues.some((issue) => issue.code === "ejs.getwi_without_await")).toBe(true);
+    expect(report.issues.some((issue) => issue.code === "ejs.activewi_without_await")).toBe(true);
+    expect(report.issues.some((issue) => issue.code === "ejs.tag_unbalanced")).toBe(true);
+    expect(report.issues.some((issue) => issue.code === "ejs.if_condition_empty")).toBe(true);
+    expect(report.issues.some((issue) => issue.code === "ejs.if_multiline")).toBe(true);
     expect(report.issues.some((issue) => issue.code === "ejs.let_const")).toBe(true);
     expect(report.issues.some((issue) => issue.code === "ejs.condition_variable_missing")).toBe(true);
+    expect(report.issues.some((issue) => issue.code === "ejs.getvar_missing_stat_data")).toBe(true);
+    expect(report.issues.some((issue) => issue.code === "ejs.decorator_not_at_start")).toBe(true);
+    expect(report.issues.some((issue) => issue.code === "ejs.preprocess_variable_missing")).toBe(false);
 
     const card = await buildCharacterCardJson(project, (await readDraft(project)).card!, (await readDraft(project)).worldbook, (await readDraft(project)).assets, new Date().toISOString()) as any;
     expect(card.data.character_book.entries.some((entry: any) => entry.comment === "[EJS]预处理")).toBe(true);
+  });
+
+  it("runs mvu schema in sandbox and reports parse/idempotency/coverage issues", async () => {
+    const { project } = await createTestProject("v5-mvp-validate-mvu-runtime", "character_card");
+    await writeSource(project.slug, "mvu/schema.js", "export const Schema = z.object({ hp: z.coerce.number().transform(v => v + 1), phase: z.enum(['序章', '终章']), location: z.string() });\n");
+    await writeSource(project.slug, "mvu/initvar.yaml", "hp: '10'\nphase: 序章\nlocation: 门口\n");
+    await writeSource(project.slug, "mvu/update-rules.yaml", "hp: 变化\n");
+    await writeSource(project.slug, "mvu/variable-list.md", "hp\nphase\nlocation\n");
+    await writeSource(project.slug, "mvu/output-format.md", "hp phase location\n");
+    await writeDraft(project, "assets", {
+      mvu: { enabled: true, schema: "../source/mvu/schema.js", initvar: "../source/mvu/initvar.yaml", updateRules: "../source/mvu/update-rules.yaml", variableList: "../source/mvu/variable-list.md", outputFormat: "../source/mvu/output-format.md" },
+      html: { statusbar: { enabled: false } },
+      regex: {},
+      ejs: { enabled: false, entries: [] },
+    });
+
+    const report = await validateMvuProject(project);
+    expect(report.issues.some((issue) => issue.code === "mvu.schema.parse_failed")).toBe(false);
+    expect(report.issues.some((issue) => issue.code === "mvu.initvar.schema_type_mismatch" && issue.message.includes("hp"))).toBe(true);
+    expect(report.issues.some((issue) => issue.code === "mvu.schema.non_idempotent")).toBe(true);
+    expect(report.issues.some((issue) => issue.code === "mvu.schema.enum_value_uncovered")).toBe(false);
+    expect(report.issues.some((issue) => issue.code === "mvu.schema.stage_uncovered")).toBe(false);
+    expect(report.issues.some((issue) => issue.code === "mvu.schema.location_uncovered")).toBe(false);
+  });
+
+  it("reports mvu schema parse failures from sandbox", async () => {
+    const { project } = await createTestProject("v5-mvp-validate-mvu-parse-failure", "character_card");
+    await writeSource(project.slug, "mvu/schema.js", "export const Schema = z.object({ hp: z.coerce.number() });\n");
+    await writeSource(project.slug, "mvu/initvar.yaml", "hp: not-a-number\n");
+    await writeSource(project.slug, "mvu/update-rules.yaml", "hp: 变化\n");
+    await writeSource(project.slug, "mvu/variable-list.md", "hp\n");
+    await writeSource(project.slug, "mvu/output-format.md", "hp\n");
+    await writeDraft(project, "assets", {
+      mvu: { enabled: true, schema: "../source/mvu/schema.js", initvar: "../source/mvu/initvar.yaml", updateRules: "../source/mvu/update-rules.yaml", variableList: "../source/mvu/variable-list.md", outputFormat: "../source/mvu/output-format.md" },
+      html: { statusbar: { enabled: false } },
+      regex: {},
+      ejs: { enabled: false, entries: [] },
+    });
+
+    const report = await validateMvuProject(project);
+    expect(report.ok).toBe(false);
+    expect(report.issues.some((issue) => issue.code === "mvu.schema.parse_failed")).toBe(true);
   });
 
   it("statically compares mvu schema and initvar values", async () => {
@@ -964,9 +1029,9 @@ describe("v5 configure, repair and mvu validation", () => {
 
   it("validates mvu schema export and initvar yaml", async () => {
     const { project } = await createTestProject("v5-mvp-validate-mvu", "character_card");
-    await writeSource(project.slug, "mvu/schema.js", "const Schema = {};\n");
-    await writeSource(project.slug, "mvu/initvar.yaml", "stat_data:\n  hp: 10\n");
-    await writeSource(project.slug, "mvu/update-rules.yaml", "hp: 变化\n");
+    await writeSource(project.slug, "mvu/schema.js", "import { z } from 'zod';\nexport const Schema = z.object({ '{{user}}': z.number().strict().passthrough().transform((value, context) => value) });\n");
+    await writeSource(project.slug, "mvu/initvar.yaml", "stat_data:\n  hp: 10\n  _只读: 保持\n");
+    await writeSource(project.slug, "mvu/update-rules.yaml", "_只读: 不该更新\n");
     await writeSource(project.slug, "mvu/variable-list.md", "{{stat_data.hp}}\n");
     await writeSource(project.slug, "mvu/output-format.md", "hp\n");
     await writeDraft(project, "assets", {
@@ -978,7 +1043,13 @@ describe("v5 configure, repair and mvu validation", () => {
 
     const report = await validateMvuProject(project);
     expect(report.ok).toBe(false);
-    expect(report.issues.some((issue) => issue.code === "mvu.schema.missing_export")).toBe(true);
+    expect(report.issues.some((issue) => issue.code === "mvu.schema.import_forbidden")).toBe(true);
+    expect(report.issues.some((issue) => issue.code === "mvu.schema.prefer_coerce_number")).toBe(true);
+    expect(report.issues.some((issue) => issue.code === "mvu.schema.strict_forbidden")).toBe(true);
+    expect(report.issues.some((issue) => issue.code === "mvu.schema.passthrough_forbidden")).toBe(true);
+    expect(report.issues.some((issue) => issue.code === "mvu.schema.transform_context")).toBe(true);
+    expect(report.issues.some((issue) => issue.code === "mvu.schema.user_macro_key")).toBe(true);
+    expect(report.issues.some((issue) => issue.code === "mvu.update_rules.readonly_variable")).toBe(true);
     expect(report.issues.some((issue) => issue.code === "mvu.initvar.stat_data_root" && issue.severity === "warning")).toBe(true);
     expect(report.issues.some((issue) => issue.code === "mvu.variable_list.raw_macro" && issue.severity === "warning")).toBe(true);
   });

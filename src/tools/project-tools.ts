@@ -8,13 +8,14 @@ import { generateJson } from "../core/builder.js";
 import { configureDraft } from "../core/configure-draft.js";
 import { repairProject } from "../core/repair.js";
 import { validateMvuProject } from "../core/mvu-validation.js";
+import { convertMvuPath } from "../core/mvu-paths.js";
 import { applyMvuPreset, listMvuVariables, removeMvuVariable, rewriteMvuVariables, upsertMvuVariable } from "../core/mvu-variables.js";
 import { validateProject, writeValidationMarkdownReport } from "../core/validation.js";
 import { importNovaConfig } from "../core/nova-importer.js";
 import { createEjsStageTemplate } from "../core/creative-tools.js";
 import { entrySummary, generateTavernSyncConfig, queryEntries, updateEntryStatus } from "../core/entry-manifest.js";
 import { checkDelivery, readSourceFile, resumeProject } from "../core/project-status.js";
-import { InitProjectInputSchema, UpdatePlanInputSchema, WriteDraftInputSchema, WriteSourceFileInputSchema, ValidateProjectInputSchema, GenerateJsonInputSchema, QueryProjectInputSchema, ReadSourceFileInputSchema, ResumeProjectInputSchema, CheckDeliveryInputSchema, ImportExistingJsonInputSchema, ImportNovaConfigInputSchema, RepairProjectInputSchema, ValidateMvuInputSchema, ConfigureDraftInputSchema, ListMvuVariablesInputSchema, UpsertMvuVariableInputSchema, RemoveMvuVariableInputSchema, RewriteMvuVariablesInputSchema, ApplyMvuPresetInputSchema, UpdateEntryStatusInputSchema, QueryEntriesInputSchema, GenerateTavernSyncConfigInputSchema, CreateEjsStageTemplateInputSchema } from "./schemas.js";
+import { InitProjectInputSchema, UpdatePlanInputSchema, WriteDraftInputSchema, WriteSourceFileInputSchema, ValidateProjectInputSchema, GenerateJsonInputSchema, QueryProjectInputSchema, ReadSourceFileInputSchema, ResumeProjectInputSchema, CheckDeliveryInputSchema, ImportExistingJsonInputSchema, ImportNovaConfigInputSchema, RepairProjectInputSchema, ValidateMvuInputSchema, ConvertMvuPathInputSchema, ConfigureDraftInputSchema, ListMvuVariablesInputSchema, UpsertMvuVariableInputSchema, RemoveMvuVariableInputSchema, RewriteMvuVariablesInputSchema, ApplyMvuPresetInputSchema, UpdateEntryStatusInputSchema, QueryEntriesInputSchema, GenerateTavernSyncConfigInputSchema, CreateEjsStageTemplateInputSchema } from "./schemas.js";
 import { toolText } from "./helpers.js";
 
 export function registerProjectTools(server: McpServer): void {
@@ -179,6 +180,11 @@ export function registerProjectTools(server: McpServer): void {
     const parsed = ValidateMvuInputSchema.parse(input);
     const project = await findProject(parsed.project_id);
     return toolText(await validateMvuProject(project));
+  });
+
+  server.tool("convert_mvu_path", ConvertMvuPathInputSchema.shape, async (input) => {
+    const parsed = ConvertMvuPathInputSchema.parse(input);
+    return toolText(convertMvuPath({ path: parsed.path, from: parsed.from, to: parsed.to }));
   });
 
   server.tool("apply_mvu_preset", ApplyMvuPresetInputSchema.shape, async (input) => {

@@ -47,3 +47,14 @@ html:
 - 避免污染全局 DOM/CSS；`document.body`、全局 `* {}`、未 scoped 的 `.mes_text` 会触发 warning。
 
 启用状态栏时，`first_mes` 必须包含 `<StatusPlaceHolderImpl/>`。
+
+## 占位符双通道
+
+状态栏使用 `<StatusPlaceHolderImpl/>` 作为占位符：
+
+- prompt 阶段用 regex 隐藏占位符，避免发给 AI。
+- 渲染阶段用 regex 替换成 `source/html/statusbar.html` 与可选 CSS。
+
+本项目默认保留 `safe_macro` 安全策略：不使用远程 `load()`，不引用外链。确需复杂交互时才使用 `dynamic_js`，并记录在 plan.md。
+
+读取 MVU 变量路径前，可用 `convert_mvu_path` 将 YAML 点路径转换为状态栏/EJS 所需的 `stat_data.xxx` 形式，避免和 AI JSON Patch 的 `/xxx` 路径混用。
