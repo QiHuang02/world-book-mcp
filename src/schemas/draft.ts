@@ -7,6 +7,15 @@ export const EntryTypeSchema = z.enum([
   "character_overview",
   "character_basic",
   "character_personality",
+  "character_palette",
+  "character_facets",
+  "character_relationships",
+  "character_rephrase",
+  "character_wardrobe",
+  "character_nsfw_palette",
+  "character_sexual_characteristics",
+  "character_xp_card",
+  "character_stage",
   "item",
   "ability",
   "scene",
@@ -82,6 +91,21 @@ export const RegexScriptDraftSchema = z.object({
   disabled: z.boolean().default(false),
 });
 
+export const TavernHelperScriptDraftSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  content: z.string().optional(),
+  contentFile: z.string().optional(),
+  enabled: z.boolean().default(false),
+  info: z.string().default(""),
+  allowExternal: z.boolean().default(false),
+  buttons: z.array(z.object({
+    name: z.string().min(1),
+    visible: z.boolean().default(true),
+  })).default([]),
+  data: z.record(z.string(), z.unknown()).default({}),
+});
+
 export const AssetsDraftSchema = z.object({
   mvu: z.object({
     enabled: z.boolean().default(false),
@@ -105,6 +129,9 @@ export const AssetsDraftSchema = z.object({
     }).default({ enabled: false, variablePaths: [], hideRegex: true, mode: "safe_macro" }),
   }).default({ statusbar: { enabled: false, variablePaths: [], hideRegex: true, mode: "safe_macro" } }),
   regex: z.object({ scripts: z.string().optional() }).default({}),
+  tavernHelper: z.object({
+    scripts: z.string().optional(),
+  }).default({}),
   ejs: z.object({
     enabled: z.boolean().default(false),
     preprocess: z.object({
@@ -132,3 +159,4 @@ export type WorldbookDraft = z.infer<typeof WorldbookDraftSchema>;
 export type WorldbookEntryDraft = z.infer<typeof WorldbookEntryDraftSchema>;
 export type AssetsDraft = z.infer<typeof AssetsDraftSchema>;
 export type RegexScriptDraft = z.infer<typeof RegexScriptDraftSchema>;
+export type TavernHelperScriptDraft = z.infer<typeof TavernHelperScriptDraftSchema>;

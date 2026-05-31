@@ -24,14 +24,14 @@ const MVU_REFS = { schema: "../source/mvu/schema.js", initvar: "../source/mvu/in
 
 export async function applyMvuPreset(project: Project, options: { preset: "minimal" | "nova" | "tavern_cards"; overwrite?: boolean }): Promise<{ ok: boolean; project_id: string; preset: string; files: string[]; next_actions: string[] }> {
   const files: string[] = [];
-  const variables: MvuVariableInput[] = [];
+  const variables: Array<MvuVariableInput & { dotPath: string }> = [];
   const presetNote = options.preset === "nova" ? "# nova profile: initvar → update-rules → variable-list → output-format\n" : options.preset === "tavern_cards" ? "# tavern-cards profile: [InitVar] / [mvu_update] / [mvu_plot] prefixes\n" : "";
   const contents: Record<string, string> = {
     "mvu/schema.js": buildSchemaJs(variables),
     "mvu/initvar.yaml": "{}\n",
-    "mvu/update-rules.yaml": `${presetNote}# 在此描述变量更新规则。\n`,
-    "mvu/variable-list.md": `${presetNote}# 变量列表\n`,
-    "mvu/output-format.md": `${presetNote}# 变量输出格式\n`,
+    "mvu/update-rules.yaml": `${presetNote}${stringifyYaml({ 变量更新规则: {} })}`,
+    "mvu/variable-list.md": `${presetNote}${buildVariableList(variables)}`,
+    "mvu/output-format.md": `${presetNote}${buildOutputFormat(variables)}`,
     ...(options.preset === "tavern_cards" ? {
       "html/变量更新中美化.html": `${MVU_LOADING_BEAUTIFY_HTML}\n`,
       "html/变量更新美化.html": `${MVU_DONE_BEAUTIFY_HTML}\n`,
@@ -85,13 +85,11 @@ async function rewriteMvuFiles(project: Project, variables: Array<MvuVariableInp
   const options = { ...DEFAULT_REWRITE, ...(rewrite ?? {}) };
   await enableMvuAssets(project);
   const files: string[] = [];
-  const root = projectDir(project.slug);
   if (options.schema) files.push(await writeSource(project, "mvu/schema.js", buildSchemaJs(variables)));
   if (options.initvar) files.push(await writeSource(project, "mvu/initvar.yaml", stringifyYaml(unflattenValues(variables))));
   if (options.variableList) files.push(await writeSource(project, "mvu/variable-list.md", buildVariableList(variables)));
   if (options.updateRules) files.push(await writeSource(project, "mvu/update-rules.yaml", buildUpdateRules(variables)));
   if (options.outputFormat) files.push(await writeSource(project, "mvu/output-format.md", buildOutputFormat(variables)));
-  void root;
   return files;
 }
 
@@ -165,7 +163,8 @@ function schemaExpression(variable: MvuVariableInput): string {
 }
 
 function buildVariableList(variables: Array<MvuVariableInput & { dotPath: string }>): string {
-  return `${variables.map((variable) => `- ${variable.dotPath}${variable.description ? `：${variable.description}` : ""}`).join("\n")}\n`;
+  const descriptions = variables.map((variable) => `- stat_data.${variable.dotPath}${variable.description ? `：${variable.description}` : ""}`).join("\n");
+  return `---\n<status_current_variables>\n{{format_message_variable::stat_data}}\n</status_current_variables>\n\n# 变量说明\n${descriptions}\n`;
 }
 
 function buildUpdateRules(variables: Array<MvuVariableInput & { dotPath: string }>): string {
@@ -198,7 +197,8 @@ function shouldSkipUpdateRule(variable: MvuVariableInput & { dotPath: string }):
 }
 
 function buildOutputFormat(variables: Array<MvuVariableInput & { dotPath: string }>): string {
-  return `${variables.map((variable) => `- ${variable.dotPath}: {{getvar::stat_data.${variable.dotPath}}}`).join("\n")}\n`;
+  const examples = variables.filter((variable) => !shouldSkipUpdateRule(variable)).map((variable) => `      { "op": "replace", "path": "/${variable.path.join("/")}", "value": ${JSON.stringify(variable.defaultValue ?? defaultForKind(variable.kind))} }`).join(",\n");
+  return `---\n变量输出格式:\n  rule:\n    - 在下一次回复末尾同时输出更新分析和实际更新命令。\n    - 更新命令必须是 JSON Patch 风格的 JSON 数组；路径不带 stat_data 根键。\n    - 支持 replace、delta、insert、remove、move；不要更新字段名以 _ 或 $ 开头的变量。\n  tracked_variables:\n${variables.map((variable) => `    - stat_data.${variable.dotPath}`).join("\n")}\n  format: |-\n    <UpdateVariable>\n    <Analysis>$(IN ENGLISH, no more than 80 words; analyze only the current reply.)</Analysis>\n    <JSONPatch>\n    [\n${examples || "      { \"op\": \"replace\", \"path\": \"/变量路径\", \"value\": \"新值\" }"}\n    ]\n    </JSONPatch>\n    </UpdateVariable>\n`;
 }
 
 function unflattenValues(variables: Array<MvuVariableInput & { dotPath: string }>): Record<string, unknown> {

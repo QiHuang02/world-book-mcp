@@ -1,12 +1,12 @@
 import { z } from "zod";
-import { EntryTypeSchema } from "../schemas/draft.js";
+import { EntryTypeSchema, RegexScriptDraftSchema } from "../schemas/draft.js";
 import { OutputKindSchema, SourceKindSchema } from "../schemas/project.js";
 
 export const InitProjectInputSchema = z.object({
   name: z.string().min(1),
   output: OutputKindSchema,
   source: SourceKindSchema,
-  assets: z.object({ mvu: z.boolean().optional(), html: z.boolean().optional(), regex: z.boolean().optional(), ejs: z.boolean().optional() }).optional(),
+  assets: z.object({ mvu: z.boolean().optional(), html: z.boolean().optional(), regex: z.boolean().optional(), ejs: z.boolean().optional(), tavernHelper: z.boolean().optional() }).optional(),
   if_exists: z.enum(["error", "overwrite"]).default("error"),
 });
 
@@ -187,4 +187,59 @@ export const CreateEjsStageTemplateInputSchema = z.object({
   common_derivations: z.array(z.string()).default([]),
   stages: z.array(z.object({ id: z.string().min(1), label: z.string().min(1), value: z.string().min(1), condition: z.string().optional(), content: z.string().optional(), exclusive_derivations: z.array(z.string()).default([]), rephrase_notes: z.array(z.string()).default([]) })).min(1),
   overwrite: z.boolean().default(false),
+});
+
+export const CreateStatusbarTemplateInputSchema = z.object({
+  project_id: z.string().default("active"),
+  mode: z.enum(["safe_macro", "dynamic_js"]).default("safe_macro"),
+  title: z.string().optional(),
+  variables: z.array(z.object({ label: z.string().min(1), path: z.string().min(1) })).min(1),
+  theme: z.enum(["simple", "dark", "moon"]).default("dark"),
+  overwrite: z.boolean().default(false),
+});
+
+export const CreateFrontendBeautifyTemplateInputSchema = z.object({
+  project_id: z.string().default("active"),
+  id: z.string().min(1),
+  label: z.string().optional(),
+  tag: z.string().min(1),
+  mode: z.enum(["text", "structured"]).default("text"),
+  html: z.string().optional(),
+  css: z.string().optional(),
+  overwrite: z.boolean().default(false),
+});
+
+export const UpsertRegexScriptInputSchema = RegexScriptDraftSchema.extend({
+  project_id: z.string().default("active"),
+  overwrite: z.boolean().default(false),
+});
+
+export const UpsertTavernHelperScriptInputSchema = z.object({
+  project_id: z.string().default("active"),
+  id: z.string().min(1),
+  name: z.string().min(1),
+  content: z.string().optional(),
+  content_file: z.string().optional(),
+  enabled: z.boolean().default(false),
+  info: z.string().optional(),
+  allow_external: z.boolean().default(false),
+  buttons: z.array(z.object({ name: z.string().min(1), visible: z.boolean().default(true) })).default([]),
+  data: z.record(z.string(), z.unknown()).default({}),
+  overwrite: z.boolean().default(false),
+});
+
+export const CreateAdultEntryTemplateInputSchema = z.object({
+  project_id: z.string().default("active"),
+  id: z.string().min(1),
+  character_name: z.string().min(1),
+  type: z.enum(["character_nsfw_palette", "character_sexual_characteristics", "character_xp_card"]),
+  source_path: z.string().optional(),
+  title: z.string().optional(),
+  content: z.string().optional(),
+  keys: z.array(z.string()).optional(),
+  strategy: z.enum(["blue", "green"]).default("blue"),
+  consent_boundary: z.array(z.string()).default([]),
+  age_gate: z.enum(["adult_confirmed"]).optional(),
+  overwrite: z.boolean().default(false),
+  register: z.boolean().default(true),
 });

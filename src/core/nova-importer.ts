@@ -3,7 +3,7 @@ import path from "node:path";
 import type { Project } from "../schemas/project.js";
 import { createProject, projectDir, writeDraft } from "../storage/workspace.js";
 import { resolveSourceFilePath } from "../storage/path-policy.js";
-import { parseYaml, readTextFile, writeTextFile } from "../utils/yaml.js";
+import { parseYaml, readTextFile, stringifyYaml, writeTextFile } from "../utils/yaml.js";
 import { sanitizeFilename } from "../utils/ids.js";
 
 export interface NovaImportResult { ok: boolean; project_id: string; project_path: string; imported_from: string; notes: string[] }
@@ -49,7 +49,7 @@ export async function importNovaConfig(inputPath: string, nameOverride: string |
     worldbookEntries.push(entry(`nova-entry-${index + 1}`, String(raw.comment ?? `Nova Entry ${index + 1}`), "other", `../source/${rel}`, Number(raw.insertion_order ?? index + 1), { position: positionName(String(raw.position ?? "after_char")), depth: typeof raw.depth === "number" ? raw.depth : 4, enabled: raw.enabled !== false }));
   }
 
-  const assets = { mvu: { enabled: false }, html: { statusbar: { enabled: false, mode: "safe_macro" } }, regex: {}, ejs: { enabled: false, entries: [] } } as Record<string, unknown>;
+  const assets = { mvu: { enabled: false }, html: { statusbar: { enabled: false, mode: "safe_macro" } }, regex: {}, tavernHelper: {}, ejs: { enabled: false, entries: [] } } as Record<string, unknown>;
   const extensions = (config.extensions as Record<string, unknown> | undefined) ?? {};
   const statusBar = await readNovaRef(baseDir, extensions.status_bar);
   if (statusBar.trim()) {
@@ -58,7 +58,8 @@ export async function importNovaConfig(inputPath: string, nameOverride: string |
   }
 
   const scripts = Array.isArray(config.scripts) ? config.scripts as Array<Record<string, unknown>> : [];
-  for (const script of scripts) {
+  const helperScripts: Record<string, unknown>[] = [];
+  for (const [index, script] of scripts.entries()) {
     const scriptName = String(script.name ?? "script");
     const content = await readNovaRef(baseDir, script.content);
     if (!content.trim()) continue;
@@ -67,10 +68,15 @@ export async function importNovaConfig(inputPath: string, nameOverride: string |
       await ensureMvuDefaults(project);
       assets.mvu = { enabled: true, schema: "../source/mvu/schema.js", initvar: "../source/mvu/initvar.yaml", updateRules: "../source/mvu/update-rules.yaml", variableList: "../source/mvu/variable-list.md", outputFormat: "../source/mvu/output-format.md", variableListPath: "stat_data", hideRegex: true, beautifyRegex: true };
     } else {
-      const rel = `mvu/scripts/${safeName(scriptName)}.js`;
+      const rel = `tavern-helper/${String(index + 1).padStart(3, "0")}-${safeName(scriptName)}.js`;
       await writeSource(project, rel, content);
-      notes.push(`TavernHelper 脚本 ${scriptName} 已保存到 source/${rel}，当前不会自动打包`);
+      helperScripts.push({ id: String(script.id ?? `nova-helper-${index + 1}`), name: scriptName, contentFile: path.basename(rel), enabled: script.enabled === true, info: String(script.info ?? "Nova 导入脚本，请确认来源后启用"), allowExternal: false, buttons: Array.isArray(script.buttons) ? script.buttons : [], data: typeof script.data === "object" && script.data !== null ? script.data : {} });
+      notes.push(`TavernHelper 脚本 ${scriptName} 已保存到 source/${rel}`);
     }
+  }
+  if (helperScripts.length) {
+    await writeSource(project, "tavern-helper/scripts.yaml", stringifyYaml(helperScripts));
+    assets.tavernHelper = { scripts: "../source/tavern-helper/scripts.yaml" };
   }
 
   await writeDraft(project, "card", { name, description: "", ...cardRefs, first_mes: "../source/fields/first_mes.md", alternate_greetings: [], creator: String(config.creator ?? ""), character_version: String(config.character_version ?? "1.0"), talkativeness: String(extensions.talkativeness ?? "0.5"), fav: Boolean(extensions.fav ?? false), worldbook: { include: true, name: String(characterBook.name ?? name) } });

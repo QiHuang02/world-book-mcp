@@ -7,7 +7,7 @@ export const WORKSPACE_DIR = path.resolve(ROOT_DIR, ".worldbook");
 
 const DENY_WRITE_DIRS = new Set([".git", "node_modules", "dist"]);
 const PROTECTED_ROOT_FILES = new Set(["package.json", "package-lock.json", "tsconfig.json", "vitest.config.ts"]);
-const SOURCE_TOP_LEVEL_DIRS = new Set(["fields", "entries", "mvu", "html", "regex", "ejs", "references", "extraction"]);
+const SOURCE_TOP_LEVEL_DIRS = new Set(["fields", "entries", "mvu", "html", "regex", "ejs", "tavern-helper", "references", "extraction"]);
 
 export function assertInside(baseDir: string, candidate: string): string {
   const base = path.resolve(baseDir);
