@@ -3,6 +3,7 @@ import path from "node:path";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createProject, draftPath, findProject, listProjects, projectDir, projectPath, readDraft, readPlan, writeDraft, writePlan } from "../storage/workspace.js";
 import { resolveSourceFilePath } from "../storage/path-policy.js";
+import { numberToPosition } from "../core/position.js";
 import { stringifyYaml, writeTextFile } from "../utils/yaml.js";
 import { generateJson } from "../core/builder.js";
 import { configureDraft } from "../core/configure-draft.js";
@@ -12,10 +13,10 @@ import { convertMvuPath } from "../core/mvu-paths.js";
 import { applyMvuPreset, listMvuVariables, removeMvuVariable, rewriteMvuVariables, upsertMvuVariable } from "../core/mvu-variables.js";
 import { validateProject, writeValidationMarkdownReport } from "../core/validation.js";
 import { importNovaConfig } from "../core/nova-importer.js";
-import { createEjsStageTemplate } from "../core/creative-tools.js";
+import { createAdultEntryTemplate, createEjsStageTemplate, createFrontendBeautifyTemplate, createStatusbarTemplate, upsertRegexScript, upsertTavernHelperScript } from "../core/creative-tools.js";
 import { entrySummary, generateTavernSyncConfig, queryEntries, updateEntryStatus } from "../core/entry-manifest.js";
 import { checkDelivery, readSourceFile, resumeProject } from "../core/project-status.js";
-import { InitProjectInputSchema, UpdatePlanInputSchema, WriteDraftInputSchema, WriteSourceFileInputSchema, ValidateProjectInputSchema, GenerateJsonInputSchema, QueryProjectInputSchema, ReadSourceFileInputSchema, ResumeProjectInputSchema, CheckDeliveryInputSchema, ImportExistingJsonInputSchema, ImportNovaConfigInputSchema, RepairProjectInputSchema, ValidateMvuInputSchema, ConvertMvuPathInputSchema, ConfigureDraftInputSchema, ListMvuVariablesInputSchema, UpsertMvuVariableInputSchema, RemoveMvuVariableInputSchema, RewriteMvuVariablesInputSchema, ApplyMvuPresetInputSchema, UpdateEntryStatusInputSchema, QueryEntriesInputSchema, GenerateTavernSyncConfigInputSchema, CreateEjsStageTemplateInputSchema } from "./schemas.js";
+import { InitProjectInputSchema, UpdatePlanInputSchema, WriteDraftInputSchema, WriteSourceFileInputSchema, ValidateProjectInputSchema, GenerateJsonInputSchema, QueryProjectInputSchema, ReadSourceFileInputSchema, ResumeProjectInputSchema, CheckDeliveryInputSchema, ImportExistingJsonInputSchema, ImportNovaConfigInputSchema, RepairProjectInputSchema, ValidateMvuInputSchema, ConvertMvuPathInputSchema, ConfigureDraftInputSchema, ListMvuVariablesInputSchema, UpsertMvuVariableInputSchema, RemoveMvuVariableInputSchema, RewriteMvuVariablesInputSchema, ApplyMvuPresetInputSchema, UpdateEntryStatusInputSchema, QueryEntriesInputSchema, GenerateTavernSyncConfigInputSchema, CreateEjsStageTemplateInputSchema, CreateStatusbarTemplateInputSchema, CreateFrontendBeautifyTemplateInputSchema, UpsertRegexScriptInputSchema, UpsertTavernHelperScriptInputSchema, CreateAdultEntryTemplateInputSchema } from "./schemas.js";
 import { toolText } from "./helpers.js";
 
 export function registerProjectTools(server: McpServer): void {
@@ -38,6 +39,7 @@ export function registerProjectTools(server: McpServer): void {
         html: path.resolve(sourceRoot, "html"),
         regex: path.resolve(sourceRoot, "regex"),
         ejs: path.resolve(sourceRoot, "ejs"),
+        tavern_helper: path.resolve(sourceRoot, "tavern-helper"),
         references: path.resolve(sourceRoot, "references"),
         extraction: path.resolve(sourceRoot, "extraction"),
       },
@@ -241,6 +243,37 @@ export function registerProjectTools(server: McpServer): void {
     return toolText(await createEjsStageTemplate(project, { controller_id: parsed.controller_id, variable: parsed.variable, base_profile: parsed.base_profile, common_derivations: parsed.common_derivations, stages: parsed.stages, overwrite: parsed.overwrite }));
   });
 
+  server.tool("create_statusbar_template", CreateStatusbarTemplateInputSchema.shape, async (input) => {
+    const parsed = CreateStatusbarTemplateInputSchema.parse(input);
+    const project = await findProject(parsed.project_id);
+    return toolText(await createStatusbarTemplate(project, { mode: parsed.mode, title: parsed.title, variables: parsed.variables, theme: parsed.theme, overwrite: parsed.overwrite }));
+  });
+
+  server.tool("create_frontend_beautify_template", CreateFrontendBeautifyTemplateInputSchema.shape, async (input) => {
+    const parsed = CreateFrontendBeautifyTemplateInputSchema.parse(input);
+    const project = await findProject(parsed.project_id);
+    return toolText(await createFrontendBeautifyTemplate(project, { id: parsed.id, label: parsed.label, tag: parsed.tag, mode: parsed.mode, html: parsed.html, css: parsed.css, overwrite: parsed.overwrite }));
+  });
+
+  server.tool("upsert_regex_script", UpsertRegexScriptInputSchema.shape, async (input) => {
+    const parsed = UpsertRegexScriptInputSchema.parse(input);
+    const project = await findProject(parsed.project_id);
+    const { project_id: _projectId, overwrite, ...script } = parsed;
+    return toolText(await upsertRegexScript(project, script, { overwrite }));
+  });
+
+  server.tool("upsert_tavern_helper_script", UpsertTavernHelperScriptInputSchema.shape, async (input) => {
+    const parsed = UpsertTavernHelperScriptInputSchema.parse(input);
+    const project = await findProject(parsed.project_id);
+    return toolText(await upsertTavernHelperScript(project, { id: parsed.id, name: parsed.name, content: parsed.content, content_file: parsed.content_file, enabled: parsed.enabled, info: parsed.info, allow_external: parsed.allow_external, buttons: parsed.buttons, data: parsed.data, overwrite: parsed.overwrite }));
+  });
+
+  server.tool("create_adult_entry_template", CreateAdultEntryTemplateInputSchema.shape, async (input) => {
+    const parsed = CreateAdultEntryTemplateInputSchema.parse(input);
+    const project = await findProject(parsed.project_id);
+    return toolText(await createAdultEntryTemplate(project, { id: parsed.id, character_name: parsed.character_name, type: parsed.type, source_path: parsed.source_path, title: parsed.title, content: parsed.content, keys: parsed.keys, strategy: parsed.strategy, consent_boundary: parsed.consent_boundary, age_gate: parsed.age_gate, overwrite: parsed.overwrite, register: parsed.register }));
+  });
+
   server.tool("list_projects", {}, async () => toolText({ projects: await listProjects() }));
 }
 
@@ -281,7 +314,7 @@ export async function importExistingJson(inputPath: string, nameOverride: string
       const rel = `${entriesDir}/${String(index + 1).padStart(3, "0")}-${safeName(String(entry.comment ?? id))}.xyaml`;
       await writeTextFile(resolveSourceFilePath(projectDir(project.slug), project.paths.sourceRoot, rel), String(entry.content ?? ""));
       const ext = (entry.extensions as Record<string, unknown> | undefined) ?? {};
-      entries.push({ id, comment: String(entry.comment ?? id), type: "other", content: `../source/${rel}`, enabled: entry.enabled !== false, constant: Boolean(entry.constant ?? true), keys: stringArray(entry.keys), secondary_keys: stringArray(entry.secondary_keys), position: positionName(Number(ext.position ?? 1)), order: Number(entry.insertion_order ?? entry.order ?? index + 1), depth: typeof ext.depth === "number" ? ext.depth : 4, scanDepth: typeof ext.scan_depth === "number" ? ext.scan_depth : null, preventRecursion: true, excludeRecursion: true });
+      entries.push({ id, comment: String(entry.comment ?? id), type: "other", content: `../source/${rel}`, enabled: entry.enabled !== false, constant: Boolean(entry.constant ?? true), keys: stringArray(entry.keys), secondary_keys: stringArray(entry.secondary_keys), position: numberToPosition(Number(ext.position ?? 1)), order: Number(entry.insertion_order ?? entry.order ?? index + 1), depth: typeof ext.depth === "number" ? ext.depth : 4, scanDepth: typeof ext.scan_depth === "number" ? ext.scan_depth : null, preventRecursion: true, excludeRecursion: true });
     }
     const fieldRefs = await writeImportedCardFields(project, data, { first_mes: firstMes });
     await writeDraft(project, "card", { name, description: "", ...fieldRefs, first_mes: "../source/fields/first_mes.md", alternate_greetings: greetingRefs, creator: String(data.creator ?? ""), character_version: String(data.character_version ?? "1.0"), talkativeness: String(((data.extensions as Record<string, unknown> | undefined)?.talkativeness) ?? "0.5"), fav: Boolean((data.extensions as Record<string, unknown> | undefined)?.fav ?? false), tags: stringArray(data.tags), worldbook: { include: true, name: String(characterBook.name ?? name) } });
@@ -303,7 +336,7 @@ export async function importExistingJson(inputPath: string, nameOverride: string
       const id = `imported-entry-${index + 1}`;
       const rel = `entries/${String(index + 1).padStart(3, "0")}-${safeName(String(entry.comment ?? id))}.xyaml`;
       await writeTextFile(resolveSourceFilePath(projectDir(project.slug), project.paths.sourceRoot, rel), String(entry.content ?? ""));
-      entries.push({ id, comment: String(entry.comment ?? id), type: "other", content: `../source/${rel}`, enabled: entry.disable !== true, constant: Boolean(entry.constant ?? true), keys: stringArray(entry.key), secondary_keys: stringArray(entry.keysecondary), position: positionName(Number(entry.position ?? 1)), order: Number(entry.order ?? index + 1), depth: typeof entry.depth === "number" ? entry.depth : 4, scanDepth: typeof entry.scanDepth === "number" ? entry.scanDepth : null, preventRecursion: true, excludeRecursion: true });
+      entries.push({ id, comment: String(entry.comment ?? id), type: "other", content: `../source/${rel}`, enabled: entry.disable !== true, constant: Boolean(entry.constant ?? true), keys: stringArray(entry.key), secondary_keys: stringArray(entry.keysecondary), position: numberToPosition(Number(entry.position ?? 1)), order: Number(entry.order ?? index + 1), depth: typeof entry.depth === "number" ? entry.depth : 4, scanDepth: typeof entry.scanDepth === "number" ? entry.scanDepth : null, preventRecursion: true, excludeRecursion: true });
       index += 1;
     }
     await writeDraft(project, "worldbook", { name, entries });
@@ -332,7 +365,7 @@ async function importCardProfileWorldbookEntries(project: import("../schemas/pro
 }
 
 function createDefaultAssetsDraft(): Record<string, unknown> {
-  return { mvu: { enabled: false }, html: { statusbar: { enabled: false } }, regex: {}, ejs: { enabled: false, entries: [] } };
+  return { mvu: { enabled: false }, html: { statusbar: { enabled: false } }, regex: {}, tavernHelper: {}, ejs: { enabled: false, entries: [] } };
 }
 
 async function importMvuEntry(project: import("../schemas/project.js").Project, entry: Record<string, unknown>, assets: Record<string, unknown>): Promise<boolean> {
@@ -383,11 +416,13 @@ async function importCardAssets(project: import("../schemas/project.js").Project
       changed = true;
     }
   }
-  const tavernHelperScripts = extensions.TavernHelper_scripts;
-  if (Array.isArray(tavernHelperScripts)) {
-    const schema = tavernHelperScripts.find((script) => String(((script as Record<string, unknown>).value as Record<string, unknown> | undefined)?.name ?? "").includes("变量结构"));
-    const content = String(((schema as Record<string, unknown> | undefined)?.value as Record<string, unknown> | undefined)?.content ?? "");
-    if (content.trim()) {
+  const tavernHelperScripts = collectTavernHelperScripts(extensions);
+  const customHelperScripts: Record<string, unknown>[] = [];
+  for (const [index, script] of tavernHelperScripts.entries()) {
+    const value = helperScriptValue(script);
+    const scriptName = String(value.name ?? `Tavern Helper ${index + 1}`);
+    const content = String(value.content ?? "");
+    if (/变量结构|schema/i.test(scriptName) && content.trim()) {
       await writeTextFile(resolveSourceFilePath(projectDir(project.slug), project.paths.sourceRoot, "mvu/schema.js"), content);
       assets.mvu = { enabled: true, schema: "../source/mvu/schema.js", initvar: "../source/mvu/initvar.yaml", updateRules: "../source/mvu/update-rules.yaml", variableList: "../source/mvu/variable-list.md", outputFormat: "../source/mvu/output-format.md", hideRegex: true, beautifyRegex: true };
       await writeTextFile(resolveSourceFilePath(projectDir(project.slug), project.paths.sourceRoot, "mvu/initvar.yaml"), "{}\n");
@@ -395,9 +430,46 @@ async function importCardAssets(project: import("../schemas/project.js").Project
       await writeTextFile(resolveSourceFilePath(projectDir(project.slug), project.paths.sourceRoot, "mvu/variable-list.md"), "");
       await writeTextFile(resolveSourceFilePath(projectDir(project.slug), project.paths.sourceRoot, "mvu/output-format.md"), "");
       changed = true;
+      continue;
     }
+    if (!content.trim()) continue;
+    const id = String(value.id ?? `imported-helper-${index + 1}`);
+    const rel = `tavern-helper/${String(index + 1).padStart(3, "0")}-${safeName(scriptName)}.js`;
+    await writeTextFile(resolveSourceFilePath(projectDir(project.slug), project.paths.sourceRoot, rel), content);
+    customHelperScripts.push({
+      id,
+      name: scriptName,
+      contentFile: path.basename(rel),
+      enabled: false,
+      info: String(value.info ?? "导入自旧卡，默认禁用；启用前请检查脚本来源"),
+      allowExternal: false,
+      buttons: Array.isArray(value.buttons) ? value.buttons : [],
+      data: typeof value.data === "object" && value.data !== null ? value.data : {},
+    });
+  }
+  if (customHelperScripts.length) {
+    await writeTextFile(resolveSourceFilePath(projectDir(project.slug), project.paths.sourceRoot, "tavern-helper/scripts.yaml"), stringifyYaml(customHelperScripts));
+    assets.tavernHelper = { scripts: "../source/tavern-helper/scripts.yaml" };
+    changed = true;
   }
   return changed;
+}
+
+function collectTavernHelperScripts(extensions: Record<string, unknown>): unknown[] {
+  const modern = extensions.TavernHelper_scripts;
+  const legacy = (extensions.tavern_helper as Record<string, unknown> | undefined)?.scripts;
+  return [...(Array.isArray(modern) ? modern : []), ...(Array.isArray(legacy) ? legacy : [])];
+}
+
+function helperScriptValue(script: unknown): Record<string, unknown> {
+  const record = script as Record<string, unknown>;
+  const nested = record.value as Record<string, unknown> | undefined;
+  const button = record.button as Record<string, unknown> | undefined;
+  return {
+    ...record,
+    ...(nested ?? {}),
+    buttons: Array.isArray(nested?.buttons) ? nested.buttons : Array.isArray(button?.buttons) ? button.buttons : Array.isArray(record.buttons) ? record.buttons : [],
+  };
 }
 
 function normalizeRegexScript(script: unknown, index = 0): Record<string, unknown> {
@@ -445,7 +517,7 @@ async function listRelativeFiles(root: string): Promise<string[]> {
 
 function stringArray(value: unknown): string[] { return Array.isArray(value) ? value.map(String) : []; }
 function safeName(value: string): string { return value.replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_").slice(0, 60) || "entry"; }
-function positionName(value: number): string { return ({ 0: "before_char", 1: "after_char", 2: "before_an", 3: "after_an", 4: "at_depth", 5: "before_em", 6: "after_em", 7: "outlet" } as Record<number, string>)[value] ?? "after_char"; }
+
 
 type UpdatePlanInput = ReturnType<typeof UpdatePlanInputSchema.parse>;
 

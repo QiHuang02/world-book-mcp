@@ -94,8 +94,10 @@ export async function validateMvuProject(project: Project): Promise<MvuValidatio
     }
     if (paths.outputFormat) {
       const outputFormat = await readTextFile(paths.outputFormat).catch(() => "");
+      const coversAllByPatch = /<JSONPatch>|tracked_variables|path\s*[:：].*不带\s*stat_data|路径不带\s*stat_data/i.test(outputFormat);
       for (const leaf of initvarLeafPaths) {
-        if (outputFormat.trim() && !outputFormat.includes(leaf)) issues.push(issue("warning", "mvu.output_format.missing_variable", `output-format.md 未提及 initvar 变量: ${leaf}`, "mvu.outputFormat"));
+        const fullPath = `stat_data.${leaf.replace(/^stat_data\./, "")}`;
+        if (outputFormat.trim() && !coversAllByPatch && !outputFormat.includes(leaf) && !outputFormat.includes(fullPath)) issues.push(issue("warning", "mvu.output_format.missing_variable", `output-format.md 未提及 initvar 变量: ${leaf}`, "mvu.outputFormat"));
       }
     }
     let updateRulesText = "";

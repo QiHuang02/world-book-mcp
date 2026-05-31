@@ -2,13 +2,32 @@
 
 推荐条目类型：
 
+世界观与背景：
 - `world_summary`：世界观总纲
 - `background`：背景设定
+- `faction`：势力/组织
+
+角色：
+- `character_overview`：角色速览、索引、基本识别信息
 - `character_basic`：角色基础信息
-- `character_personality`：角色性格
+- `character_palette` / `character_personality`：性格调色盘
+- `character_facets`：三面性/多面性
+- `character_relationships`：关系画面
+- `character_rephrase`：二次解释
+- `character_wardrobe`：衣柜清单
+- `character_nsfw_palette`：NSFW 调色盘（亲密行为的性格驱动）
+- `character_sexual_characteristics`：生理特征描述
+- `character_xp_card`：手枪卡（纯 XP 导向）
+- `character_stage`：多阶段角色
+
+NPC 与功能：
+- `npc`：功能性配角
 - `player`：`{{user}}` 边界
-- `npc`、`item`、`ability`、`scene`、`event`、`faction`
+
+内容与规则：
+- `item`、`ability`、`scene`、`event`
 - `style`、`dialogue`
+- `other`：其他自定义内容
 
 蓝灯条目：`constant: true`，通常 `keys: []`。
 

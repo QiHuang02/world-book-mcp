@@ -55,7 +55,6 @@ export async function resumeProject(project: Project, options: { include_plan?: 
   const entries = draft.worldbook?.entries ?? [];
   const planEntries = await parsePlanEntries(project);
   const planCompare = await comparePlanEntries(project, entries);
-  const sourceRoot = path.resolve(projectDir(project.slug), project.paths.sourceRoot);
   const firstMesPath = draft.card ? resolveDraftReference(projectDir(project.slug), draftPath(project, "card"), draft.card.first_mes) : undefined;
   const mvuMissing = await mvuMissingFiles(project);
   const ejsEntries = draft.assets?.ejs.entries ?? [];
@@ -83,6 +82,21 @@ export async function resumeProject(project: Project, options: { include_plan?: 
         stage_count: ejsEntries.filter((entry) => entry.role === "stage").length,
         enabled_stage_count: ejsEntries.filter((entry) => entry.role === "stage" && entry.enabled).length,
       },
+      html: {
+        statusbar_enabled: Boolean(draft.assets?.html.statusbar.enabled),
+        statusbar_mode: draft.assets?.html.statusbar.mode ?? "safe_macro",
+        statusbar_variables: draft.assets?.html.statusbar.variablePaths.length ?? 0,
+      },
+      regex: {
+        enabled: Boolean(draft.assets?.regex.scripts),
+        script_count: await regexScriptCount(project),
+      },
+      tavernHelper: {
+        planned: project.kind.assets.tavernHelper !== "disabled",
+        enabled: Boolean(draft.assets?.tavernHelper?.scripts),
+        script_count: await tavernHelperScriptCount(project),
+        missing_files: await tavernHelperMissingFiles(project),
+      },
       exports: {
         card_exists: await exists(cardExport),
         worldbook_exists: await exists(worldbookExport),
@@ -94,7 +108,6 @@ export async function resumeProject(project: Project, options: { include_plan?: 
   };
   if (options.include_plan) result.plan = await readPlan(project).catch(() => "");
   if (options.include_entries) result.entries = entries;
-  void sourceRoot;
   return result;
 }
 
@@ -138,6 +151,41 @@ export async function checkDelivery(project: Project, options: { require_done_en
       exports: buildReport?.outputs ?? [],
     },
   };
+}
+
+async function regexScriptCount(project: Project): Promise<number> {
+  const draft = await readDraft(project);
+  const scriptsRef = draft.assets?.regex.scripts;
+  if (!scriptsRef) return 0;
+  const scriptsPath = resolveDraftReference(projectDir(project.slug), draftPath(project, "assets"), scriptsRef);
+  const parsed = parseYaml<unknown>(await readTextFile(scriptsPath).catch(() => "[]")) ?? [];
+  return Array.isArray(parsed) ? parsed.length : 0;
+}
+
+async function tavernHelperScriptCount(project: Project): Promise<number> {
+  const draft = await readDraft(project);
+  const scriptsRef = draft.assets?.tavernHelper?.scripts;
+  if (!scriptsRef) return 0;
+  const scriptsPath = resolveDraftReference(projectDir(project.slug), draftPath(project, "assets"), scriptsRef);
+  const parsed = parseYaml<unknown>(await readTextFile(scriptsPath).catch(() => "[]")) ?? [];
+  return Array.isArray(parsed) ? parsed.length : 0;
+}
+
+async function tavernHelperMissingFiles(project: Project): Promise<string[]> {
+  const draft = await readDraft(project);
+  const scriptsRef = draft.assets?.tavernHelper?.scripts;
+  if (!scriptsRef) return [];
+  const missing: string[] = [];
+  const scriptsPath = resolveDraftReference(projectDir(project.slug), draftPath(project, "assets"), scriptsRef);
+  if (!await exists(scriptsPath)) return ["scripts"];
+  const scripts = parseYaml<Array<{ id?: string; contentFile?: string }>>(await readTextFile(scriptsPath).catch(() => "[]")) ?? [];
+  if (!Array.isArray(scripts)) return ["scripts_schema"];
+  for (const script of scripts) {
+    if (!script.contentFile) continue;
+    const filePath = resolveDraftReference(projectDir(project.slug), scriptsPath, script.contentFile);
+    if (!await exists(filePath)) missing.push(script.id ?? script.contentFile);
+  }
+  return missing;
 }
 
 async function mvuMissingFiles(project: Project): Promise<string[]> {

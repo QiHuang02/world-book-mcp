@@ -45,7 +45,7 @@ export async function saveWorkspace(workspace: Workspace): Promise<void> {
   await writeYamlFile(WORKSPACE_PATH, WorkspaceSchema.parse(workspace));
 }
 
-export async function createProject(input: { name: string; output: OutputKind; source: SourceKind; assets?: Partial<Record<"mvu" | "html" | "regex" | "ejs", boolean>>; ifExists?: "error" | "overwrite" }): Promise<{ project: Project; created: boolean; projectPath: string }> {
+export async function createProject(input: { name: string; output: OutputKind; source: SourceKind; assets?: Partial<Record<"mvu" | "html" | "regex" | "ejs" | "tavernHelper", boolean>>; ifExists?: "error" | "overwrite" }): Promise<{ project: Project; created: boolean; projectPath: string }> {
   const workspace = await ensureWorkspace();
   const slug = slugifyName(input.name);
   const existing = workspace.projects.find((project) => project.slug === slug);
@@ -67,6 +67,7 @@ export async function createProject(input: { name: string; output: OutputKind; s
         html: assetState(input.assets?.html),
         regex: assetState(input.assets?.regex),
         ejs: assetState(input.assets?.ejs),
+        tavernHelper: assetState(input.assets?.tavernHelper),
       },
     },
     paths: {
@@ -106,6 +107,7 @@ export async function ensureProjectDirs(project: Project): Promise<void> {
     fs.mkdir(resolveProjectPath(root, `${project.paths.sourceRoot}/html`), { recursive: true }),
     fs.mkdir(resolveProjectPath(root, `${project.paths.sourceRoot}/regex`), { recursive: true }),
     fs.mkdir(resolveProjectPath(root, `${project.paths.sourceRoot}/ejs`), { recursive: true }),
+    fs.mkdir(resolveProjectPath(root, `${project.paths.sourceRoot}/tavern-helper`), { recursive: true }),
     fs.mkdir(resolveProjectPath(root, `${project.paths.sourceRoot}/references`), { recursive: true }),
     fs.mkdir(resolveProjectPath(root, `${project.paths.sourceRoot}/extraction`), { recursive: true }),
   ]);
@@ -188,6 +190,7 @@ async function ensureDefaultDrafts(project: Project): Promise<void> {
     mvu: { enabled: project.kind.assets.mvu === "enabled" },
     html: { statusbar: { enabled: project.kind.assets.html === "enabled" } },
     regex: {},
+    tavernHelper: {},
     ejs: { enabled: project.kind.assets.ejs === "enabled", entries: [] },
   });
   for (const [target, value] of [["card", card], ["worldbook", worldbook], ["assets", assets]] as const) {
@@ -213,6 +216,6 @@ async function ensureDefaultSourceFields(project: Project): Promise<void> {
 }
 
 function defaultPlan(project: Project): string {
-  return `# 创作计划：${project.name}\n\n## 1. 用户原始需求\n\n## 2. 项目属性\n\n- 输出目标：${project.kind.output}\n- 来源类型：${project.kind.source}\n- 是否使用 MVU：${project.kind.assets.mvu !== "disabled" ? "是" : "否"}\n- 是否使用 HTML 状态栏：${project.kind.assets.html !== "disabled" ? "是" : "否"}\n- 是否使用 regex：${project.kind.assets.regex !== "disabled" ? "是" : "否"}\n- 是否使用 EJS：${project.kind.assets.ejs !== "disabled" ? "是" : "否"}\n\n## 3. 用户决策记录\n\n| 问题 | 回答 | 说明 |\n|---|---|---|\n\n## 4. 世界观规划\n\n\`\`\`yaml\nworldbuilding:\n  class: A_real_background # A_real_background | B_small_world | C_large_world\n  core_differences: []\n  minimum_setting_set:\n    must_have: []\n    can_omit: []\n  concept_anchors:\n    - name:\n      what:\n      who_uses_it:\n      why_it_matters:\n  entry_plan:\n    - id: world-summary\n      type: world_summary\n      source: source/entries/001-world-summary.xyaml\n\`\`\`\n\n## 5. 角色规划\n\n\`\`\`yaml\ncharacters:\n  - id:\n    name:\n    role:\n    appearance_features: []\n    personality_palette:\n      base_color:\n      dominant_color:\n      accent_color:\n      contradiction:\n      behavioral_evidence: []\n    tri_faceted:\n      public_self:\n      private_self:\n      stress_response:\n    relationships:\n      - target:\n        visible_behavior:\n        hidden_motive:\n        boundary:\n    stage_design:\n      variable: stat_data.phase\n      stages: []\n\`\`\`\n\n## 6. 开场白规划
-\n\n- first_mes：\n- alternate greetings 差异维度：时间 / 氛围 / 互动方式 / 空间关系\n\n## 7. 世界书条目规划\n\n| id | 标题 | 类型 | part | scope | 位置 | 蓝/绿灯 | 内容文件 | 依赖来源 | 状态 |\n|---|---|---|---|---|---|---|---|---|---|\n\n\`\`\`yaml\nentries: []\n# - id: character-basic-heroine\n#   type: character_basic\n#   part: basic\n#   scope: catalog\n#   source: source/entries/010-character-basic-heroine.xyaml\n#   dependsOn:\n#     - source/references/chapter-01.md\n#   status: planned\n\`\`\`\n\n## 8. MVU / HTML / regex / EJS 规划\n\n\`\`\`yaml\nmvu:\n  variables: []\nejs:\n  generate_before: []\n  entries: []\nhtml:\n  statusbar: disabled\nregex:\n  scripts: []\n\`\`\`\n\n## 9. 待办清单\n\n- [ ] 初始化项目\n- [ ] 编写世界观条目\n- [ ] 编写角色基础条目\n- [ ] 编写角色性格条目\n- [ ] 编写开场白\n- [ ] 生成 draft YAML\n- [ ] 校验项目\n- [ ] 生成 JSON\n\n## 10. 验收标准\n\n- description 为空字符串\n- first_mes 不预设 {{user}} 的性别、外貌、行为\n- 世界书条目均启用 preventRecursion / excludeRecursion\n- 生成 JSON 可导入 SillyTavern\n\n## 11. 验证记录\n\n## 12. 风险与未决问题\n\n## 13. 二创提取索引\n\n| 标记 | 文件 | 行号 | 类型 | 用途 |\n|---|---|---|---|---|\n`;
+  return `# 创作计划：${project.name}\n\n## 1. 用户原始需求\n\n## 2. 项目属性\n\n- 输出目标：${project.kind.output}\n- 来源类型：${project.kind.source}\n- 是否使用 MVU：${project.kind.assets.mvu !== "disabled" ? "是" : "否"}\n- 是否使用 HTML 状态栏：${project.kind.assets.html !== "disabled" ? "是" : "否"}\n- 是否使用 regex：${project.kind.assets.regex !== "disabled" ? "是" : "否"}\n- 是否使用 EJS：${project.kind.assets.ejs !== "disabled" ? "是" : "否"}\n- 是否使用 Tavern Helper：${project.kind.assets.tavernHelper !== "disabled" ? "是" : "否"}\n\n## 3. 用户决策记录\n\n| 问题 | 回答 | 说明 |\n|---|---|---|\n\n## 4. 世界观规划\n\n\`\`\`yaml\nworldbuilding:\n  class: A_real_background # A_real_background | B_small_world | C_large_world\n  core_differences: []\n  minimum_setting_set:\n    must_have: []\n    can_omit: []\n  concept_anchors:\n    - name:\n      what:\n      who_uses_it:\n      why_it_matters:\n  entry_plan:\n    - id: world-summary\n      type: world_summary\n      source: source/entries/001-world-summary.xyaml\n\`\`\`\n\n## 5. 角色规划\n\n\`\`\`yaml\ncharacters:\n  - id:\n    name:\n    role:\n    appearance_features: []\n    personality_palette:\n      base_color:\n      dominant_color:\n      accent_color:\n      contradiction:\n      behavioral_evidence: []\n    tri_faceted:\n      public_self:\n      private_self:\n      stress_response:\n    relationships:\n      - target:\n        visible_behavior:\n        hidden_motive:\n        boundary:\n    stage_design:\n      variable: stat_data.phase\n      stages: []\n\`\`\`\n\n## 6. 开场白规划
+\n\n- first_mes：\n- alternate greetings 差异维度：时间 / 氛围 / 互动方式 / 空间关系\n\n## 7. 世界书条目规划\n\n| id | 标题 | 类型 | part | scope | 位置 | 蓝/绿灯 | 内容文件 | 依赖来源 | 状态 |\n|---|---|---|---|---|---|---|---|---|---|\n\n\`\`\`yaml\nentries: []\n# - id: character-basic-heroine\n#   type: character_basic\n#   part: basic\n#   scope: catalog\n#   source: source/entries/010-character-basic-heroine.xyaml\n#   dependsOn:\n#     - source/references/chapter-01.md\n#   status: planned\n\`\`\`\n\n## 8. MVU / HTML / regex / EJS / Tavern Helper 规划\n\n\`\`\`yaml\nmvu:\n  variables: []\nejs:\n  generate_before: []\n  entries: []\nhtml:\n  statusbar: disabled\nregex:\n  scripts: []\ntavernHelper:\n  scripts: []\n\`\`\`\n\n## 9. 待办清单\n\n- [ ] 初始化项目\n- [ ] 编写世界观条目\n- [ ] 编写角色基础条目\n- [ ] 编写角色性格条目\n- [ ] 编写开场白\n- [ ] 生成 draft YAML\n- [ ] 校验项目\n- [ ] 生成 JSON\n\n## 10. 验收标准\n\n- description 为空字符串\n- first_mes 不预设 {{user}} 的性别、外貌、行为\n- 世界书条目均启用 preventRecursion / excludeRecursion\n- 生成 JSON 可导入 SillyTavern\n\n## 11. 验证记录\n\n## 12. 风险与未决问题\n\n## 13. 二创提取索引\n\n| 标记 | 文件 | 行号 | 类型 | 用途 |\n|---|---|---|---|---|\n`;
 }

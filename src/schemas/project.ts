@@ -32,6 +32,7 @@ export const ProjectSchema = z.object({
       html: AssetStateSchema.default("disabled"),
       regex: AssetStateSchema.default("disabled"),
       ejs: AssetStateSchema.default("disabled"),
+      tavernHelper: AssetStateSchema.default("disabled"),
     }),
   }),
   paths: z.object({

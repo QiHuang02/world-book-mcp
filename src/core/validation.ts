@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { WorkspaceSchema, type Project } from "../schemas/project.js";
-import { RegexScriptDraftSchema, type AssetsDraft, type CardDraft, type WorldbookDraft } from "../schemas/draft.js";
+import { RegexScriptDraftSchema, TavernHelperScriptDraftSchema, type AssetsDraft, type CardDraft, type WorldbookDraft, type WorldbookEntryDraft } from "../schemas/draft.js";
 import { WORKSPACE_PATH, draftPath, projectDir, projectPath, readDraft, readPlan } from "../storage/workspace.js";
 import { resolveDraftReference } from "../storage/path-policy.js";
 import { parseYaml, readTextFile, readYamlFile, writeTextFile } from "../utils/yaml.js";
@@ -156,6 +156,7 @@ async function validateWorldbook(project: Project, worldbook: WorldbookDraft | u
   return issues;
 }
 
+
 async function validateAssets(project: Project, assets: AssetsDraft | undefined, card: CardDraft | undefined): Promise<ValidationIssue[]> {
   const issues: ValidationIssue[] = [];
   if (!assets) return [issue("error", "assets.missing", "缺少 draft/assets.yaml")];
@@ -184,6 +185,7 @@ async function validateAssets(project: Project, assets: AssetsDraft | undefined,
         if (mode === "dynamic_js") {
           if (/<script\b/i.test(html) && !/errorCatched|try\s*\{/.test(html)) issues.push(issue("warning", "html.dynamic_js.error_guard_missing", "dynamic_js 状态栏建议使用 errorCatched 或 try/catch 包裹脚本"));
           if (/stat_data|Mvu|getAllVariables/.test(html) && !/getAllVariables|Mvu/.test(html)) issues.push(issue("warning", "html.dynamic_js.mvu_access_unclear", "dynamic_js 使用 MVU 数据时建议显式使用 getAllVariables 或 Mvu API"));
+          if (/Mvu|getAllVariables|stat_data/.test(html) && !/waitGlobalInitialized\(['"]Mvu['"]\)/.test(html)) issues.push(issue("warning", "html.dynamic_js.mvu_wait_missing", "dynamic_js 状态栏读取 MVU 时建议先 waitGlobalInitialized('Mvu')"));
           if (/document\.body|\*\s*\{|\.mes_text/.test(html)) issues.push(issue("warning", "html.dynamic_js.global_pollution", "dynamic_js 状态栏可能污染全局 DOM/CSS，请确认作用域隔离"));
         }
       }
@@ -193,6 +195,10 @@ async function validateAssets(project: Project, assets: AssetsDraft | undefined,
   if (assets.regex.scripts) {
     await assertSourceFileReference(project, assetsFile, assets.regex.scripts, "regex.scripts", "regex", issues);
     await validateRegexScripts(project, assetsFile, assets.regex.scripts, issues);
+  }
+  if (assets.tavernHelper?.scripts) {
+    await assertSourceFileReference(project, assetsFile, assets.tavernHelper.scripts, "tavernHelper.scripts", "tavern-helper", issues);
+    await validateTavernHelperScripts(project, assetsFile, assets.tavernHelper.scripts, issues);
   }
   let preprocessContent = "";
   if (assets.ejs.preprocess) {
@@ -210,6 +216,42 @@ async function validateAssets(project: Project, assets: AssetsDraft | undefined,
   return issues;
 }
 
+async function validateTavernHelperScripts(project: Project, assetsFile: string, scriptsRef: string, issues: ValidationIssue[]): Promise<void> {
+  try {
+    const scriptsPath = resolveDraftReference(projectDir(project.slug), assetsFile, scriptsRef);
+    const rawScripts = (await import("../utils/yaml.js")).parseYaml<unknown>(await readTextFile(scriptsPath)) ?? [];
+    const parsedScripts = TavernHelperScriptDraftSchema.array().safeParse(rawScripts);
+    if (!parsedScripts.success) {
+      issues.push(issue("error", "tavern_helper.scripts.schema_invalid", `Tavern Helper scripts schema 无效: ${parsedScripts.error.issues.map((item) => item.message).join("; ")}`, "tavernHelper.scripts"));
+      return;
+    }
+    const scripts = parsedScripts.data;
+    const seen = new Set<string>();
+    for (const [index, script] of scripts.entries()) {
+      const field = `tavernHelper.scripts.${index}`;
+      if (seen.has(script.id)) issues.push(issue("error", "tavern_helper.script.duplicate_id", `Tavern Helper script id 重复: ${script.id}`, field));
+      seen.add(script.id);
+      if (!script.content && !script.contentFile) issues.push(issue("error", "tavern_helper.script.content_missing", `Tavern Helper script ${script.id} 必须提供 content 或 contentFile`, field));
+      if (script.content && script.contentFile) issues.push(issue("warning", "tavern_helper.script.content_file_overrides_string", `Tavern Helper script ${script.id} 同时包含 content 和 contentFile，生成时 contentFile 优先`, field));
+      let content = script.content ?? "";
+      if (script.contentFile) {
+        const resolved = resolveDraftReference(projectDir(project.slug), scriptsPath, script.contentFile);
+        const sourceRoot = path.resolve(projectDir(project.slug), project.paths.sourceRoot);
+        const allowedRoot = path.resolve(sourceRoot, "tavern-helper");
+        const relative = path.relative(allowedRoot, resolved);
+        if (relative.startsWith("..") || path.isAbsolute(relative)) issues.push(issue("error", "tavern_helper.content_file.wrong_directory", `contentFile 必须指向 source/tavern-helper: ${script.contentFile}`, `${field}.contentFile`));
+        else if (!await exists(resolved)) issues.push(issue("error", "tavern_helper.content_file.missing", `contentFile 不存在: ${script.contentFile}`, `${field}.contentFile`));
+        else content = await readTextFile(resolved);
+      }
+      if (/https?:\/\//i.test(content) && !script.allowExternal) issues.push(issue("error", "tavern_helper.external_url_forbidden", `Tavern Helper script ${script.id} 包含外链 URL；如确需使用，必须 allowExternal: true 并在 plan.md 记录风险`, field));
+      if (script.allowExternal && /https?:\/\//i.test(content)) issues.push(issue("warning", "tavern_helper.external_url_allowed", `Tavern Helper script ${script.id} 显式允许外链，请确认 plan.md 已记录来源与风险`, field));
+      if (/<(?:think|thinking|content)>|jailbreak|破限|思维链/i.test(content)) issues.push(issue("warning", "tavern_helper.prompt_like_script", `Tavern Helper script ${script.id} 看起来包含提示词/思维链/破限文本，请确认这确实是可执行脚本`, field));
+    }
+  } catch (error) {
+    issues.push(issue("error", "tavern_helper.scripts.read_failed", `读取 Tavern Helper scripts 失败: ${messageOf(error)}`, "tavernHelper.scripts"));
+  }
+}
+
 async function validateRegexScripts(project: Project, assetsFile: string, scriptsRef: string, issues: ValidationIssue[]): Promise<void> {
   try {
     const scriptsPath = resolveDraftReference(projectDir(project.slug), assetsFile, scriptsRef);
@@ -223,6 +265,9 @@ async function validateRegexScripts(project: Project, assetsFile: string, script
     const scripts = rawScripts as Array<Record<string, unknown>>;
     for (const [index, script] of scripts.entries()) {
       const replaceFile = typeof script.replaceFile === "string" ? script.replaceFile : undefined;
+      const findRegex = String(script.findRegex ?? "");
+      if (/<\/?(?:think|thinking|content)>|\b(?:think|thinking|content)\b/i.test(findRegex)) issues.push(issue("warning", "regex.frontend.reserved_tag", `regex scripts.${index} 使用了不推荐的思维链/内容边界标签`, `regex.scripts.${index}.findRegex`));
+      if (/<\/?(?:UpdateVariable|Analysis|JSONPatch)>|\b(?:UpdateVariable|Analysis|JSONPatch)\b/i.test(findRegex)) issues.push(issue("warning", "regex.frontend.system_tag", `regex scripts.${index} 使用了 MVU 系统标签，可能干扰变量更新`, `regex.scripts.${index}.findRegex`));
       if (!replaceFile) continue;
       const resolved = resolveDraftReference(projectDir(project.slug), scriptsPath, replaceFile);
       const sourceRoot = path.resolve(projectDir(project.slug), project.paths.sourceRoot);

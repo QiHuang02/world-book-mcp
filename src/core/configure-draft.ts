@@ -39,26 +39,36 @@ export interface ConfigureDraftResult { ok: boolean; project_id: string; mode: "
 
 const DEFAULT_TYPE_LISTS: Required<NonNullable<ConfigureDraftOptions["typeLists"]>> = {
   before_char: ["world_summary", "background", "faction"],
-  after_char: ["character_overview", "character_basic", "character_personality", "player", "npc", "item", "ability", "scene", "event", "dialogue", "other"],
+  after_char: ["character_overview", "character_basic", "character_personality", "character_palette", "character_facets", "character_relationships", "character_rephrase", "character_wardrobe", "character_nsfw_palette", "character_sexual_characteristics", "character_xp_card", "character_stage", "player", "npc", "item", "ability", "scene", "event", "dialogue", "other"],
   depth: ["style"],
 };
 
-const DEFAULT_PART_ORDER: Record<string, number> = {
+export const DEFAULT_PART_ORDER: Record<string, number> = {
   world_summary: 1,
   background: 2,
   character_overview: 4,
   character_basic: 10,
   character_personality: 30,
-  player: 40,
-  item: 50,
-  ability: 60,
-  faction: 70,
-  scene: 80,
-  event: 90,
-  npc: 100,
-  style: 110,
-  dialogue: 120,
-  other: 130,
+  character_palette: 30,
+  character_facets: 34,
+  character_relationships: 40,
+  player: 45,
+  character_wardrobe: 50,
+  character_nsfw_palette: 52,
+  character_sexual_characteristics: 53,
+  character_xp_card: 54,
+  character_stage: 55,
+  item: 60,
+  ability: 70,
+  faction: 80,
+  scene: 90,
+  event: 100,
+  npc: 110,
+  style: 120,
+  dialogue: 130,
+  character_rephrase: 900,
+  other: 140,
+  // rephrase 设为 900 强制排到条目组末尾，确保二次解释在 AI 读取所有条目后生效
   rephrase: 900,
 };
 
@@ -138,9 +148,13 @@ function resolveStrategy(entry: ConfigureDraftEntryInput, type: EntryType, optio
   }
   const profile = options.profile ?? "single_character";
   if (profile === "worldbook") return "blue";
-  if (profile === "single_character" && (type === "character_basic" || type === "character_personality" || type === "character_overview")) return "blue";
-  if (profile === "multi_character" && (type === "character_personality" || type === "character_basic" || type === "npc")) return "green";
+  if (profile === "single_character" && isCoreCharacterType(type)) return "blue";
+  if (profile === "multi_character" && (isCoreCharacterType(type) || type === "npc")) return "green";
   return entry.strategy ?? "blue";
+}
+
+function isCoreCharacterType(type: EntryType): boolean {
+  return ["character_overview", "character_basic", "character_personality", "character_palette", "character_facets", "character_relationships", "character_rephrase", "character_wardrobe", "character_nsfw_palette", "character_sexual_characteristics", "character_xp_card", "character_stage"].includes(type);
 }
 
 function nextGroupedOrder(type: EntryType, entry: ConfigureDraftEntryInput, partOrder: Record<string, number> | undefined, counters: Map<string, number>, usedOrders: Set<number>): number {
@@ -172,7 +186,7 @@ function assertEntryContentReference(project: Project, reference: string, entryI
 }
 
 function inferPosition(type: EntryType, typeLists: ConfigureDraftOptions["typeLists"], rephrase: boolean): "before_char" | "after_char" | "before_an" | "after_an" | "at_depth" | "before_em" | "after_em" | "outlet" {
-  if (rephrase) return "at_depth";
+  if (rephrase || type === "character_rephrase") return "at_depth";
   const lists = { before_char: typeLists?.before_char ?? DEFAULT_TYPE_LISTS.before_char, after_char: typeLists?.after_char ?? DEFAULT_TYPE_LISTS.after_char, depth: typeLists?.depth ?? DEFAULT_TYPE_LISTS.depth };
   if (lists.before_char.includes(type)) return "before_char";
   if (lists.after_char.includes(type)) return "after_char";

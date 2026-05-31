@@ -7,7 +7,7 @@ import { repairProject } from "../src/core/repair.js";
 import { validateMvuProject } from "../src/core/mvu-validation.js";
 import { convertMvuPath } from "../src/core/mvu-paths.js";
 import { applyMvuPreset, listMvuVariables, removeMvuVariable, rewriteMvuVariables, upsertMvuVariable } from "../src/core/mvu-variables.js";
-import { createEjsStageTemplate } from "../src/core/creative-tools.js";
+import { createAdultEntryTemplate, createEjsStageTemplate, createFrontendBeautifyTemplate, createStatusbarTemplate, upsertRegexScript, upsertTavernHelperScript } from "../src/core/creative-tools.js";
 import { importNovaConfig } from "../src/core/nova-importer.js";
 import { entrySummary, generateTavernSyncConfig, queryEntries, updateEntryStatus } from "../src/core/entry-manifest.js";
 import { checkDelivery, readSourceFile, resumeProject } from "../src/core/project-status.js";
@@ -42,6 +42,7 @@ describe("v5 workspace and draft", () => {
     await expect(fs.access(draftPath(project, "worldbook"))).resolves.toBeUndefined();
     await expect(fs.access(draftPath(project, "assets"))).resolves.toBeUndefined();
     await expect(fs.access(path.resolve(projectDir(project.slug), "source", "entries"))).resolves.toBeUndefined();
+    await expect(fs.access(path.resolve(projectDir(project.slug), "source", "tavern-helper"))).resolves.toBeUndefined();
 
     const draft = await readDraft(project);
     expect(draft.card?.description).toBe("");
@@ -58,12 +59,14 @@ describe("v5 workspace and draft", () => {
 
   it("keeps planned assets disabled until templates are applied", async () => {
     await cleanup("v5-mvp-planned-assets");
-    const { project } = await createProject({ name: "v5-mvp-planned-assets", output: "character_card", source: "original", assets: { mvu: true, html: true, ejs: true }, ifExists: "overwrite" });
+    const { project } = await createProject({ name: "v5-mvp-planned-assets", output: "character_card", source: "original", assets: { mvu: true, html: true, ejs: true, tavernHelper: true }, ifExists: "overwrite" });
     const draft = await readDraft(project);
     expect(project.kind.assets.mvu).toBe("planned");
+    expect(project.kind.assets.tavernHelper).toBe("planned");
     expect(draft.assets?.mvu.enabled).toBe(false);
     expect(draft.assets?.html.statusbar.enabled).toBe(false);
     expect(draft.assets?.ejs.enabled).toBe(false);
+    expect(draft.assets?.tavernHelper?.scripts).toBeUndefined();
     const report = await validateProject(project);
     expect(report.issues.some((issue) => issue.code.startsWith("mvu.") || issue.code === "html.statusbar.html_missing" || issue.code === "assets.ejs_requires_mvu")).toBe(false);
   });
@@ -485,6 +488,7 @@ describe("v5 builders", () => {
       mvu: { enabled: true, schema: "../source/mvu/schema.js", initvar: "../source/mvu/initvar.yaml", updateRules: "../source/mvu/update-rules.yaml", variableList: "../source/mvu/variable-list.md", outputFormat: "../source/mvu/output-format.md", hideRegex: true },
       html: { statusbar: { enabled: true, html: "../source/html/statusbar.html", css: "../source/html/statusbar.css" } },
       regex: { scripts: "../source/regex/scripts.yaml" },
+      tavernHelper: {},
       ejs: { enabled: true, entries: [{ id: "controller", file: "../source/ejs/controller.ejs", role: "controller", enabled: true, position: "at_depth", order: 16000, depth: 0 }] },
     });
 
@@ -604,7 +608,10 @@ describe("v5 import", () => {
             { id: "status", scriptName: "[界面]状态栏", findRegex: "<StatusPlaceHolderImpl/>", replaceString: "<style>.x{}</style><![CDATA[<div>{{stat_data.hp}}</div>]]>", markdownOnly: true, promptOnly: false, placement: [2] },
             { id: "custom", scriptName: "自定义", findRegex: "foo", replaceString: "bar", markdownOnly: true, promptOnly: false, placement: [2] },
           ],
-          TavernHelper_scripts: [{ type: "script", value: { name: "变量结构设计", content: "export const Schema = z.object({ hp: z.number() });" } }],
+          TavernHelper_scripts: [
+            { type: "script", value: { name: "变量结构设计", content: "export const Schema = z.object({ hp: z.number() });" } },
+            { type: "script", value: { id: "helper-one", name: "本地助手", content: "console.log('helper');", buttons: [{ name: "打开", visible: true }] } },
+          ],
         },
         character_book: { name, entries: [] },
       },
@@ -617,8 +624,10 @@ describe("v5 import", () => {
     expect(draft.assets?.html.statusbar.enabled).toBe(true);
     expect(draft.assets?.regex.scripts).toBe("../source/regex/scripts.yaml");
     expect(draft.assets?.mvu.enabled).toBe(true);
+    expect(draft.assets?.tavernHelper?.scripts).toBe("../source/tavern-helper/scripts.yaml");
     await expect(fs.readFile(path.resolve(projectDir(project.slug), "source", "html", "statusbar.html"), "utf8")).resolves.toContain("{{stat_data.hp}}");
     await expect(fs.readFile(path.resolve(projectDir(project.slug), "source", "mvu", "schema.js"), "utf8")).resolves.toContain("export const Schema");
+    await expect(fs.readFile(path.resolve(projectDir(project.slug), "source", "tavern-helper", "scripts.yaml"), "utf8")).resolves.toContain("本地助手");
     await fs.rm(inputPath, { force: true });
   });
 });
@@ -656,6 +665,9 @@ describe("v5 skill-authored content and structural helpers", () => {
     expect(card.data.character_book.entries.some((entry: any) => String(entry.comment).includes("stage-intro"))).toBe(false);
     const stageText = await fs.readFile(path.resolve(projectDir(project.slug), "source/ejs/stage-intro.ejs"), "utf8");
     expect(stageText).toContain("stage_profile");
+    const controllerText = await fs.readFile(path.resolve(projectDir(project.slug), "source/ejs/stage-controller.ejs"), "utf8");
+    expect(controllerText).toContain("getvar('stat_data.phase'");
+    expect(controllerText).toContain("await getwi(stageEntry)");
     await expect(createEjsStageTemplate(project, input)).rejects.toThrow();
     await expect(createEjsStageTemplate(project, { ...input, overwrite: true })).resolves.toMatchObject({ ok: true });
   });
@@ -742,7 +754,7 @@ describe("v5 compatibility import and advanced assets", () => {
     await fs.writeFile(path.resolve(tempDir, "status.html"), "<div>{{format_message_variable::stat_data.hp}}</div>\n", "utf8");
     await fs.writeFile(path.resolve(tempDir, "schema.js"), "export const Schema = z.object({ hp: z.number() });\n", "utf8");
     const configPath = path.resolve(tempDir, "nova.yaml");
-    await fs.writeFile(configPath, "name: Nova导入测试\ncreator: Nova\ncharacter_version: '1.0'\nfields:\n  description: desc.md\n  personality: personality.md\n  first_mes: first.md\nextensions:\n  talkativeness: '0.7'\n  fav: true\n  status_bar: status.html\nscripts:\n  - name: 变量结构设计\n    content: schema.js\n    enabled: true\ncharacter_book:\n  name: Nova世界书\n  entries:\n    - comment: 世界条目\n      content: entry.xyaml\n      enabled: true\n      position: before_char\n      insertion_order: 10\n      depth: 4\n", "utf8");
+    await fs.writeFile(configPath, "name: Nova导入测试\ncreator: Nova\ncharacter_version: '1.0'\nfields:\n  description: desc.md\n  personality: personality.md\n  first_mes: first.md\nextensions:\n  talkativeness: '0.7'\n  fav: true\n  status_bar: status.html\nscripts:\n  - name: 变量结构设计\n    content: schema.js\n    enabled: true\n  - id: helper-panel\n    name: 本地面板\n    content: console.log('panel')\n    enabled: true\ncharacter_book:\n  name: Nova世界书\n  entries:\n    - comment: 世界条目\n      content: entry.xyaml\n      enabled: true\n      position: before_char\n      insertion_order: 10\n      depth: 4\n", "utf8");
 
     const result = await importNovaConfig(configPath, undefined, "overwrite");
     const project = await readProjectBySlug("nova导入测试");
@@ -755,19 +767,74 @@ describe("v5 compatibility import and advanced assets", () => {
     expect(draft.worldbook?.entries.some((entry) => entry.comment === "世界条目")).toBe(true);
     expect(draft.assets?.html.statusbar.enabled).toBe(true);
     expect(draft.assets?.mvu.enabled).toBe(true);
+    expect(draft.assets?.tavernHelper?.scripts).toBe("../source/tavern-helper/scripts.yaml");
     await fs.rm(tempDir, { recursive: true, force: true });
   });
 
-  it("supports regex replaceFile and dynamic_js statusbar mode", async () => {
+  it("creates skill-aligned asset templates through helper tools", async () => {
+    const { project } = await createTestProject("v5-mvp-creative-tools", "character_card");
+
+    const statusbar = await createStatusbarTemplate(project, { title: "状态", variables: [{ label: "好感", path: "角色A.好感度" }], overwrite: true });
+    expect(statusbar.files.length).toBe(2);
+    await expect(fs.readFile(path.resolve(projectDir(project.slug), "source/html/statusbar.html"), "utf8")).resolves.toContain("format_message_variable::stat_data.角色A.好感度");
+    await expect(fs.readFile(path.resolve(projectDir(project.slug), "source/fields/first_mes.md"), "utf8")).resolves.toContain("<StatusPlaceHolderImpl/>");
+
+    await createStatusbarTemplate(project, { mode: "dynamic_js", title: "动态状态", variables: [{ label: "地点", path: "世界.地点" }], overwrite: true });
+    await expect(fs.readFile(path.resolve(projectDir(project.slug), "source/html/statusbar.html"), "utf8")).resolves.toContain("waitGlobalInitialized('Mvu')");
+    await expect(fs.readFile(path.resolve(projectDir(project.slug), "source/html/statusbar.html"), "utf8")).resolves.toContain("getAllVariables()");
+
+    await expect(createFrontendBeautifyTemplate(project, { id: "bad", tag: "thinking" })).rejects.toThrow();
+    const beautify = await createFrontendBeautifyTemplate(project, { id: "story-view", tag: "story_view", overwrite: true });
+    expect(beautify.regex_id).toBe("story-view");
+    await expect(fs.readFile(path.resolve(projectDir(project.slug), "source/regex/scripts.yaml"), "utf8")).resolves.toContain("story_view");
+
+    await upsertRegexScript(project, { id: "story-view", name: "正文美化更新", findRegex: "/<story_view>[\\s\\S]*?<\\/story_view>/g", replaceFile: "../html/story-view.html", markdownOnly: true, promptOnly: false }, { overwrite: true });
+    await expect(fs.readFile(path.resolve(projectDir(project.slug), "source/regex/scripts.yaml"), "utf8")).resolves.toContain("正文美化更新");
+
+    const helper = await upsertTavernHelperScript(project, { id: "local-helper", name: "本地助手", content: "console.log('ok')", enabled: true, overwrite: true });
+    expect(helper.script_id).toBe("local-helper");
+    const draft = await readDraft(project);
+    expect(draft.assets?.regex.scripts).toBe("../source/regex/scripts.yaml");
+    expect(draft.assets?.tavernHelper?.scripts).toBe("../source/tavern-helper/scripts.yaml");
+    const card = await buildCharacterCardJson(project, draft.card!, draft.worldbook, draft.assets, new Date().toISOString()) as any;
+    expect(card.data.extensions.TavernHelper_scripts.find((script: any) => script.value.name === "本地助手").value.content).toContain("console.log");
+  });
+
+  it("rejects Tavern Helper external URLs unless explicitly allowed", async () => {
+    const { project } = await createTestProject("v5-mvp-helper-external", "character_card");
+    await writeSource(project.slug, "fields/first_mes.md", "你好\n");
+    await writeSource(project.slug, "tavern-helper/remote.js", "import 'https://example.com/helper.js'\n");
+    await writeSource(project.slug, "tavern-helper/scripts.yaml", "- id: remote\n  name: 远程助手\n  contentFile: remote.js\n  enabled: true\n");
+    await writeDraft(project, "assets", {
+      mvu: { enabled: false },
+      html: { statusbar: { enabled: false } },
+      regex: {},
+      tavernHelper: { scripts: "../source/tavern-helper/scripts.yaml" },
+      ejs: { enabled: false, entries: [] },
+    });
+
+    let report = await validateProject(project);
+    expect(report.issues.some((issue) => issue.code === "tavern_helper.external_url_forbidden")).toBe(true);
+
+    await writeSource(project.slug, "tavern-helper/scripts.yaml", "- id: remote\n  name: 远程助手\n  contentFile: remote.js\n  enabled: true\n  allowExternal: true\n");
+    report = await validateProject(project);
+    expect(report.issues.some((issue) => issue.code === "tavern_helper.external_url_forbidden")).toBe(false);
+    expect(report.issues.some((issue) => issue.code === "tavern_helper.external_url_allowed")).toBe(true);
+  });
+
+  it("supports regex replaceFile, local Tavern Helper, and dynamic_js statusbar mode", async () => {
     const { project } = await createTestProject("v5-mvp-replace-file-dynamic-js", "character_card");
     await writeSource(project.slug, "fields/first_mes.md", "<StatusPlaceHolderImpl/>\n");
     await writeSource(project.slug, "html/statusbar.html", "<script>var all=getAllVariables();</script><div>ok</div>\n");
     await writeSource(project.slug, "regex/replace.html", "<strong>替换内容</strong>\n");
     await writeSource(project.slug, "regex/scripts.yaml", "- name: file-regex\n  findRegex: PLACEHOLDER\n  replaceString: inline\n  replaceFile: ../regex/replace.html\n  markdownOnly: true\n  promptOnly: false\n");
+    await writeSource(project.slug, "tavern-helper/helper.js", "console.log('local helper')\n");
+    await writeSource(project.slug, "tavern-helper/scripts.yaml", "- id: helper\n  name: 本地助手\n  contentFile: helper.js\n  enabled: true\n");
     await writeDraft(project, "assets", {
       mvu: { enabled: false },
       html: { statusbar: { enabled: true, html: "../source/html/statusbar.html", mode: "dynamic_js" } },
       regex: { scripts: "../source/regex/scripts.yaml" },
+      tavernHelper: { scripts: "../source/tavern-helper/scripts.yaml" },
       ejs: { enabled: false, entries: [] },
     });
 
@@ -775,14 +842,28 @@ describe("v5 compatibility import and advanced assets", () => {
     expect(report.issues.some((issue) => issue.code === "html.script_forbidden")).toBe(false);
     expect(report.issues.some((issue) => issue.code === "html.dynamic_js.error_guard_missing")).toBe(true);
     expect(report.issues.some((issue) => issue.code === "regex.replace_file_overrides_string")).toBe(true);
+    expect(report.issues.some((issue) => issue.code.startsWith("tavern_helper.") && issue.severity === "error")).toBe(false);
     const card = await buildCharacterCardJson(project, (await readDraft(project)).card!, (await readDraft(project)).worldbook, (await readDraft(project)).assets, new Date().toISOString()) as any;
     const regex = card.data.extensions.regex_scripts.find((script: any) => script.scriptName === "file-regex");
     expect(regex.replaceString).toContain("替换内容");
+    expect(card.data.extensions.TavernHelper_scripts.find((script: any) => script.value.name === "本地助手").value.content).toContain("local helper");
   });
 });
 
 
 describe("v5 configure, repair and mvu validation", () => {
+  it("creates adult entry templates", async () => {
+    const { project } = await createTestProject("v5-mvp-adult-entry", "worldbook");
+    // age_gate 不再强制要求，无 age_gate 也能创建成功
+    const result = await createAdultEntryTemplate(project, { id: "adult-palette", character_name: "角色A", type: "character_nsfw_palette", consent_boundary: ["仅限已确认成年角色"], overwrite: true });
+    expect(result.entry?.type).toBe("character_nsfw_palette");
+    await expect(fs.readFile(path.resolve(projectDir(project.slug), "source/entries/adult-palette.xyaml"), "utf8")).resolves.toContain("NSFW调色盘");
+
+    const report = await validateProject(project);
+    // 成人向条目不触发 adult_entry.* 警告或错误（已移除相关检查）
+    expect(report.issues.some((issue) => issue.code?.startsWith("adult_entry"))).toBe(false);
+  });
+
   it("previews and applies inferred worldbook draft entries", async () => {
     const { project } = await createTestProject("v5-mvp-configure-draft", "worldbook");
     const preview = await configureDraft(project, { mode: "preview", entries: [{ id: "heroine", comment: "女主性格", type: "character_personality", content: "../source/entries/heroine.xyaml", strategy: "green" }] });
@@ -827,19 +908,19 @@ describe("v5 configure, repair and mvu validation", () => {
       requiredParts: ["overview", "missing"],
       entries: [
         { id: "overview", comment: "角色速览", type: "character_overview", part: "overview", scope: "catalog", content: "../source/entries/overview.xyaml" },
-        { id: "heroine", comment: "女主性格", type: "character_personality", part: "heroine", content: "../source/entries/heroine.xyaml" },
-        { id: "rephrase", comment: "二次解释", type: "style", rephrase: true, content: "../source/entries/rephrase.xyaml" },
+        { id: "heroine", comment: "女主调色盘", type: "character_palette", part: "heroine", content: "../source/entries/heroine.xyaml" },
+        { id: "rephrase", comment: "二次解释", type: "character_rephrase", content: "../source/entries/rephrase.xyaml" },
       ],
     });
     const entries = result.entries as any[];
     expect(entries[0].constant).toBe(true);
     expect(entries[0].order).toBe(10);
     expect(entries[1].constant).toBe(false);
-    expect(entries[1].keys).toEqual(["女主性格"]);
+    expect(entries[1].keys).toEqual(["女主调色盘"]);
     expect(entries[1].order).toBe(30);
     expect(entries[2].position).toBe("at_depth");
     expect(entries[2].depth).toBe(0);
-    expect(entries[2].order).toBe(900);
+    expect(entries[2].order).toBe(9000);
     expect(result.actions.some((action) => action.code === "configure.required_part_missing")).toBe(true);
   });
 
@@ -910,6 +991,8 @@ describe("v5 configure, repair and mvu validation", () => {
     await expect(fs.readFile(path.resolve(projectDir(project.slug), "source/mvu/schema.js"), "utf8")).resolves.toContain("z.coerce.number()");
     await expect(fs.readFile(path.resolve(projectDir(project.slug), "source/mvu/schema.js"), "utf8")).resolves.toContain("_.clamp");
     await expect(fs.readFile(path.resolve(projectDir(project.slug), "source/mvu/update-rules.yaml"), "utf8")).resolves.toContain("变量更新规则");
+    await expect(fs.readFile(path.resolve(projectDir(project.slug), "source/mvu/variable-list.md"), "utf8")).resolves.toContain("<status_current_variables>");
+    await expect(fs.readFile(path.resolve(projectDir(project.slug), "source/mvu/output-format.md"), "utf8")).resolves.toContain("<JSONPatch>");
 
     await upsertMvuVariable(project, { path: ["角色A", "在场"], kind: "boolean", defaultValue: true });
     listed = await listMvuVariables(project);

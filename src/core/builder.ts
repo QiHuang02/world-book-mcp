@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { AssetsDraftSchema, RegexScriptDraftSchema, type AssetsDraft, type CardDraft, type RegexScriptDraft, type WorldbookDraft, type WorldbookEntryDraft } from "../schemas/draft.js";
+import { AssetsDraftSchema, RegexScriptDraftSchema, TavernHelperScriptDraftSchema, type AssetsDraft, type CardDraft, type RegexScriptDraft, type TavernHelperScriptDraft, type WorldbookDraft, type WorldbookEntryDraft } from "../schemas/draft.js";
 import type { Project } from "../schemas/project.js";
 import { draftPath, projectDir, projectPath, readDraft } from "../storage/workspace.js";
 import { backupIfExists, resolveDraftReference, resolveExportFilePath } from "../storage/path-policy.js";
@@ -330,13 +330,30 @@ function mvuBeautifyRegexScripts(): RegexScriptDraft[] {
 }
 
 async function buildTavernHelperScripts(project: Project, assets?: AssetsDraft): Promise<unknown[]> {
-  if (!assets?.mvu.enabled) return [];
-  const scripts: unknown[] = [{ type: "script", value: { id: "mvu-runtime", name: "MVU Zod 脚本", content: "import 'https://testingcf.jsdelivr.net/gh/MagicalAstrogy/MagVarUpdate/artifact/bundle.js'", info: "", buttons: [{ name: "重新处理变量", visible: false }, { name: "重新读取初始变量", visible: false }, { name: "清除旧楼层变量", visible: false }], data: { "是否显示变量更新错误": "是", "构建信息": new Date().toISOString() }, enabled: true } }];
-  if (assets.mvu.schema) {
-    const content = await readTextFile(resolveDraftReference(projectDir(project.slug), draftPath(project, "assets"), assets.mvu.schema));
-    scripts.push({ type: "script", value: { id: "mvu-schema", name: "变量结构设计", content: wrapMvuSchemaScript(content), info: "", buttons: [], data: {}, enabled: true } });
+  const scripts: unknown[] = [];
+  if (assets?.mvu.enabled) {
+    scripts.push({ type: "script", value: { id: "mvu-runtime", name: "MVU Zod 脚本", content: "import 'https://testingcf.jsdelivr.net/gh/MagicalAstrogy/MagVarUpdate/artifact/bundle.js'", info: "", buttons: [{ name: "重新处理变量", visible: false }, { name: "重新读取初始变量", visible: false }, { name: "清除旧楼层变量", visible: false }], data: { "是否显示变量更新错误": "是", "构建信息": new Date().toISOString() }, enabled: true } });
+    if (assets.mvu.schema) {
+      const content = await readTextFile(resolveDraftReference(projectDir(project.slug), draftPath(project, "assets"), assets.mvu.schema));
+      scripts.push({ type: "script", value: { id: "mvu-schema", name: "变量结构设计", content: wrapMvuSchemaScript(content), info: "", buttons: [], data: {}, enabled: true } });
+    }
   }
+  scripts.push(...await buildCustomTavernHelperScripts(project, assets));
   return scripts;
+}
+
+async function buildCustomTavernHelperScripts(project: Project, assets?: AssetsDraft): Promise<unknown[]> {
+  if (!assets?.tavernHelper?.scripts) return [];
+  const scriptsPath = resolveDraftReference(projectDir(project.slug), draftPath(project, "assets"), assets.tavernHelper.scripts);
+  const loaded = await readYamlFile(scriptsPath, TavernHelperScriptDraftSchema.array());
+  const result: unknown[] = [];
+  for (const script of loaded) result.push({ type: "script", value: await buildCustomTavernHelperScript(project, scriptsPath, script) });
+  return result;
+}
+
+async function buildCustomTavernHelperScript(project: Project, scriptsPath: string, script: TavernHelperScriptDraft): Promise<Record<string, unknown>> {
+  const content = script.contentFile ? await readTextFile(resolveDraftReference(projectDir(project.slug), scriptsPath, script.contentFile)) : script.content ?? "";
+  return { id: script.id, name: script.name, content, info: script.info, buttons: script.buttons, data: script.data, enabled: script.enabled };
 }
 
 function wrapMvuSchemaScript(schema: string): string {
