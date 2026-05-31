@@ -1,0 +1,7 @@
+interface:
+  display_name: "World Book MCP"
+  short_description: "创建并校验酒馆世界书"
+  default_prompt: "使用 $world-book-mcp-skill 创建、校验或修复一个 SillyTavern 世界书/角色卡项目。"
+
+policy:
+  allow_implicit_invocation: true
